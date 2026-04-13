@@ -7,12 +7,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Globe, Type, FileIcon, Image, Video, Upload, Loader2, Sparkles, ArrowRight } from 'lucide-react';
+import {
+  Globe, Type, FileIcon, Image, Video, Upload, Loader2, Sparkles, ArrowRight,
+  CheckCircle2, Circle, ScanText, Brain, Scale, Lightbulb, Network, ListTree,
+  FileText, FileSearch, Clock
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SourceType } from '@/types';
 import * as pdfjsLib from 'pdfjs-dist';
 
-// Configure PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.mjs',
   import.meta.url
@@ -27,15 +30,20 @@ const tabs: { type: SourceType; icon: typeof Globe; label: string; placeholder: 
 ];
 
 const analysisSteps = [
-  '解析输入内容...',
-  '提取关键信息...',
-  '深度分析观点...',
-  '批判性思考中...',
-  '生成创新洞见...',
-  '构建思维导图...',
-  '整理知识脉络...',
-  '生成完整报告...',
+  { icon: ScanText,    label: '解析输入内容', desc: '读取并预处理输入数据'     },
+  { icon: FileSearch,  label: '提取关键信息', desc: '识别核心实体与数据'       },
+  { icon: Brain,       label: '深度分析观点', desc: '理解主要论点与立场'       },
+  { icon: Scale,       label: '批判性思考',   desc: '评估内容优点与局限'       },
+  { icon: Lightbulb,   label: '生成创新洞见', desc: '提炼独特视角与延伸'       },
+  { icon: Network,     label: '构建思维导图', desc: '建立知识节点与关联'       },
+  { icon: ListTree,    label: '整理知识脉络', desc: '梳理逻辑结构与层次'       },
+  { icon: FileText,    label: '生成完整报告', desc: '输出结构化分析文档'       },
 ];
+
+function formatElapsed(seconds: number) {
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
 
 export default function Analyze() {
   const [searchParams] = useSearchParams();
@@ -44,6 +52,7 @@ export default function Analyze() {
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
   const [fileContent, setFileContent] = useState<string>('');
   const [fileName, setFileName] = useState<string>('');
   const [fileParsing, setFileParsing] = useState(false);
@@ -52,13 +61,17 @@ export default function Analyze() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const stepIntervalRef = useRef<ReturnType<typeof setInterval>>();
+  const elapsedIntervalRef = useRef<ReturnType<typeof setInterval>>();
 
   const { user } = useAuth();
   const { createAnalysis, updateAnalysisStatus, saveNote } = useAnalysis(user?.id);
   const navigate = useNavigate();
 
   useEffect(() => {
-    return () => { if (stepIntervalRef.current) clearInterval(stepIntervalRef.current); };
+    return () => {
+      if (stepIntervalRef.current) clearInterval(stepIntervalRef.current);
+      if (elapsedIntervalRef.current) clearInterval(elapsedIntervalRef.current);
+    };
   }, []);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -130,23 +143,29 @@ export default function Analyze() {
     if (!isReady() || !user) return;
     setLoading(true);
     setStepIndex(0);
+    setElapsed(0);
 
-    // Cycle through analysis steps
+    // Elapsed timer
+    elapsedIntervalRef.current = setInterval(() => {
+      setElapsed(s => s + 1);
+    }, 1000);
+
+    // Advance through steps but stop before the last one
     stepIntervalRef.current = setInterval(() => {
-      setStepIndex(prev => (prev + 1) % analysisSteps.length);
-    }, 2000);
+      setStepIndex(prev => {
+        if (prev >= analysisSteps.length - 2) return prev;
+        return prev + 1;
+      });
+    }, 2200);
 
     try {
       const submitContent = getSubmitContent();
       const sourceUrl = activeTab === 'url' ? content : undefined;
 
-      // Create analysis record
       const analysis = await createAnalysis(activeTab, submitContent, sourceUrl);
       if (!analysis) throw new Error('创建分析记录失败');
-
       await updateAnalysisStatus(analysis.id, 'analyzing');
 
-      // Call edge function
       const { data: fnData, error: fnError } = await supabase.functions.invoke('analyze-content', {
         body: { sourceType: activeTab, content: submitContent, sourceUrl },
       });
@@ -156,7 +175,12 @@ export default function Analyze() {
 
       const analysisData = fnData.data;
 
-      // Save note
+      // Complete last step
+      if (stepIntervalRef.current) clearInterval(stepIntervalRef.current);
+      if (elapsedIntervalRef.current) clearInterval(elapsedIntervalRef.current);
+      setStepIndex(analysisSteps.length - 1);
+      await new Promise(resolve => setTimeout(resolve, 500));
+
       const note = await saveNote(analysis.id, {
         title: analysisData.title,
         summary: analysisData.summary,
@@ -168,17 +192,109 @@ export default function Analyze() {
       });
 
       await updateAnalysisStatus(analysis.id, 'done');
-
-      if (stepIntervalRef.current) clearInterval(stepIntervalRef.current);
       toast.success('分析完成！');
       navigate(`/note/${note?.id}`);
     } catch (error: unknown) {
       if (stepIntervalRef.current) clearInterval(stepIntervalRef.current);
+      if (elapsedIntervalRef.current) clearInterval(elapsedIntervalRef.current);
       const message = error instanceof Error ? error.message : '分析失败，请重试';
       toast.error(message);
       setLoading(false);
     }
   };
+
+  const progress = Math.round(((stepIndex + 1) / analysisSteps.length) * 100);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col h-full overflow-auto">
+        <div className="max-w-2xl mx-auto w-full p-8 flex flex-col gap-6 animate-fade-up">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-primary flex items-center justify-center">
+                <Sparkles className="w-5 h-5 text-white animate-pulse" />
+              </div>
+              <div>
+                <h2 className="font-bold text-foreground text-lg">AI 深度分析中</h2>
+                <p className="text-xs text-muted-foreground">Claude Sonnet 4.5 · 正在处理</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 text-muted-foreground text-sm bg-muted px-3 py-1.5 rounded-full">
+              <Clock className="w-3.5 h-3.5" />
+              <span className="tabular-nums">{formatElapsed(elapsed)}</span>
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-foreground">
+                {stepIndex < analysisSteps.length ? analysisSteps[stepIndex].label : '分析完成'}
+              </span>
+              <span className="text-sm font-semibold text-primary tabular-nums">{progress}%</span>
+            </div>
+            <div className="h-2.5 bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-primary rounded-full transition-all duration-700 ease-out"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-1.5 text-right">
+              {Math.min(stepIndex + 1, analysisSteps.length)} / {analysisSteps.length} 步骤完成
+            </p>
+          </div>
+
+          {/* Task grid */}
+          <div className="grid grid-cols-2 gap-3">
+            {analysisSteps.map((step, i) => {
+              const Icon = step.icon;
+              const isDone = i < stepIndex;
+              const isActive = i === stepIndex;
+              const isPending = i > stepIndex;
+              return (
+                <div
+                  key={i}
+                  className={cn(
+                    'p-4 rounded-xl border transition-all duration-500',
+                    isDone  && 'border-primary/30 bg-primary/5',
+                    isActive && 'border-primary/60 bg-primary/10 shadow-sm shadow-primary/10',
+                    isPending && 'border-border bg-card opacity-40'
+                  )}
+                >
+                  <div className="flex items-start justify-between mb-2.5">
+                    <div className={cn(
+                      'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0',
+                      isDone   && 'bg-primary/15',
+                      isActive && 'bg-primary/20',
+                      isPending && 'bg-muted'
+                    )}>
+                      <Icon className={cn(
+                        'w-4 h-4',
+                        (isDone || isActive) ? 'text-primary' : 'text-muted-foreground'
+                      )} />
+                    </div>
+                    {isDone   && <CheckCircle2 className="w-4 h-4 text-primary flex-shrink-0" />}
+                    {isActive && <Loader2 className="w-4 h-4 text-primary animate-spin flex-shrink-0" />}
+                    {isPending && <Circle className="w-4 h-4 text-muted-foreground/30 flex-shrink-0" />}
+                  </div>
+                  <p className={cn(
+                    'text-sm font-medium leading-tight',
+                    (isDone || isActive) ? 'text-foreground' : 'text-muted-foreground'
+                  )}>{step.label}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{step.desc}</p>
+                </div>
+              );
+            })}
+          </div>
+
+          <p className="text-center text-xs text-muted-foreground">
+            分析通常需要 20–60 秒，请耐心等待
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full overflow-auto">
@@ -341,51 +457,16 @@ export default function Analyze() {
             </div>
           )}
 
-          {/* Analysis progress */}
-          {loading && (
-            <div className="mt-4 p-6 rounded-xl border border-primary/20 bg-primary/5 animate-fade-in">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-8 h-8 rounded-full bg-gradient-primary flex items-center justify-center animate-spin" style={{ animationDuration: '3s' }}>
-                  <Sparkles className="w-4 h-4 text-white" />
-                </div>
-                <div>
-                  <p className="font-medium text-foreground text-sm">AI 深度分析中</p>
-                  <p className="text-xs text-muted-foreground">使用 Claude Sonnet 4.5</p>
-                </div>
-              </div>
-              <div className="space-y-2">
-                {analysisSteps.map((step, i) => (
-                  <div
-                    key={i}
-                    className={cn(
-                      'flex items-center gap-2 text-sm transition-all duration-300',
-                      i < stepIndex ? 'text-primary' : i === stepIndex ? 'text-foreground' : 'text-muted-foreground/40'
-                    )}
-                  >
-                    <div className={cn(
-                      'w-1.5 h-1.5 rounded-full flex-shrink-0',
-                      i < stepIndex ? 'bg-primary' : i === stepIndex ? 'bg-foreground animate-pulse' : 'bg-muted'
-                    )} />
-                    {step}
-                    {i === stepIndex && <Loader2 className="w-3 h-3 animate-spin ml-auto" />}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* Submit button */}
-          {!loading && (
-            <Button
-              onClick={handleSubmit}
-              disabled={!isReady()}
-              className="mt-2 h-12 bg-gradient-primary hover:opacity-90 transition-opacity text-base"
-            >
-              <Sparkles className="w-5 h-5 mr-2" />
-              开始 AI 深度分析
-              <ArrowRight className="w-5 h-5 ml-2" />
-            </Button>
-          )}
+          <Button
+            onClick={handleSubmit}
+            disabled={!isReady()}
+            className="mt-2 h-12 bg-gradient-primary hover:opacity-90 transition-opacity text-base"
+          >
+            <Sparkles className="w-5 h-5 mr-2" />
+            开始 AI 深度分析
+            <ArrowRight className="w-5 h-5 ml-2" />
+          </Button>
         </div>
       </div>
     </div>
