@@ -2,25 +2,17 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useNotes } from '@/hooks/useNotes';
 import { Button } from '@/components/ui/button';
-import { Brain, BookOpen, FileText, Plus, ArrowRight, Globe, Image, Video, Type, FileIcon } from 'lucide-react';
+import { Brain, BookOpen, FileText, Plus, Globe, Image, Video, Type, FileIcon, Tag } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { SourceType } from '@/types';
+import KnowledgeConstellation from '@/components/dashboard/KnowledgeConstellation';
 
 const sourceIcons: Record<SourceType, typeof Globe> = {
-  url: Globe,
-  text: Type,
-  file: FileIcon,
-  image: Image,
-  video: Video,
+  url: Globe, text: Type, file: FileIcon, image: Image, video: Video,
 };
-
 const sourceLabels: Record<SourceType, string> = {
-  url: '网站',
-  text: '文字',
-  file: '文件',
-  image: '图片',
-  video: '视频',
+  url: '网站', text: '文字', file: '文件', image: '图片', video: '视频',
 };
 
 export default function Dashboard() {
@@ -29,147 +21,163 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   const username = user?.email?.split('@')[0] || '用户';
-  const recentNotes = notes.slice(0, 6);
 
-  const stats = [
-    { label: '知识笔记', value: notes.length, icon: FileText, color: 'text-primary' },
-    { label: '本周新增', value: notes.filter(n => {
-      const d = new Date(n.created_at);
-      const now = new Date();
-      return now.getTime() - d.getTime() < 7 * 24 * 60 * 60 * 1000;
-    }).length, icon: Brain, color: 'text-accent' },
-    { label: '已分析', value: notes.length, icon: BookOpen, color: 'text-green-500' },
-  ];
+  const thisWeek = notes.filter(n => {
+    const d = new Date(n.created_at);
+    return Date.now() - d.getTime() < 7 * 24 * 60 * 60 * 1000;
+  }).length;
+
+  // All unique tags across notes
+  const allTags = Array.from(new Set(notes.flatMap(n => n.tags || []))).slice(0, 8);
+
+  // Most connected notes (by shared tags)
+  const recentNotes = notes.slice(0, 4);
 
   return (
-    <div className="flex flex-col h-full overflow-auto p-8 max-w-6xl mx-auto w-full">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-8 animate-fade-up">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">
-            你好，{username} 👋
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            {format(new Date(), 'yyyy年M月d日', { locale: zhCN })} · 今天也在积累智识
-          </p>
-        </div>
-        <Button
-          className="bg-gradient-primary hover:opacity-90 transition-opacity"
-          onClick={() => navigate('/analyze')}
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          新建分析
-        </Button>
-      </div>
+    <div className="flex flex-col h-full overflow-auto">
+      <div className="max-w-5xl mx-auto w-full px-6 py-6 space-y-6">
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
-        {stats.map((s, i) => (
-          <div
-            key={i}
-            className="p-5 rounded-xl bg-card border border-border shadow-card"
-            style={{ animation: `fade-up 0.4s ease-out ${i * 0.1}s forwards`, opacity: 0 }}
+        {/* ── Header ─────────────────────────────────────────────── */}
+        <div className="flex items-center justify-between animate-fade-up">
+          <div>
+            <h1 className="text-xl font-bold text-foreground">
+              你好，{username}
+            </h1>
+            <p className="text-muted-foreground text-sm mt-0.5">
+              {format(new Date(), 'yyyy年M月d日 EEEE', { locale: zhCN })}
+            </p>
+          </div>
+          <Button
+            className="bg-gradient-primary hover:opacity-90 transition-opacity"
+            onClick={() => navigate('/analyze')}
           >
-            <div className="flex items-center gap-3 mb-1">
-              <s.icon className={`w-5 h-5 ${s.color}`} />
-              <span className="text-muted-foreground text-sm">{s.label}</span>
+            <Plus className="w-4 h-4 mr-1.5" />新建分析
+          </Button>
+        </div>
+
+        {/* ── Stats row ───────────────────────────────────────────── */}
+        <div className="grid grid-cols-3 gap-3 animate-fade-up" style={{ animationDelay: '0.05s' }}>
+          {[
+            { label: '知识笔记', value: notes.length, icon: FileText, color: 'text-primary' },
+            { label: '本周新增', value: thisWeek, icon: Brain, color: 'text-violet-400' },
+            { label: '标签数量', value: allTags.length, icon: BookOpen, color: 'text-emerald-400' },
+          ].map((s, i) => (
+            <div key={i} className="p-4 rounded-xl bg-card border border-border shadow-card flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                <s.icon className={`w-4 h-4 ${s.color}`} />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-foreground tabular-nums">{loading ? '—' : s.value}</p>
+                <p className="text-xs text-muted-foreground">{s.label}</p>
+              </div>
             </div>
-            <p className="text-3xl font-bold text-foreground">{loading ? '—' : s.value}</p>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
 
-      {/* Quick actions */}
-      <div className="mb-8">
-        <h2 className="text-sm font-medium text-muted-foreground mb-3 uppercase tracking-wide">快速分析</h2>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          {Object.entries(sourceLabels).map(([type, label]) => {
-            const Icon = sourceIcons[type as SourceType];
-            return (
+        {/* ── Knowledge Constellation ─────────────────────────────── */}
+        <div className="animate-fade-up" style={{ animationDelay: '0.1s' }}>
+          <div className="flex items-center justify-between mb-2.5">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">知识星图</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                按标签关联自动连线 · 悬停预览 · 点击查看分析
+              </p>
+            </div>
+            {notes.length > 0 && (
               <button
-                key={type}
-                onClick={() => navigate(`/analyze?type=${type}`)}
-                className="flex flex-col items-center gap-2 p-4 rounded-xl border border-border bg-card hover:bg-accent/5 hover:border-primary/30 hover:shadow-glow transition-all duration-200 group"
+                onClick={() => navigate('/library')}
+                className="text-xs text-primary hover:underline"
               >
-                <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                  <Icon className="w-4 h-4 text-primary" />
-                </div>
-                <span className="text-sm text-foreground font-medium">{label}</span>
+                知识库 →
               </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Recent notes */}
-      <div className="flex-1">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">最近笔记</h2>
-          <button
-            onClick={() => navigate('/library')}
-            className="text-sm text-primary hover:underline flex items-center gap-1"
-          >
-            查看全部 <ArrowRight className="w-3 h-3" />
-          </button>
+            )}
+          </div>
+          <KnowledgeConstellation notes={notes} loading={loading} />
         </div>
 
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Array(3).fill(0).map((_, i) => (
-              <div key={i} className="h-32 rounded-xl animate-shimmer" />
-            ))}
+        {/* ── Tag cloud ───────────────────────────────────────────── */}
+        {allTags.length > 0 && (
+          <div className="animate-fade-up" style={{ animationDelay: '0.15s' }}>
+            <div className="flex items-center gap-2 mb-2.5">
+              <Tag className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">热门标签</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {allTags.map(tag => (
+                <button
+                  key={tag}
+                  onClick={() => navigate('/library')}
+                  className="px-3 py-1 bg-primary/8 hover:bg-primary/15 text-primary text-xs rounded-full border border-primary/15 transition-colors"
+                >
+                  #{tag}
+                </button>
+              ))}
+            </div>
           </div>
-        ) : recentNotes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center border border-dashed border-border rounded-xl">
-            <Brain className="w-12 h-12 text-muted-foreground/50 mb-4" />
-            <p className="text-muted-foreground font-medium">还没有笔记</p>
-            <p className="text-muted-foreground text-sm mt-1">开始你的第一次 AI 分析吧</p>
-            <Button
-              className="mt-4 bg-gradient-primary hover:opacity-90 transition-opacity"
-              onClick={() => navigate('/analyze')}
-            >
-              <Plus className="w-4 h-4 mr-2" /> 新建分析
-            </Button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {recentNotes.map((note, i) => {
-              const Icon = sourceIcons['text'];
+        )}
+
+        {/* ── Quick input types ───────────────────────────────────── */}
+        <div className="animate-fade-up" style={{ animationDelay: '0.2s' }}>
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2.5">快速输入</p>
+          <div className="grid grid-cols-5 gap-2">
+            {Object.entries(sourceLabels).map(([type, label]) => {
+              const Icon = sourceIcons[type as SourceType];
               return (
                 <button
-                  key={note.id}
-                  onClick={() => navigate(`/note/${note.id}`)}
-                  className="text-left p-5 rounded-xl border border-border bg-card shadow-card hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group"
-                  style={{ animation: `fade-up 0.4s ease-out ${i * 0.05}s forwards`, opacity: 0 }}
+                  key={type}
+                  onClick={() => navigate(`/analyze?type=${type}`)}
+                  className="flex flex-col items-center gap-1.5 py-3 rounded-xl border border-border bg-card hover:bg-primary/5 hover:border-primary/30 transition-all duration-150 group"
                 >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                      <Icon className="w-4 h-4 text-primary" />
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      {formatDistanceToNow(new Date(note.created_at), { locale: zhCN, addSuffix: true })}
-                    </span>
+                  <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center group-hover:bg-primary/15 transition-colors">
+                    <Icon className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
                   </div>
-                  <h3 className="font-medium text-foreground text-sm mb-1 line-clamp-1">
-                    {note.title || '未命名笔记'}
-                  </h3>
-                  <p className="text-muted-foreground text-xs line-clamp-2">
-                    {note.summary || '暂无摘要'}
-                  </p>
-                  {note.tags?.length > 0 && (
-                    <div className="flex gap-1 mt-3 flex-wrap">
-                      {note.tags.slice(0, 3).map(tag => (
-                        <span key={tag} className="px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full">
-                          #{tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">{label}</span>
                 </button>
               );
             })}
           </div>
+        </div>
+
+        {/* ── Recent analyses ─────────────────────────────────────── */}
+        {recentNotes.length > 0 && (
+          <div className="animate-fade-up" style={{ animationDelay: '0.25s' }}>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2.5">最近分析</p>
+            <div className="space-y-2">
+              {recentNotes.map((note, i) => (
+                <button
+                  key={note.id}
+                  onClick={() => navigate(`/note/${note.id}`)}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-border bg-card hover:bg-muted/30 hover:border-primary/20 transition-all text-left group"
+                  style={{ animationDelay: `${i * 0.05}s` }}
+                >
+                  <div
+                    className="w-2 h-2 rounded-full flex-shrink-0"
+                    style={{ background: `hsl(${(i * 47 + 220) % 360}, 70%, 60%)` }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
+                      {note.title || '未命名笔记'}
+                    </p>
+                    {note.summary && (
+                      <p className="text-xs text-muted-foreground truncate mt-0.5">{note.summary}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {(note.tags || []).slice(0, 2).map(tag => (
+                      <span key={tag} className="hidden sm:inline-block px-2 py-0.5 bg-primary/8 text-primary text-xs rounded-full">
+                        #{tag}
+                      </span>
+                    ))}
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {formatDistanceToNow(new Date(note.created_at), { locale: zhCN, addSuffix: true })}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
         )}
+
       </div>
     </div>
   );
