@@ -41,9 +41,9 @@ export default function Index() {
       <nav className="flex items-center justify-between px-8 py-5 border-b border-border">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center animate-flow-light">
-            <span className="text-white font-bold">平</span>
+            <span className="text-white font-bold text-xs">Pe</span>
           </div>
-          <span className="font-bold text-foreground text-lg">平</span>
+          <span className="font-bold text-foreground text-lg">Pesan</span>
         </div>
         <div className="flex items-center gap-3">
           <Button variant="ghost" onClick={() => navigate('/auth')}>登录</Button>
@@ -129,7 +129,7 @@ export default function Index() {
 
       {/* Footer */}
       <footer className="px-8 py-6 border-t border-border text-center text-sm text-muted-foreground">
-        <span>© 2026 平 · 个人知识管理平台</span>
+        <span>© 2026 Pesan · 个人知识管理平台</span>
       </footer>
     </div>
   );

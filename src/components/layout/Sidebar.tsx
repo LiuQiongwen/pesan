@@ -28,7 +28,7 @@ export function Sidebar() {
     <aside className="flex flex-col w-16 h-full bg-sidebar border-r border-sidebar-border py-4 items-center gap-2">
       {/* Logo */}
       <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-primary mb-2 animate-flow-light">
-        <span className="text-white font-bold text-lg">平</span>
+        <span className="text-white font-bold text-sm">Pe</span>
       </div>
 
       {/* New Analysis shortcut */}

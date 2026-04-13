@@ -58,9 +58,9 @@ export default function Auth() {
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-12">
             <div className="w-10 h-10 rounded-xl bg-gradient-primary flex items-center justify-center animate-flow-light">
-              <span className="text-white font-bold text-lg">平</span>
+              <span className="text-white font-bold text-sm">Pe</span>
             </div>
-            <span className="text-white font-semibold text-xl">平 · 知识管理</span>
+            <span className="text-white font-semibold text-xl">Pesan · 知识管理</span>
           </div>
           <h1 className="text-4xl font-bold text-white leading-tight mb-6">
             让信息<br />
@@ -93,9 +93,9 @@ export default function Auth() {
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center gap-2 mb-8">
             <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center">
-              <span className="text-white font-bold">平</span>
+              <span className="text-white font-bold text-xs">Pe</span>
             </div>
-            <span className="font-semibold text-foreground">平 · 知识管理</span>
+            <span className="font-semibold text-foreground">Pesan · 知识管理</span>
           </div>
 
           <div className="mb-8">

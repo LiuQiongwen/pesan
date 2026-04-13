@@ -18,7 +18,7 @@ export function AppLayout() {
       <div className="flex items-center justify-center w-full h-full bg-background">
         <div className="flex flex-col items-center gap-3">
           <div className="w-12 h-12 rounded-xl bg-gradient-primary animate-pulse-glow flex items-center justify-center">
-            <span className="text-white font-bold text-xl">平</span>
+            <span className="text-white font-bold text-sm">Pe</span>
           </div>
           <p className="text-muted-foreground text-sm animate-fade-in">加载中...</p>
         </div>
