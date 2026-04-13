@@ -747,13 +747,13 @@ function FooterSection({ onCTA }: { onCTA: () => void }) {
 }
 
 // ── Root ──────────────────────────────────────────────────────────────────
-export default function Index() {
+export default function Index({ preview = false }: { preview?: boolean }) {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!loading && user) navigate('/dashboard');
-  }, [user, loading, navigate]);
+    if (!preview && !loading && user) navigate('/dashboard');
+  }, [preview, user, loading, navigate]);
 
   const gotoAuth = () => navigate('/auth');
 

@@ -16,6 +16,11 @@ export const routers = [
     element: <Index />,
   },
   {
+    path: "/landing",
+    name: "landing",
+    element: <Index preview />,
+  },
+  {
     path: "/auth",
     name: "auth",
     element: <Auth />,
