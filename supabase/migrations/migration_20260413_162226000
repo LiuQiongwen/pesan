@@ -1,0 +1,103 @@
+
+-- Create analyses table
+create table if not exists analyses (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users not null,
+  title text,
+  source_type text not null check (source_type in ('url','text','file','image','video')),
+  source_content text,
+  source_url text,
+  status text default 'pending' check (status in ('pending','analyzing','done','error')),
+  error_message text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- Create notes table
+create table if not exists notes (
+  id uuid primary key default gen_random_uuid(),
+  analysis_id uuid references analyses(id) on delete cascade,
+  user_id uuid references auth.users not null,
+  title text,
+  summary text,
+  key_points jsonb default '[]'::jsonb,
+  analysis_content jsonb default '{}'::jsonb,
+  tags text[] default '{}'::text[],
+  mindmap_data jsonb default '{}'::jsonb,
+  content_markdown text,
+  is_edited boolean default false,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- Create profiles table
+create table if not exists profiles (
+  id uuid primary key references auth.users on delete cascade,
+  username text,
+  avatar_url text,
+  theme text default 'system',
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- Enable RLS
+alter table analyses enable row level security;
+alter table notes enable row level security;
+alter table profiles enable row level security;
+
+-- Analyses policies
+create policy "Users can view own analyses" on analyses
+  for select using (auth.uid() = user_id);
+
+create policy "Users can insert own analyses" on analyses
+  for insert with check (auth.uid() = user_id);
+
+create policy "Users can update own analyses" on analyses
+  for update using (auth.uid() = user_id);
+
+create policy "Users can delete own analyses" on analyses
+  for delete using (auth.uid() = user_id);
+
+-- Notes policies
+create policy "Users can view own notes" on notes
+  for select using (auth.uid() = user_id);
+
+create policy "Users can insert own notes" on notes
+  for insert with check (auth.uid() = user_id);
+
+create policy "Users can update own notes" on notes
+  for update using (auth.uid() = user_id);
+
+create policy "Users can delete own notes" on notes
+  for delete using (auth.uid() = user_id);
+
+-- Profiles policies
+create policy "Users can view own profile" on profiles
+  for select using (auth.uid() = id);
+
+create policy "Users can insert own profile" on profiles
+  for insert with check (auth.uid() = id);
+
+create policy "Users can update own profile" on profiles
+  for update using (auth.uid() = id);
+
+-- Auto-create profile on user signup
+create or replace function handle_new_user()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  insert into public.profiles (id, username)
+  values (new.id, split_part(new.email, '@', 1));
+  return new;
+end;
+$$;
+
+create or replace trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure handle_new_user();
+
+-- Enable realtime
+alter publication supabase_realtime add table analyses;
+alter publication supabase_realtime add table notes;

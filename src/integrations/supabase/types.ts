@@ -3109,7 +3109,127 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      analyses: {
+        Row: {
+          created_at: string | null
+          error_message: string | null
+          id: string
+          source_content: string | null
+          source_type: string
+          source_url: string | null
+          status: string | null
+          title: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          source_content?: string | null
+          source_type: string
+          source_url?: string | null
+          status?: string | null
+          title?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          source_content?: string | null
+          source_type?: string
+          source_url?: string | null
+          status?: string | null
+          title?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      notes: {
+        Row: {
+          analysis_content: Json | null
+          analysis_id: string | null
+          content_markdown: string | null
+          created_at: string | null
+          id: string
+          is_edited: boolean | null
+          key_points: Json | null
+          mindmap_data: Json | null
+          summary: string | null
+          tags: string[] | null
+          title: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          analysis_content?: Json | null
+          analysis_id?: string | null
+          content_markdown?: string | null
+          created_at?: string | null
+          id?: string
+          is_edited?: boolean | null
+          key_points?: Json | null
+          mindmap_data?: Json | null
+          summary?: string | null
+          tags?: string[] | null
+          title?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          analysis_content?: Json | null
+          analysis_id?: string | null
+          content_markdown?: string | null
+          created_at?: string | null
+          id?: string
+          is_edited?: boolean | null
+          key_points?: Json | null
+          mindmap_data?: Json | null
+          summary?: string | null
+          tags?: string[] | null
+          title?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notes_analysis_id_fkey"
+            columns: ["analysis_id"]
+            referencedRelation: "analyses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          id: string
+          theme: string | null
+          updated_at: string | null
+          username: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          id: string
+          theme?: string | null
+          updated_at?: string | null
+          username?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          id?: string
+          theme?: string | null
+          updated_at?: string | null
+          username?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
