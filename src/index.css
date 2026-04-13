@@ -218,7 +218,7 @@ body,
   animation: fade-in 0.3s ease-out forwards;
 }
 
-/* Prose styles for markdown */
+/* Prose styles for markdown report */
 .prose-ping {
   @apply prose prose-slate max-w-none;
   --tw-prose-body: hsl(var(--foreground));
@@ -226,7 +226,7 @@ body,
   --tw-prose-lead: hsl(var(--muted-foreground));
   --tw-prose-links: hsl(var(--primary));
   --tw-prose-bold: hsl(var(--foreground));
-  --tw-prose-counters: hsl(var(--muted-foreground));
+  --tw-prose-counters: hsl(var(--primary));
   --tw-prose-bullets: hsl(var(--muted-foreground));
   --tw-prose-hr: hsl(var(--border));
   --tw-prose-quotes: hsl(var(--foreground));
@@ -237,6 +237,119 @@ body,
   --tw-prose-pre-bg: hsl(var(--muted));
   --tw-prose-th-borders: hsl(var(--border));
   --tw-prose-td-borders: hsl(var(--border));
+
+  /* Better reading typography */
+  font-size: 0.9375rem;
+  line-height: 1.85;
+}
+
+.prose-ping p {
+  margin-top: 0.75em;
+  margin-bottom: 0.75em;
+  color: hsl(var(--foreground));
+}
+
+.prose-ping h1,
+.prose-ping h2,
+.prose-ping h3 {
+  font-weight: 700;
+  color: hsl(var(--foreground));
+  margin-top: 1.75em;
+  margin-bottom: 0.6em;
+  line-height: 1.35;
+}
+
+.prose-ping h2 {
+  font-size: 1.15rem;
+  border-bottom: 1px solid hsl(var(--border));
+  padding-bottom: 0.4em;
+}
+
+.prose-ping h3 {
+  font-size: 1rem;
+  color: hsl(var(--foreground));
+}
+
+/* Callout blockquote */
+.prose-ping blockquote {
+  background: hsl(var(--primary) / 0.05);
+  border-left: 4px solid hsl(var(--primary));
+  border-radius: 0 0.5rem 0.5rem 0;
+  padding: 0.85em 1.1em;
+  color: hsl(var(--foreground));
+  font-style: normal;
+  margin: 1.25em 0;
+}
+
+.prose-ping blockquote p {
+  margin: 0;
+  font-style: italic;
+  color: hsl(var(--foreground));
+}
+
+/* List spacing */
+.prose-ping ul,
+.prose-ping ol {
+  padding-left: 1.4em;
+  margin: 0.75em 0;
+}
+
+.prose-ping li {
+  margin: 0.35em 0;
+  line-height: 1.75;
+  color: hsl(var(--foreground));
+}
+
+.prose-ping li::marker {
+  color: hsl(var(--primary));
+}
+
+/* Inline code */
+.prose-ping code:not(pre code) {
+  background: hsl(var(--primary) / 0.08);
+  color: hsl(var(--primary));
+  padding: 0.15em 0.4em;
+  border-radius: 0.3em;
+  font-size: 0.87em;
+  font-weight: 500;
+}
+
+/* Code block */
+.prose-ping pre {
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.65rem;
+  padding: 1em 1.25em;
+}
+
+/* Bold emphasis */
+.prose-ping strong {
+  font-weight: 650;
+  color: hsl(var(--foreground));
+}
+
+/* HR */
+.prose-ping hr {
+  border-color: hsl(var(--border));
+  margin: 2em 0;
+}
+
+/* Table */
+.prose-ping table {
+  width: 100%;
+  font-size: 0.875rem;
+}
+
+.prose-ping th {
+  background: hsl(var(--muted));
+  font-weight: 600;
+  text-align: left;
+  padding: 0.6em 0.85em;
+}
+
+.prose-ping td {
+  padding: 0.55em 0.85em;
+  border-bottom: 1px solid hsl(var(--border));
 }
 
 /* Glass card effect */
