@@ -3152,13 +3152,16 @@ export type Database = {
         Row: {
           analysis_content: Json | null
           analysis_id: string | null
+          analysis_markdown: string | null
           content_markdown: string | null
           created_at: string | null
           id: string
           is_edited: boolean | null
           key_points: Json | null
           mindmap_data: Json | null
+          mindmap_markdown: string | null
           summary: string | null
+          summary_markdown: string | null
           tags: string[] | null
           title: string | null
           updated_at: string | null
@@ -3167,13 +3170,16 @@ export type Database = {
         Insert: {
           analysis_content?: Json | null
           analysis_id?: string | null
+          analysis_markdown?: string | null
           content_markdown?: string | null
           created_at?: string | null
           id?: string
           is_edited?: boolean | null
           key_points?: Json | null
           mindmap_data?: Json | null
+          mindmap_markdown?: string | null
           summary?: string | null
+          summary_markdown?: string | null
           tags?: string[] | null
           title?: string | null
           updated_at?: string | null
@@ -3182,13 +3188,16 @@ export type Database = {
         Update: {
           analysis_content?: Json | null
           analysis_id?: string | null
+          analysis_markdown?: string | null
           content_markdown?: string | null
           created_at?: string | null
           id?: string
           is_edited?: boolean | null
           key_points?: Json | null
           mindmap_data?: Json | null
+          mindmap_markdown?: string | null
           summary?: string | null
+          summary_markdown?: string | null
           tags?: string[] | null
           title?: string | null
           updated_at?: string | null

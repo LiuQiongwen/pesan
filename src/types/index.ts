@@ -43,6 +43,9 @@ export interface Note {
   tags: string[];
   mindmap_data: MindMapData;
   content_markdown: string | null;
+  summary_markdown: string | null;
+  analysis_markdown: string | null;
+  mindmap_markdown: string | null;
   is_edited: boolean;
   created_at: string;
   updated_at: string;

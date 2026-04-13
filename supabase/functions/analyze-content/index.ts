@@ -3,6 +3,99 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// ── Specialized prompts ({{content}} will be replaced) ────────────────────
+const SUMMARY_PROMPT = `你现在是一个高效摘要助手。请对以下内容生成一份高质量摘要，要求：
+1. 用 3-5 句话概括整体内容
+2. 提炼最重要的核心观点
+3. 提取关键事实、结论或论据
+4. 忽略细枝末节和重复信息
+5. 不要大段复述原文，要用自己的话压缩表达
+
+输出格式（严格按照此格式输出，用 Markdown）：
+## 内容概览
+## 核心观点
+## 关键事实/结论
+## 一句话总结
+
+以下是内容：
+{{content}}`;
+
+const ANALYSIS_PROMPT = `你现在是一个深度分析师，而不是摘要工具。请对以下内容进行深入分析，不要只复述表面信息，而要识别其背后的逻辑结构、关键矛盾、隐含假设、潜在问题和可迁移规律。请从以下角度展开：
+1. 主题与核心问题
+   - 这份内容真正要解决什么问题？
+   - 核心矛盾是什么？
+2. 逻辑结构分析
+   - 作者/材料的主要论证链条是什么？
+   - 关键前提是什么？
+   - 哪些结论是如何被推导出来的？
+3. 深层洞见
+   - 这份内容背后反映了什么规律？
+   - 哪些部分最有启发价值？
+   - 哪些内容容易被忽略但很关键？
+4. 局限与问题
+   - 内容中有哪些薄弱点、漏洞或未被证明的部分？
+   - 有哪些值得质疑或继续验证的地方？
+5. 可迁移价值
+   - 这些结论能迁移到哪些其他场景？
+   - 对实践、研究或决策有什么启发？
+
+输出格式（严格按照此格式输出，用 Markdown）：
+## 核心问题
+## 逻辑结构
+## 深层洞见
+## 局限与质疑
+## 可迁移方法论
+## 行动启发
+
+以下是内容：
+{{content}}`;
+
+const REPORT_PROMPT = `你现在是一个专业报告撰写助手。请基于以下内容，输出一份结构完整、表达正式、逻辑清晰的分析报告。报告应适合用于汇报、存档或正式阅读。要求：
+1. 内容完整，有明确结构
+2. 风格正式、客观、清晰
+3. 不要写成聊天总结，要写成报告
+4. 既要概括内容，也要提炼关键结论与建议
+
+输出结构如下（严格按照此格式，用 Markdown）：
+# 标题
+## 一、背景与主题
+说明这份内容讨论的背景、范围和核心主题
+## 二、主要内容概述
+概括主要信息与核心内容
+## 三、关键问题与重点发现
+提炼重要问题、主要发现和关键信息
+## 四、分析与解读
+对内容进行进一步分析，包括逻辑、原因、意义、影响等
+## 五、结论
+给出整体结论
+## 六、建议或后续方向
+提出下一步建议、可执行方向或待研究问题
+
+以下是材料：
+{{content}}`;
+
+const MINDMAP_PROMPT = `你现在是一个信息结构化助手。请将以下内容整理成"思维导图式"的层级结构，而不是写成长段文字。要求：
+1. 按主题 -> 子主题 -> 关键点 的层级展开
+2. 层级清晰，避免冗长解释
+3. 每个节点尽量简洁
+4. 保留核心逻辑关系
+5. 如果合适，可加入"问题/方法/结论/行动"分支
+
+输出格式示例（严格按照此 Markdown 格式）：
+# 主题
+- 一级主题A
+  - 二级主题A1
+    - 关键点1
+    - 关键点2
+  - 二级主题A2
+- 一级主题B
+  - 二级主题B1
+- 一级主题C
+
+请基于以下内容输出：
+{{content}}`;
+
+// ── Main handler ──────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -14,7 +107,8 @@ Deno.serve(async (req) => {
 
     const { sourceType, content, sourceUrl } = await req.json();
 
-    let inputContext = "";
+    // ── Extract raw text from source ──────────────────────────────────────
+    let rawContent = "";
     if (sourceType === "url") {
       try {
         const urlResponse = await fetch(sourceUrl || content, {
@@ -22,95 +116,66 @@ Deno.serve(async (req) => {
           signal: AbortSignal.timeout(15000),
         });
         const html = await urlResponse.text();
-        const text = html
+        rawContent = html
           .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
           .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
           .replace(/<[^>]+>/g, " ")
           .replace(/\s+/g, " ")
           .trim()
           .slice(0, 8000);
-        inputContext = `来源网址: ${sourceUrl || content}\n\n网页内容:\n${text}`;
+        rawContent = `来源网址: ${sourceUrl || content}\n\n${rawContent}`;
       } catch (_e) {
-        inputContext = `来源网址: ${sourceUrl || content}\n\n注意：无法直接抓取网页内容，请基于URL本身进行分析。`;
+        rawContent = `来源网址: ${sourceUrl || content}\n\n注意：无法直接抓取网页内容。`;
       }
-    } else if (sourceType === "image") {
-      inputContext = `图片内容分析请求。\n\n${content?.slice(0, 100)}...`;
     } else {
-      inputContext = content;
+      rawContent = content || "";
     }
 
-    const systemPrompt = `你是一位资深知识策展人与深度思考者，擅长将复杂信息提炼为逻辑清晰、观点深刻、可读性强的知识文档。
+    // ── Build the combined system prompt ─────────────────────────────────
+    const systemPrompt = `你是一个专业知识分析平台的 AI 引擎。你会收到一段内容，需要同时以四种专业角色对其进行分析，并将结果打包为一个 JSON 对象输出。
 
-你的输出是一个 JSON 对象，其中 content_markdown 字段包含完整的 Markdown 格式知识报告。报告必须覆盖以下 7 个章节，每个章节有清晰的 H2 标题：
+四种分析任务的具体要求如下：
 
-【content_markdown 文档结构要求】
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【任务1：高效摘要助手】
+${SUMMARY_PROMPT.replace("以下是内容：\n{{content}}", "（使用用户输入的内容）")}
 
-## 核心摘要
-2-3 句流畅叙述，交代"这是什么 + 为什么值得读 + 核心价值所在"。语言要有温度，不是干燥的定义。
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【任务2：深度分析师】
+${ANALYSIS_PROMPT.replace("以下是内容：\n{{content}}", "（使用用户输入的内容）")}
 
-## 关键要点
-5-8 条，每条格式：
-**要点标题（5-10字）**：1-2 句说明这条要点的含义与重要性，用读者视角解释"所以呢？这意味着什么？"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【任务3：专业报告撰写助手】
+${REPORT_PROMPT.replace("以下是材料：\n{{content}}", "（使用用户输入的内容）")}
 
-## 深度分析
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+【任务4：信息结构化助手（思维导图）】
+${MINDMAP_PROMPT.replace("请基于以下内容输出：\n{{content}}", "（使用用户输入的内容）")}
 
-### 主要观点
-每条格式：
-> **核心论断**
-> 支撑理由：为什么这个观点成立，有哪些逻辑依据或实证支持。
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-### 批判性审视
-**✦ 真正有价值的地方**
-- 列出 2-3 条内容的核心亮点与贡献
-
-**⚠ 需要注意的局限**
-- 列出 2-3 条偏差、过度简化或缺失的视角
-
-**? 值得深究的问题**
-- 列出 2-3 条读完后应该继续追问的问题
-
-## 创新洞见与发散思考
-这是报告的精华。提炼 3-5 条独特视角，不要复述内容，要给出"换个角度看，这意味着……"的洞察。每条洞见后补充 1-2 句发散延伸：如果把这个洞见推向极致，或者与另一个领域结合，会产生什么新的可能？
-
-## 知识关联图谱
-3-5 条，格式：
-**[相关领域/概念]** → 关联说明：这个概念与本内容的联系是什么，能产生怎样的交叉理解？
-
-## 综合结论与行动建议
-整合以上所有分析，给出 1 段概括性结论（100字左右），提炼本内容对知识体系的贡献。然后给出 2-3 条具体的"下一步"建议：读了这个之后，可以做什么、读什么、思考什么。
-
----
-
-【格式规范】
-- 重要概念用 **加粗**
-- 关键论断用 > 引用块
-- 逻辑列表用 - 无序列表
-- 各章节间有 1 行空行分隔
-- 语言流畅自然，不堆砌，不官腔
-
-【JSON 输出格式】严格输出合法 JSON，不要有任何额外文字：
+【输出格式】严格输出合法 JSON，不要有任何额外文字：
 {
   "title": "精炼标题（40字以内）",
-  "summary": "一句话概括，作为卡片预览用",
-  "tags": ["标签1", "标签2", "标签3", "标签4"],
+  "summary": "一句话概括，用于卡片预览",
+  "tags": ["标签1", "标签2", "标签3"],
+  "summary_markdown": "任务1的完整 Markdown 输出",
+  "analysis_markdown": "任务2的完整 Markdown 输出",
+  "report_markdown": "任务3的完整 Markdown 输出",
+  "mindmap_markdown": "任务4的完整 Markdown 输出",
   "mindmap_data": {
     "root": "主题名称",
     "nodes": [
       {
         "id": "1",
-        "label": "核心要点",
+        "label": "一级主题",
         "children": [
           { "id": "1-1", "label": "子概念", "children": [] }
         ]
       }
     ]
-  },
-  "content_markdown": "（完整的 Markdown 报告，包含上述全部 6 个章节，使用 \\n 换行）"
+  }
 }`;
-
-    const messages = [
-      { role: "user", content: `请深度分析以下内容：\n\n${inputContext}` },
-    ];
 
     const response = await fetch("https://api.enter.pro/code/api/v1/ai/messages", {
       method: "POST",
@@ -121,9 +186,9 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         model: "anthropic/claude-sonnet-4.5",
         system: systemPrompt,
-        messages,
+        messages: [{ role: "user", content: `请分析以下内容：\n\n${rawContent}` }],
         stream: false,
-        max_tokens: 6000,
+        max_tokens: 8000,
       }),
     });
 
@@ -153,15 +218,16 @@ Deno.serve(async (req) => {
         title: "分析结果",
         summary: rawText.slice(0, 100),
         tags: [],
+        summary_markdown: rawText,
+        analysis_markdown: "",
+        report_markdown: "",
+        mindmap_markdown: "",
         mindmap_data: { root: "主题", nodes: [] },
-        content_markdown: rawText,
       };
     }
 
-    // Ensure content_markdown exists and is a string
-    if (!analysisResult.content_markdown || typeof analysisResult.content_markdown !== "string") {
-      analysisResult.content_markdown = `# ${analysisResult.title}\n\n${analysisResult.summary}`;
-    }
+    // Map report_markdown -> content_markdown for backward compatibility
+    analysisResult.content_markdown = analysisResult.report_markdown || analysisResult.content_markdown || "";
 
     return new Response(JSON.stringify({ success: true, data: analysisResult }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

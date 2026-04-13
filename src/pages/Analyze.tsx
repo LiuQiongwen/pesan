@@ -188,7 +188,10 @@ export default function Analyze() {
         analysis_content: {},
         tags: analysisData.tags || [],
         mindmap_data: analysisData.mindmap_data || {},
-        content_markdown: analysisData.content_markdown || '',
+        content_markdown: analysisData.report_markdown || analysisData.content_markdown || '',
+        summary_markdown: analysisData.summary_markdown || '',
+        analysis_markdown: analysisData.analysis_markdown || '',
+        mindmap_markdown: analysisData.mindmap_markdown || '',
       });
 
       await updateAnalysisStatus(analysis.id, 'done');

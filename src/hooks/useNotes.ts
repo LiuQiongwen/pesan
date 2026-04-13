@@ -118,6 +118,9 @@ export function useAnalysis(userId?: string) {
         tags: noteData.tags || [],
         mindmap_data: noteData.mindmap_data || {},
         content_markdown: noteData.content_markdown || null,
+        summary_markdown: noteData.summary_markdown || null,
+        analysis_markdown: noteData.analysis_markdown || null,
+        mindmap_markdown: noteData.mindmap_markdown || null,
         is_edited: false,
       })
       .select()
