@@ -10,6 +10,13 @@ import { toast } from 'sonner';
 import { Globe, Type, FileIcon, Image, Video, Upload, Loader2, Sparkles, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SourceType } from '@/types';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Configure PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.mjs',
+  import.meta.url
+).href;
 
 const tabs: { type: SourceType; icon: typeof Globe; label: string; placeholder: string }[] = [
   { type: 'url', icon: Globe, label: '网站', placeholder: 'https://example.com 输入网址，AI 将抓取并分析网页内容' },
@@ -39,6 +46,7 @@ export default function Analyze() {
   const [stepIndex, setStepIndex] = useState(0);
   const [fileContent, setFileContent] = useState<string>('');
   const [fileName, setFileName] = useState<string>('');
+  const [fileParsing, setFileParsing] = useState(false);
   const [imageData, setImageData] = useState<string>('');
   const [imageName, setImageName] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -53,15 +61,45 @@ export default function Analyze() {
     return () => { if (stepIntervalRef.current) clearInterval(stepIntervalRef.current); };
   }, []);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setFileContent(ev.target?.result as string);
-    };
-    reader.readAsText(file);
+    setFileContent('');
+    setFileParsing(true);
+
+    const ext = file.name.split('.').pop()?.toLowerCase();
+
+    try {
+      if (ext === 'pdf') {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        let text = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          const pageText = content.items
+            .map((item) => ('str' in item ? item.str : ''))
+            .join(' ');
+          text += pageText + '\n';
+        }
+        setFileContent(text.trim() || '（PDF 内容为空或无法提取文字）');
+      } else if (ext === 'docx' || ext === 'doc') {
+        const arrayBuffer = await file.arrayBuffer();
+        const mammoth = await import('mammoth');
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        setFileContent(result.value.trim() || '（文档内容为空）');
+      } else {
+        const reader = new FileReader();
+        reader.onload = (ev) => setFileContent(ev.target?.result as string);
+        reader.readAsText(file);
+      }
+    } catch (_err) {
+      toast.error('文件解析失败，请检查文件格式');
+      setFileName('');
+    } finally {
+      setFileParsing(false);
+    }
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -203,10 +241,15 @@ export default function Analyze() {
                 type="file"
                 ref={fileInputRef}
                 onChange={handleFileChange}
-                accept=".txt,.md,.csv,.pdf,.json,.html,.xml"
+                accept=".pdf,.doc,.docx,.txt,.md,.csv,.json,.html,.xml"
                 className="hidden"
               />
-              {!fileContent ? (
+              {fileParsing ? (
+                <div className="w-full h-48 border border-border rounded-xl flex flex-col items-center justify-center gap-3 text-muted-foreground bg-muted/30">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                  <p className="text-sm font-medium">正在解析文件内容...</p>
+                </div>
+              ) : !fileContent ? (
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={loading}
@@ -215,7 +258,7 @@ export default function Analyze() {
                   <Upload className="w-10 h-10" />
                   <div>
                     <p className="font-medium">点击上传文件</p>
-                    <p className="text-sm mt-0.5">支持 TXT, MD, CSV, JSON, HTML 等文本格式</p>
+                    <p className="text-sm mt-0.5">支持 PDF、Word (.docx)、TXT、MD、CSV 等格式</p>
                   </div>
                 </button>
               ) : (
@@ -227,7 +270,7 @@ export default function Analyze() {
                       </div>
                       <div>
                         <p className="font-medium text-foreground text-sm">{fileName}</p>
-                        <p className="text-xs text-muted-foreground">{fileContent.length.toLocaleString()} 字符</p>
+                        <p className="text-xs text-muted-foreground">已提取 {fileContent.length.toLocaleString()} 个字符</p>
                       </div>
                     </div>
                     <Button variant="ghost" size="sm" onClick={() => { setFileContent(''); setFileName(''); }}>
