@@ -184,8 +184,8 @@ export default function Analyze() {
       const note = await saveNote(analysis.id, {
         title: analysisData.title,
         summary: analysisData.summary,
-        key_points: analysisData.key_points || [],
-        analysis_content: analysisData.analysis_content || {},
+        key_points: [],
+        analysis_content: {},
         tags: analysisData.tags || [],
         mindmap_data: analysisData.mindmap_data || {},
         content_markdown: analysisData.content_markdown || '',

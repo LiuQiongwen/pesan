@@ -10,13 +10,10 @@ Deno.serve(async (req) => {
 
   try {
     const AI_API_TOKEN = Deno.env.get("AI_API_TOKEN_2c7d5422f5cf");
-    if (!AI_API_TOKEN) {
-      throw new Error("AI_API_TOKEN is not configured");
-    }
+    if (!AI_API_TOKEN) throw new Error("AI_API_TOKEN is not configured");
 
     const { sourceType, content, sourceUrl } = await req.json();
 
-    // Build context based on source type
     let inputContext = "";
     if (sourceType === "url") {
       try {
@@ -42,62 +39,77 @@ Deno.serve(async (req) => {
       inputContext = content;
     }
 
-    const systemPrompt = `你是一位资深知识策展人，擅长将复杂信息转化为清晰、有深度、易于阅读的知识内容。你的写作风格：逻辑严密、重点突出、语言精炼，读者读完后能立刻抓住核心并形成自己的见解。
+    const systemPrompt = `你是一位资深知识策展人与深度思考者，擅长将复杂信息提炼为逻辑清晰、观点深刻、可读性强的知识文档。
 
-输出要求——以"读者体验"为第一优先级：
-1. **核心摘要**：用2-3句话写一段流畅的叙述性摘要，不堆砌要点，让读者一眼看懂"这讲的是什么、为什么重要"
-2. **关键要点**：每条要点包含一个简明标题（5-10字）和一段说明（1-2句解释其重要性和含义）
-3. **主要观点**：每条观点用一句话表达核心立场，再加一句解释支撑理由
-4. **批判性分析**：分三个维度——亮点（内容的真正价值）、局限（需要注意的不足或偏差）、延伸问题（值得进一步思考的问题）
-5. **创新洞见**：每条洞见要有独特的切入角度，附一句"为什么这个角度有价值"的说明
-6. **知识关联**：说明与哪个领域/概念有联系，以及这种联系的意义是什么
-7. **完整报告（Markdown）**：写成一篇结构清晰的分析文章，有引言、各节清晰的H2标题、过渡语句，结尾有总结与思考。使用**加粗**突出核心概念，使用> 引用块标注重要论断，语言流畅自然、不罗列堆砌。
+你的输出是一个 JSON 对象，其中 content_markdown 字段包含完整的 Markdown 格式知识报告。报告必须覆盖以下 7 个章节，每个章节有清晰的 H2 标题：
 
-严格以合法 JSON 格式输出，不要有任何额外文字：
+【content_markdown 文档结构要求】
+
+## 核心摘要
+2-3 句流畅叙述，交代"这是什么 + 为什么值得读 + 核心价值所在"。语言要有温度，不是干燥的定义。
+
+## 关键要点
+5-8 条，每条格式：
+**要点标题（5-10字）**：1-2 句说明这条要点的含义与重要性，用读者视角解释"所以呢？这意味着什么？"
+
+## 深度分析
+
+### 主要观点
+每条格式：
+> **核心论断**
+> 支撑理由：为什么这个观点成立，有哪些逻辑依据或实证支持。
+
+### 批判性审视
+**✦ 真正有价值的地方**
+- 列出 2-3 条内容的核心亮点与贡献
+
+**⚠ 需要注意的局限**
+- 列出 2-3 条偏差、过度简化或缺失的视角
+
+**? 值得深究的问题**
+- 列出 2-3 条读完后应该继续追问的问题
+
+## 创新洞见与发散思考
+这是报告的精华。提炼 3-5 条独特视角，不要复述内容，要给出"换个角度看，这意味着……"的洞察。每条洞见后补充 1-2 句发散延伸：如果把这个洞见推向极致，或者与另一个领域结合，会产生什么新的可能？
+
+## 知识关联图谱
+3-5 条，格式：
+**[相关领域/概念]** → 关联说明：这个概念与本内容的联系是什么，能产生怎样的交叉理解？
+
+## 综合结论与行动建议
+整合以上所有分析，给出 1 段概括性结论（100字左右），提炼本内容对知识体系的贡献。然后给出 2-3 条具体的"下一步"建议：读了这个之后，可以做什么、读什么、思考什么。
+
+---
+
+【格式规范】
+- 重要概念用 **加粗**
+- 关键论断用 > 引用块
+- 逻辑列表用 - 无序列表
+- 各章节间有 1 行空行分隔
+- 语言流畅自然，不堆砌，不官腔
+
+【JSON 输出格式】严格输出合法 JSON，不要有任何额外文字：
 {
-  "title": "内容标题（精炼，40字以内）",
-  "summary": "叙述性核心摘要，2-3句话，流畅可读，说明主题和核心价值",
-  "key_points": [
-    { "title": "要点标题", "detail": "解释这条要点的含义及其重要性，1-2句话" }
-  ],
-  "analysis_content": {
-    "main_viewpoints": [
-      { "claim": "核心观点一句话", "support": "支撑这一观点的理由或证据" }
-    ],
-    "critical_analysis": {
-      "strengths": ["这份内容真正有价值的地方是..."],
-      "limitations": ["需要注意的局限或偏差是..."],
-      "key_questions": ["值得进一步探究的问题是..."]
-    },
-    "innovative_insights": [
-      { "insight": "洞见标题", "value": "为什么这个角度有价值的解释" }
-    ],
-    "knowledge_connections": [
-      { "domain": "相关领域或概念", "connection": "与本内容的关联及意义" }
-    ]
-  },
-  "tags": ["标签1", "标签2", "标签3"],
+  "title": "精炼标题（40字以内）",
+  "summary": "一句话概括，作为卡片预览用",
+  "tags": ["标签1", "标签2", "标签3", "标签4"],
   "mindmap_data": {
     "root": "主题名称",
     "nodes": [
       {
         "id": "1",
-        "label": "一级主题",
+        "label": "核心要点",
         "children": [
-          { "id": "1-1", "label": "子概念", "children": [] },
-          { "id": "1-2", "label": "子概念", "children": [] }
+          { "id": "1-1", "label": "子概念", "children": [] }
         ]
       }
     ]
   },
-  "content_markdown": "完整分析报告——Markdown格式，写成可读性强的分析文章，有引言段落、清晰H2章节、过渡句、结尾总结。重点用**加粗**，重要论断用>引用块，语言流畅不堆砌"
+  "content_markdown": "（完整的 Markdown 报告，包含上述全部 6 个章节，使用 \\n 换行）"
 }`;
 
     const messages = [
-      {
-        role: "user",
-        content: `请深度分析以下内容：\n\n${inputContext}`,
-      },
+      { role: "user", content: `请深度分析以下内容：\n\n${inputContext}` },
     ];
 
     const response = await fetch("https://api.enter.pro/code/api/v1/ai/messages", {
@@ -111,7 +123,7 @@ Deno.serve(async (req) => {
         system: systemPrompt,
         messages,
         stream: false,
-        max_tokens: 5000,
+        max_tokens: 6000,
       }),
     });
 
@@ -121,9 +133,7 @@ Deno.serve(async (req) => {
       try {
         const errorData = JSON.parse(errorText);
         errorMessage = errorData.error?.message || errorMessage;
-      } catch (_parseErr) {
-        // Use default error message
-      }
+      } catch (_parseErr) { /* use default */ }
       throw new Error(errorMessage);
     }
 
@@ -136,23 +146,21 @@ Deno.serve(async (req) => {
       if (jsonMatch) {
         analysisResult = JSON.parse(jsonMatch[0]);
       } else {
-        throw new Error("No JSON found in response");
+        throw new Error("No JSON found");
       }
     } catch (_parseErr) {
       analysisResult = {
         title: "分析结果",
-        summary: rawText.slice(0, 200),
-        key_points: [{ title: "完整内容", detail: "请查看完整报告" }],
-        analysis_content: {
-          main_viewpoints: [],
-          critical_analysis: { strengths: [], limitations: [], key_questions: [] },
-          innovative_insights: [],
-          knowledge_connections: [],
-        },
+        summary: rawText.slice(0, 100),
         tags: [],
         mindmap_data: { root: "主题", nodes: [] },
         content_markdown: rawText,
       };
+    }
+
+    // Ensure content_markdown exists and is a string
+    if (!analysisResult.content_markdown || typeof analysisResult.content_markdown !== "string") {
+      analysisResult.content_markdown = `# ${analysisResult.title}\n\n${analysisResult.summary}`;
     }
 
     return new Response(JSON.stringify({ success: true, data: analysisResult }), {
@@ -161,10 +169,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

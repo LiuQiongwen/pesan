@@ -1,11 +1,10 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useNotes } from '@/hooks/useNotes';
 import { Note as NoteType } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { exportMarkdown, exportPDF, exportWord } from '@/lib/export';
@@ -13,8 +12,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
   ArrowLeft, Edit2, Save, Download, MapPin,
-  Lightbulb, Target, Layers, Link, FileText,
-  X, CheckCircle2, AlertTriangle, HelpCircle, Sparkles, Globe2
+  FileText, Copy, Check, X, Sparkles
 } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
@@ -22,88 +20,87 @@ import {
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
+import { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState } from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 
-type TabId = 'summary' | 'analysis' | 'report' | 'mindmap';
+type TabId = 'read' | 'edit' | 'mindmap';
 
 const tabs: { id: TabId; label: string; icon: typeof FileText }[] = [
-  { id: 'summary', label: '摘要', icon: Target },
-  { id: 'analysis', label: '深度分析', icon: Lightbulb },
-  { id: 'report', label: '完整报告', icon: FileText },
-  { id: 'mindmap', label: '思维导图', icon: MapPin },
+  { id: 'read',    label: '报告阅读', icon: FileText },
+  { id: 'edit',    label: '编辑',     icon: Edit2    },
+  { id: 'mindmap', label: '思维导图', icon: MapPin   },
 ];
 
-// Helper: normalise key_points to always be { title, detail }[]
-function normaliseKeyPoints(kp: unknown[]): { title: string; detail: string }[] {
-  return kp.map(p => {
-    if (typeof p === 'string') return { title: p, detail: '' };
-    const obj = p as Record<string, string>;
-    return { title: obj.title || '', detail: obj.detail || '' };
+// ── Mind map helpers ───────────────────────────────────────────────────────
+interface MindNode { id: string; label: string; children?: MindNode[] }
+interface MindMapData { root?: string; nodes?: MindNode[] }
+
+const NODE_COLORS = ['#6366f1','#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444'];
+
+function buildFlow(data: MindMapData) {
+  const rfNodes: { id: string; data: { label: string }; position: { x: number; y: number }; style: React.CSSProperties }[] = [];
+  const rfEdges: { id: string; source: string; target: string; style: React.CSSProperties }[] = [];
+
+  rfNodes.push({
+    id: 'root',
+    data: { label: data.root || '主题' },
+    position: { x: 0, y: 0 },
+    style: { background: '#6366f1', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 14, padding: '10px 18px', minWidth: 120, textAlign: 'center' as const },
   });
-}
 
-// Helper: normalise main_viewpoints
-function normaliseViewpoints(vp: unknown[]): { claim: string; support: string }[] {
-  return vp.map(v => {
-    if (typeof v === 'string') return { claim: v, support: '' };
-    const obj = v as Record<string, string>;
-    return { claim: obj.claim || (v as string), support: obj.support || '' };
+  (data.nodes || []).forEach((node, i) => {
+    const col = NODE_COLORS[(i + 1) % NODE_COLORS.length];
+    const x = (i - (data.nodes!.length - 1) / 2) * 240;
+    rfNodes.push({
+      id: node.id,
+      data: { label: node.label },
+      position: { x, y: 120 },
+      style: { background: col, color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, padding: '8px 14px', minWidth: 100, textAlign: 'center' as const },
+    });
+    rfEdges.push({ id: `root-${node.id}`, source: 'root', target: node.id, style: { stroke: col, strokeWidth: 2 } });
+
+    (node.children || []).forEach((child, j) => {
+      const cy = 240 + j * 80;
+      rfNodes.push({
+        id: child.id,
+        data: { label: child.label },
+        position: { x, y: cy },
+        style: { background: '#1e293b', color: '#e2e8f0', border: `1px solid ${col}40`, borderRadius: 6, fontSize: 12, padding: '6px 12px', minWidth: 90, textAlign: 'center' as const },
+      });
+      rfEdges.push({ id: `${node.id}-${child.id}`, source: node.id, target: child.id, style: { stroke: col, strokeWidth: 1.5 } });
+    });
   });
+
+  return { rfNodes, rfEdges };
 }
 
-// Helper: normalise critical_analysis
-function normaliseCritical(ca: unknown): { strengths: string[]; limitations: string[]; key_questions: string[] } {
-  if (!ca) return { strengths: [], limitations: [], key_questions: [] };
-  if (typeof ca === 'string') return { strengths: [ca], limitations: [], key_questions: [] };
-  const obj = ca as Record<string, unknown>;
-  return {
-    strengths: Array.isArray(obj.strengths) ? obj.strengths as string[] : [],
-    limitations: Array.isArray(obj.limitations) ? obj.limitations as string[] : [],
-    key_questions: Array.isArray(obj.key_questions) ? obj.key_questions as string[] : [],
-  };
-}
-
-// Helper: normalise innovative_insights
-function normaliseInsights(ins: unknown[]): { insight: string; value: string }[] {
-  return ins.map(i => {
-    if (typeof i === 'string') return { insight: i, value: '' };
-    const obj = i as Record<string, string>;
-    return { insight: obj.insight || (i as string), value: obj.value || '' };
-  });
-}
-
-// Helper: normalise knowledge_connections
-function normaliseConnections(kc: unknown[]): { domain: string; connection: string }[] {
-  return kc.map(c => {
-    if (typeof c === 'string') return { domain: c, connection: '' };
-    const obj = c as Record<string, string>;
-    return { domain: obj.domain || (c as string), connection: obj.connection || '' };
-  });
-}
-
-export default function NotePage() {
+// ── Main component ─────────────────────────────────────────────────────────
+export default function Note() {
   const { id } = useParams<{ id: string }>();
-  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const { getNote, updateNote } = useNotes(user?.id);
   const navigate = useNavigate();
 
-  const [note, setNote] = useState<NoteType | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<TabId>('summary');
-  const [editing, setEditing] = useState(searchParams.get('edit') === 'true');
-  const [editTitle, setEditTitle] = useState('');
-  const [editSummary, setEditSummary] = useState('');
+  const [note, setNote]               = useState<NoteType | null>(null);
+  const [loading, setLoading]         = useState(true);
+  const [activeTab, setActiveTab]     = useState<TabId>('read');
   const [editMarkdown, setEditMarkdown] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving]           = useState(false);
+  const [copied, setCopied]           = useState(false);
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const reportRef = useRef<HTMLDivElement>(null);
 
+  // Load note
   useEffect(() => {
     if (!id) return;
     getNote(id).then(n => {
       setNote(n);
-      if (n) {
-        setEditTitle(n.title || '');
-        setEditSummary(n.summary || '');
-        setEditMarkdown(n.content_markdown || '');
+      if (n?.content_markdown) setEditMarkdown(n.content_markdown);
+      if (n?.mindmap_data) {
+        const { rfNodes, rfEdges } = buildFlow(n.mindmap_data as MindMapData);
+        setNodes(rfNodes);
+        setEdges(rfEdges);
       }
       setLoading(false);
     });
@@ -111,28 +108,37 @@ export default function NotePage() {
   }, [id]);
 
   const handleSave = async () => {
-    if (!note || !id) return;
+    if (!note) return;
     setSaving(true);
-    const { error } = await updateNote(id, {
-      title: editTitle,
-      summary: editSummary,
-      content_markdown: editMarkdown,
-    });
-    if (error) { toast.error('保存失败'); }
-    else {
-      toast.success('已保存');
-      setNote(prev => prev ? { ...prev, title: editTitle, summary: editSummary, content_markdown: editMarkdown } : null);
-      setEditing(false);
-    }
+    await updateNote(note.id, { content_markdown: editMarkdown, is_edited: true });
+    setNote(prev => prev ? { ...prev, content_markdown: editMarkdown } : prev);
     setSaving(false);
+    toast.success('已保存');
+  };
+
+  const handleCopy = async () => {
+    const text = note?.content_markdown || '';
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    toast.success('已复制到剪贴板');
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleExport = (fmt: 'md' | 'pdf' | 'word') => {
+    if (!note) return;
+    if (fmt === 'md')   exportMarkdown(note.content_markdown || '', note.title || '笔记');
+    if (fmt === 'pdf')  exportPDF(reportRef.current, note.title || '笔记');
+    if (fmt === 'word') exportWord(note.content_markdown || '', note.title || '笔记');
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-muted-foreground text-sm">加载笔记...</p>
+        <div className="text-center space-y-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-primary mx-auto flex items-center justify-center">
+            <Sparkles className="w-5 h-5 text-white animate-pulse" />
+          </div>
+          <p className="text-muted-foreground text-sm">加载笔记中…</p>
         </div>
       </div>
     );
@@ -141,383 +147,148 @@ export default function NotePage() {
   if (!note) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
-        <p className="text-muted-foreground">笔记不存在或已被删除</p>
-        <Button onClick={() => navigate('/library')}>返回知识库</Button>
+        <p className="text-muted-foreground">笔记不存在</p>
+        <Button variant="outline" onClick={() => navigate('/library')}>返回知识库</Button>
       </div>
     );
   }
 
-  const ac = note.analysis_content || {};
-  const keyPoints = normaliseKeyPoints(note.key_points || []);
-  const viewpoints = normaliseViewpoints(ac.main_viewpoints || []);
-  const critical = normaliseCritical(ac.critical_analysis);
-  const insights = normaliseInsights(ac.innovative_insights || []);
-  const connections = normaliseConnections(ac.knowledge_connections || []);
+  const markdown = activeTab === 'edit' ? editMarkdown : (note.content_markdown || '');
 
   return (
-    <div className="flex flex-col h-full overflow-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between px-8 py-4 border-b border-border sticky top-0 bg-background/90 backdrop-blur-sm z-10">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <button
-            onClick={() => navigate('/library')}
-            className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
-          >
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* ── Top bar ── */}
+      <div className="flex items-center justify-between px-6 py-3 border-b border-border bg-card/60 backdrop-blur-sm flex-shrink-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <Button variant="ghost" size="icon" onClick={() => navigate('/library')} className="flex-shrink-0">
             <ArrowLeft className="w-4 h-4" />
-          </button>
-          {editing ? (
-            <Input
-              value={editTitle}
-              onChange={e => setEditTitle(e.target.value)}
-              className="font-semibold text-lg h-9 border-0 shadow-none p-0 focus-visible:ring-0 bg-transparent"
-              placeholder="笔记标题..."
-            />
-          ) : (
-            <h1 className="font-semibold text-foreground text-lg truncate">
-              {note.title || '未命名笔记'}
-            </h1>
-          )}
+          </Button>
+          <div className="min-w-0">
+            <h1 className="font-semibold text-foreground text-base truncate">{note.title || '未命名笔记'}</h1>
+            <p className="text-xs text-muted-foreground">
+              {note.created_at ? format(new Date(note.created_at), 'PPP', { locale: zhCN }) : ''}
+              {note.is_edited && <span className="ml-2 text-primary">· 已编辑</span>}
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-shrink-0 ml-4">
-          {note.is_edited && (
-            <Badge variant="outline" className="text-xs text-muted-foreground">已编辑</Badge>
-          )}
-          {editing ? (
-            <>
-              <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
-                <X className="w-4 h-4 mr-1" /> 取消
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Tags */}
+          <div className="hidden md:flex items-center gap-1.5">
+            {(note.tags || []).slice(0, 3).map(tag => (
+              <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
+            ))}
+          </div>
+
+          {/* Copy */}
+          <Button variant="outline" size="sm" onClick={handleCopy} className="gap-1.5">
+            {copied ? <Check className="w-3.5 h-3.5 text-primary" /> : <Copy className="w-3.5 h-3.5" />}
+            <span className="hidden sm:inline">{copied ? '已复制' : '复制 MD'}</span>
+          </Button>
+
+          {/* Download */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <Download className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">下载</span>
               </Button>
-              <Button
-                size="sm"
-                className="bg-gradient-primary hover:opacity-90 transition-opacity"
-                onClick={handleSave}
-                disabled={saving}
-              >
-                <Save className="w-4 h-4 mr-1" />
-                {saving ? '保存中...' : '保存'}
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button variant="outline" size="sm" onClick={() => navigate(`/mindmap/${id}`)}>
-                <MapPin className="w-4 h-4 mr-1" /> 思维导图
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-                <Edit2 className="w-4 h-4 mr-1" /> 编辑
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    <Download className="w-4 h-4 mr-1" /> 导出
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => note && exportMarkdown(note)}>
-                    <FileText className="w-4 h-4 mr-2" /> Markdown (.md)
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => id && exportPDF(id)}>
-                    <FileText className="w-4 h-4 mr-2" /> PDF 文档
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => note && exportWord(note)}>
-                    <FileText className="w-4 h-4 mr-2" /> Word 文档 (.docx)
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </>
-          )}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleExport('md')}>Markdown (.md)</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport('pdf')}>PDF 文档</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport('word')}>Word (.docx)</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
-      {/* Tab bar */}
-      <div className="flex gap-1 px-8 py-3 border-b border-border bg-background">
-        {tabs.map(({ id: tabId, label, icon: Icon }) => (
+      {/* ── Tabs ── */}
+      <div className="flex gap-1 px-6 pt-3 pb-0 border-b border-border flex-shrink-0">
+        {tabs.map(({ id: tid, label, icon: Icon }) => (
           <button
-            key={tabId}
-            onClick={() => setActiveTab(tabId)}
+            key={tid}
+            onClick={() => setActiveTab(tid)}
             className={cn(
-              'flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-150',
-              activeTab === tabId
-                ? 'bg-primary text-primary-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+              'flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors border-b-2 -mb-px',
+              activeTab === tid
+                ? 'text-primary border-primary bg-primary/5'
+                : 'text-muted-foreground border-transparent hover:text-foreground'
             )}
           >
             <Icon className="w-3.5 h-3.5" />
             {label}
           </button>
         ))}
+
+        {/* Save button (only in edit mode) */}
+        {activeTab === 'edit' && (
+          <div className="ml-auto pb-1 flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={() => { setEditMarkdown(note.content_markdown || ''); setActiveTab('read'); }}>
+              <X className="w-3.5 h-3.5 mr-1" />取消
+            </Button>
+            <Button size="sm" onClick={handleSave} disabled={saving} className="bg-gradient-primary hover:opacity-90">
+              <Save className="w-3.5 h-3.5 mr-1" />
+              {saving ? '保存中…' : '保存'}
+            </Button>
+          </div>
+        )}
       </div>
 
-      {/* Content area */}
-      <div className="flex-1 overflow-auto" id={`note-content-${id}`}>
-        <div className="max-w-3xl mx-auto px-8 py-8 w-full">
+      {/* ── Content ── */}
+      <div className="flex-1 overflow-auto">
+        {/* Read tab */}
+        {activeTab === 'read' && (
+          <div ref={reportRef} className="max-w-3xl mx-auto px-6 py-8">
+            <div className="prose-ping">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {note.content_markdown || '*暂无内容*'}
+              </ReactMarkdown>
+            </div>
+          </div>
+        )}
 
-          {/* Meta */}
-          <div className="flex items-center gap-3 mb-8 text-xs text-muted-foreground">
-            <span>{format(new Date(note.created_at), 'yyyy年M月d日 HH:mm', { locale: zhCN })}</span>
-            {note.tags?.length > 0 && (
-              <>
-                <span>·</span>
-                <div className="flex gap-1 flex-wrap">
-                  {note.tags.map(tag => (
-                    <span key={tag} className="px-2 py-0.5 bg-primary/10 text-primary rounded-full font-medium">
-                      #{tag}
-                    </span>
-                  ))}
-                </div>
-              </>
+        {/* Edit tab */}
+        {activeTab === 'edit' && (
+          <div className="h-full flex flex-col p-6 gap-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">编辑 Markdown 源码，保存后实时更新报告</p>
+              <span className="text-xs text-muted-foreground tabular-nums">{editMarkdown.length} 字符</span>
+            </div>
+            <Textarea
+              value={editMarkdown}
+              onChange={e => setEditMarkdown(e.target.value)}
+              className="flex-1 font-mono text-sm resize-none bg-card min-h-[400px]"
+              placeholder="在此输入 Markdown 内容..."
+            />
+          </div>
+        )}
+
+        {/* Mind map tab */}
+        {activeTab === 'mindmap' && (
+          <div className="h-full" style={{ minHeight: 500 }}>
+            {nodes.length > 0 ? (
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                fitView
+                fitViewOptions={{ padding: 0.3 }}
+              >
+                <Background color="hsl(var(--border))" gap={20} />
+                <Controls />
+                <MiniMap nodeStrokeWidth={3} />
+              </ReactFlow>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+                <MapPin className="w-10 h-10 opacity-30" />
+                <p>暂无思维导图数据</p>
+              </div>
             )}
           </div>
-
-          {/* ── SUMMARY TAB ───────────────────────────── */}
-          {activeTab === 'summary' && (
-            <div className="space-y-8 animate-fade-up">
-
-              {/* Summary lead */}
-              <div className="border-l-4 border-primary pl-5 py-1">
-                <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-2">核心摘要</p>
-                {editing ? (
-                  <Textarea
-                    value={editSummary}
-                    onChange={e => setEditSummary(e.target.value)}
-                    className="min-h-24 resize-none text-base leading-relaxed"
-                    placeholder="摘要内容..."
-                  />
-                ) : (
-                  <p className="text-foreground text-[1.05rem] leading-[1.85] font-normal">
-                    {note.summary || '暂无摘要'}
-                  </p>
-                )}
-              </div>
-
-              {/* Key points */}
-              {keyPoints.length > 0 && (
-                <div>
-                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
-                    <Layers className="w-4 h-4" /> 关键要点
-                  </h3>
-                  <div className="space-y-3">
-                    {keyPoints.map((point, i) => (
-                      <div
-                        key={i}
-                        className="flex gap-4 p-4 rounded-xl bg-card border border-border hover:border-primary/25 hover:shadow-sm transition-all duration-200"
-                      >
-                        <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
-                          {i + 1}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-foreground text-sm leading-snug">
-                            {point.title}
-                          </p>
-                          {point.detail && (
-                            <p className="text-muted-foreground text-sm mt-1 leading-relaxed">
-                              {point.detail}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── ANALYSIS TAB ──────────────────────────── */}
-          {activeTab === 'analysis' && (
-            <div className="space-y-8 animate-fade-up">
-
-              {/* Main viewpoints */}
-              {viewpoints.length > 0 && (
-                <AnalysisSection icon={Target} title="主要观点" accent="blue">
-                  <div className="space-y-4">
-                    {viewpoints.map((vp, i) => (
-                      <div key={i} className="group">
-                        <p className="font-semibold text-foreground text-sm leading-snug">{vp.claim}</p>
-                        {vp.support && (
-                          <p className="text-muted-foreground text-sm mt-1 leading-relaxed pl-0">{vp.support}</p>
-                        )}
-                        {i < viewpoints.length - 1 && <div className="mt-4 border-b border-border" />}
-                      </div>
-                    ))}
-                  </div>
-                </AnalysisSection>
-              )}
-
-              {/* Critical analysis — three-panel */}
-              {(critical.strengths.length > 0 || critical.limitations.length > 0 || critical.key_questions.length > 0) && (
-                <div>
-                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
-                    <Lightbulb className="w-4 h-4" /> 批判性分析
-                  </h3>
-                  <div className="grid grid-cols-1 gap-3">
-                    {critical.strengths.length > 0 && (
-                      <CriticalPanel
-                        icon={CheckCircle2}
-                        label="亮点"
-                        items={critical.strengths}
-                        color="green"
-                      />
-                    )}
-                    {critical.limitations.length > 0 && (
-                      <CriticalPanel
-                        icon={AlertTriangle}
-                        label="局限"
-                        items={critical.limitations}
-                        color="amber"
-                      />
-                    )}
-                    {critical.key_questions.length > 0 && (
-                      <CriticalPanel
-                        icon={HelpCircle}
-                        label="延伸问题"
-                        items={critical.key_questions}
-                        color="blue"
-                      />
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Innovative insights */}
-              {insights.length > 0 && (
-                <AnalysisSection icon={Sparkles} title="创新洞见" accent="purple">
-                  <div className="space-y-4">
-                    {insights.map((ins, i) => (
-                      <div key={i} className="flex gap-3">
-                        <div className="w-1.5 h-1.5 rounded-full bg-purple-500 flex-shrink-0 mt-2" />
-                        <div>
-                          <p className="font-semibold text-foreground text-sm">{ins.insight}</p>
-                          {ins.value && (
-                            <p className="text-muted-foreground text-sm mt-0.5 leading-relaxed">{ins.value}</p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </AnalysisSection>
-              )}
-
-              {/* Knowledge connections */}
-              {connections.length > 0 && (
-                <AnalysisSection icon={Globe2} title="知识关联" accent="green">
-                  <div className="space-y-3">
-                    {connections.map((kc, i) => (
-                      <div key={i} className="flex gap-3 items-start">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-md bg-green-500/10 text-green-700 dark:text-green-400 text-xs font-semibold flex-shrink-0 mt-0.5 border border-green-500/20">
-                          {kc.domain}
-                        </span>
-                        {kc.connection && (
-                          <p className="text-muted-foreground text-sm leading-relaxed">{kc.connection}</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </AnalysisSection>
-              )}
-            </div>
-          )}
-
-          {/* ── REPORT TAB ────────────────────────────── */}
-          {activeTab === 'report' && (
-            <div className="animate-fade-up">
-              {editing ? (
-                <Textarea
-                  value={editMarkdown}
-                  onChange={e => setEditMarkdown(e.target.value)}
-                  className="min-h-[600px] font-mono text-sm resize-none"
-                  placeholder="Markdown 格式内容..."
-                />
-              ) : (
-                <article className="prose-ping">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {note.content_markdown || '*暂无完整报告内容*'}
-                  </ReactMarkdown>
-                </article>
-              )}
-            </div>
-          )}
-
-          {/* ── MINDMAP TAB ───────────────────────────── */}
-          {activeTab === 'mindmap' && (
-            <div className="flex flex-col items-center justify-center py-16 animate-fade-up">
-              <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-                <MapPin className="w-8 h-8 text-primary" />
-              </div>
-              <h3 className="font-semibold text-foreground mb-2">思维导图</h3>
-              <p className="text-muted-foreground text-sm mb-6 text-center max-w-xs">
-                在独立页面查看完整的交互式思维导图
-              </p>
-              <Button
-                className="bg-gradient-primary hover:opacity-90 transition-opacity"
-                onClick={() => navigate(`/mindmap/${id}`)}
-              >
-                <MapPin className="w-4 h-4 mr-2" /> 打开思维导图
-              </Button>
-            </div>
-          )}
-
-        </div>
+        )}
       </div>
-    </div>
-  );
-}
-
-/* ────────────── Sub-components ────────────── */
-
-function AnalysisSection({
-  icon: Icon, title, accent, children
-}: {
-  icon: typeof FileText;
-  title: string;
-  accent: 'blue' | 'purple' | 'green' | 'amber';
-  children: React.ReactNode;
-}) {
-  const accentClasses: Record<string, string> = {
-    blue: 'text-blue-500',
-    purple: 'text-purple-500',
-    green: 'text-green-500',
-    amber: 'text-amber-500',
-  };
-  return (
-    <div className="p-5 rounded-xl bg-card border border-border">
-      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
-        <Icon className={cn('w-4 h-4', accentClasses[accent])} />
-        {title}
-      </h3>
-      {children}
-    </div>
-  );
-}
-
-function CriticalPanel({
-  icon: Icon, label, items, color
-}: {
-  icon: typeof FileText;
-  label: string;
-  items: string[];
-  color: 'green' | 'amber' | 'blue';
-}) {
-  const styles: Record<string, { bg: string; text: string; border: string; iconCls: string }> = {
-    green: { bg: 'bg-green-500/5', text: 'text-green-700 dark:text-green-400', border: 'border-green-500/20', iconCls: 'text-green-500' },
-    amber: { bg: 'bg-amber-500/5', text: 'text-amber-700 dark:text-amber-400', border: 'border-amber-500/20', iconCls: 'text-amber-500' },
-    blue: { bg: 'bg-blue-500/5', text: 'text-blue-700 dark:text-blue-400', border: 'border-blue-500/20', iconCls: 'text-blue-500' },
-  };
-  const s = styles[color];
-  return (
-    <div className={cn('rounded-xl p-4 border', s.bg, s.border)}>
-      <p className={cn('text-xs font-semibold uppercase tracking-wider mb-3 flex items-center gap-1.5', s.text)}>
-        <Icon className={cn('w-3.5 h-3.5', s.iconCls)} />
-        {label}
-      </p>
-      <ul className="space-y-2">
-        {items.map((item, i) => (
-          <li key={i} className="flex gap-2 text-sm text-foreground leading-relaxed">
-            <span className={cn('flex-shrink-0 mt-1.5 w-1 h-1 rounded-full', color === 'green' ? 'bg-green-500' : color === 'amber' ? 'bg-amber-500' : 'bg-blue-500')} />
-            {item}
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
