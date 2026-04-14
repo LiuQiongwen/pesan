@@ -3,7 +3,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// ── Specialized prompts ({{content}} will be replaced) ────────────────────
+// ── Specialized prompts ────────────────────────────────────────────────────
 const SUMMARY_PROMPT = `你现在是一个高效摘要助手。请对以下内容生成一份高质量摘要，要求：
 1. 用 3-5 句话概括整体内容
 2. 提炼最重要的核心观点
@@ -20,26 +20,9 @@ const SUMMARY_PROMPT = `你现在是一个高效摘要助手。请对以下内�
 以下是内容：
 {{content}}`;
 
-const ANALYSIS_PROMPT = `你现在是一个深度分析师，而不是摘要工具。请对以下内容进行深入分析，不要只复述表面信息，而要识别其背后的逻辑结构、关键矛盾、隐含假设、潜在问题和可迁移规律。请从以下角度展开：
-1. 主题与核心问题
-   - 这份内容真正要解决什么问题？
-   - 核心矛盾是什么？
-2. 逻辑结构分析
-   - 作者/材料的主要论证链条是什么？
-   - 关键前提是什么？
-   - 哪些结论是如何被推导出来的？
-3. 深层洞见
-   - 这份内容背后反映了什么规律？
-   - 哪些部分最有启发价值？
-   - 哪些内容容易被忽略但很关键？
-4. 局限与问题
-   - 内容中有哪些薄弱点、漏洞或未被证明的部分？
-   - 有哪些值得质疑或继续验证的地方？
-5. 可迁移价值
-   - 这些结论能迁移到哪些其他场景？
-   - 对实践、研究或决策有什么启发？
+const ANALYSIS_PROMPT = `你现在是一个深度分析师。请对以下内容进行深入分析，识别背后的逻辑结构、关键矛盾、隐含假设和可迁移规律。
 
-输出格式（严格按照此格式输出，用 Markdown）：
+输出格式（严格按照此格式输出，用 Markdown，每节简洁）：
 ## 核心问题
 ## 逻辑结构
 ## 深层洞见
@@ -50,47 +33,29 @@ const ANALYSIS_PROMPT = `你现在是一个深度分析师，而不是摘要工�
 以下是内容：
 {{content}}`;
 
-const REPORT_PROMPT = `你现在是一个专业报告撰写助手。请基于以下内容，输出一份结构完整、表达正式、逻辑清晰的分析报告。报告应适合用于汇报、存档或正式阅读。要求：
-1. 内容完整，有明确结构
-2. 风格正式、客观、清晰
-3. 不要写成聊天总结，要写成报告
-4. 既要概括内容，也要提炼关键结论与建议
+const REPORT_PROMPT = `你现在是一个专业报告撰写助手。请基于以下内容输出结构清晰的分析报告。
 
 输出结构如下（严格按照此格式，用 Markdown）：
 # 标题
 ## 一、背景与主题
-说明这份内容讨论的背景、范围和核心主题
 ## 二、主要内容概述
-概括主要信息与核心内容
 ## 三、关键问题与重点发现
-提炼重要问题、主要发现和关键信息
 ## 四、分析与解读
-对内容进行进一步分析，包括逻辑、原因、意义、影响等
 ## 五、结论
-给出整体结论
 ## 六、建议或后续方向
-提出下一步建议、可执行方向或待研究问题
 
 以下是材料：
 {{content}}`;
 
-const MINDMAP_PROMPT = `你现在是一个信息结构化助手。请将以下内容整理成"思维导图式"的层级结构，而不是写成长段文字。要求：
-1. 按主题 -> 子主题 -> 关键点 的层级展开
-2. 层级清晰，避免冗长解释
-3. 每个节点尽量简洁
-4. 保留核心逻辑关系
-5. 如果合适，可加入"问题/方法/结论/行动"分支
+const MINDMAP_PROMPT = `你现在是一个信息结构化助手。请将以下内容整理成思维导图层级结构，按主题->子主题->关键点展开，每个节点简洁。
 
 输出格式示例（严格按照此 Markdown 格式）：
 # 主题
 - 一级主题A
   - 二级主题A1
     - 关键点1
-    - 关键点2
   - 二级主题A2
 - 一级主题B
-  - 二级主题B1
-- 一级主题C
 
 请基于以下内容输出：
 {{content}}`;
@@ -107,7 +72,7 @@ Deno.serve(async (req) => {
 
     const { sourceType, content, sourceUrl } = await req.json();
 
-    // ── Extract raw text from source ──────────────────────────────────────
+    // ── Extract raw text ──────────────────────────────────────────────────
     let rawContent = "";
     if (sourceType === "url") {
       try {
@@ -122,59 +87,36 @@ Deno.serve(async (req) => {
           .replace(/<[^>]+>/g, " ")
           .replace(/\s+/g, " ")
           .trim()
-          .slice(0, 8000);
+          .slice(0, 4000); // Reduced from 8000
         rawContent = `来源网址: ${sourceUrl || content}\n\n${rawContent}`;
       } catch (_e) {
         rawContent = `来源网址: ${sourceUrl || content}\n\n注意：无法直接抓取网页内容。`;
       }
     } else {
-      rawContent = content || "";
+      rawContent = (content || "").slice(0, 4000); // Reduced from 8000
     }
 
-    // ── Build the combined system prompt ─────────────────────────────────
-    const systemPrompt = `你是一个专业知识分析平台的 AI 引擎。你会收到一段内容，需要同时以四种专业角色对其进行分析，并将结果打包为一个 JSON 对象输出。
+    // ── Compact combined system prompt ───────────────────────────────────
+    const systemPrompt = `你是专业知识分析平台的 AI 引擎。收到内容后，同时以四种专业角色分析，将结果打包为一个 JSON 输出。四种分析任务要求如下（每项保持简洁，控制总输出量）：
 
-四种分析任务的具体要求如下：
+【任务1：摘要】${SUMMARY_PROMPT.replace("以下是内容：\n{{content}}", "").trim()}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-【任务1：高效摘要助手】
-${SUMMARY_PROMPT.replace("以下是内容：\n{{content}}", "（使用用户输入的内容）")}
+【任务2：深度分析】${ANALYSIS_PROMPT.replace("以下是内容：\n{{content}}", "").trim()}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-【任务2：深度分析师】
-${ANALYSIS_PROMPT.replace("以下是内容：\n{{content}}", "（使用用户输入的内容）")}
+【任务3：报告】${REPORT_PROMPT.replace("以下是材料：\n{{content}}", "").trim()}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-【任务3：专业报告撰写助手】
-${REPORT_PROMPT.replace("以下是材料：\n{{content}}", "（使用用户输入的内容）")}
+【任务4：思维导图】${MINDMAP_PROMPT.replace("请基于以下内容输出：\n{{content}}", "").trim()}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-【任务4：信息结构化助手（思维导图）】
-${MINDMAP_PROMPT.replace("请基于以下内容输出：\n{{content}}", "（使用用户输入的内容）")}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-【输出格式】严格输出合法 JSON，不要有任何额外文字：
+【输出格式】严格输出合法 JSON，每个 markdown 字段控制在 400 字以内：
 {
   "title": "精炼标题（40字以内）",
-  "summary": "一句话概括，用于卡片预览",
+  "summary": "一句话概括",
   "tags": ["标签1", "标签2", "标签3"],
-  "summary_markdown": "任务1的完整 Markdown 输出",
-  "analysis_markdown": "任务2的完整 Markdown 输出",
-  "report_markdown": "任务3的完整 Markdown 输出",
-  "mindmap_markdown": "任务4的完整 Markdown 输出",
-  "mindmap_data": {
-    "root": "主题名称",
-    "nodes": [
-      {
-        "id": "1",
-        "label": "一级主题",
-        "children": [
-          { "id": "1-1", "label": "子概念", "children": [] }
-        ]
-      }
-    ]
-  }
+  "summary_markdown": "任务1输出",
+  "analysis_markdown": "任务2输出",
+  "report_markdown": "任务3输出",
+  "mindmap_markdown": "任务4输出",
+  "mindmap_data": { "root": "主题", "nodes": [{ "id": "1", "label": "一级主题", "children": [{ "id": "1-1", "label": "子概念", "children": [] }] }] }
 }`;
 
     const response = await fetch("https://api.enter.pro/code/api/v1/ai/messages", {
@@ -188,7 +130,7 @@ ${MINDMAP_PROMPT.replace("请基于以下内容输出：\n{{content}}", "（使�
         system: systemPrompt,
         messages: [{ role: "user", content: `请分析以下内容：\n\n${rawContent}` }],
         stream: false,
-        max_tokens: 8000,
+        max_tokens: 3000, // Reduced from 8000
       }),
     });
 

@@ -5,57 +5,28 @@ const corsHeaders = {
 
 const DISTILL_SYSTEM = `You are a precision knowledge distillation engine — not a summarizer.
 
-Your task: extract and classify knowledge from raw input into exactly 5 structured layers.
-Each layer must be concise, high-signal, and analytically precise.
-Avoid padding, filler, and restatements. Every bullet should carry weight.
+Extract and classify knowledge from raw input into exactly 5 structured layers.
+Be concise and high-signal. Keep each layer brief (5-7 bullets max).
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-LAYER 1 — FACTS
-Extract verifiable claims, data points, statistics, named entities, and established information.
-No interpretations. Only what is stated or strongly implied as factual.
-Format: bullet list, each starting with a dash.
+LAYER 1 — FACTS: Verifiable claims, data points, statistics. Format: dash bullet list.
+LAYER 2 — VIEWPOINTS: Subjective claims, perspectives, contested assertions. Format: dash bullet list.
+LAYER 3 — METHODS: Processes, frameworks, mental models. Format: numbered list. If none: "No explicit methods identified."
+LAYER 4 — INSIGHTS: Non-obvious patterns, hidden implications, emergent truths. Format: bullet list prefixed with →
+LAYER 5 — NEXT ACTIONS: Concrete executable next steps. Format: numbered list with [ ] prefix.
 
-LAYER 2 — VIEWPOINTS
-Extract subjective claims, perspectives, arguments, and contested assertions.
-Where multiple sides exist, note the contrast. Flag speculative claims with [?].
-Format: bullet list.
-
-LAYER 3 — METHODS / FRAMEWORKS
-Extract processes, techniques, frameworks, mental models, or structured approaches described or implied.
-If none exist, note "No explicit methods identified."
-Format: numbered list with short descriptions.
-
-LAYER 4 — INSIGHTS
-This is the most critical layer. Identify non-obvious patterns, underlying principles, hidden implications, and emergent truths not explicitly stated in the text.
-Ask: what does this reveal that isn't said directly?
-Format: bullet list, each insight prefixed with →
-
-LAYER 5 — NEXT ACTIONS
-Extract concrete, executable next steps a reader could take. Prioritize specificity over generality.
-Format: numbered checklist with [ ] prefix.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-ADDITIONAL FIELDS:
-- title: A sharp, precise title (max 60 chars). No fluff.
-- key_insight: The single most valuable sentence from all 5 layers. This should be the one sentence worth remembering.
-- confidence: 0.0–1.0 score reflecting quality of the source material and reliability of this distillation.
-- source_label: Brief content-type label. One of: Research Paper · Article · Transcript · Personal Note · Technical Doc · Interview · Book Excerpt · Code · Other
-- tags: 3–5 keyword tags for this content (lowercase, no spaces).
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-OUTPUT: Strictly valid JSON. No markdown outside the values. No preamble.
+OUTPUT: Strictly valid JSON only. No preamble. No markdown outside values.
 
 {
-  "title": "...",
-  "source_label": "...",
+  "title": "Sharp title (max 60 chars)",
+  "source_label": "Article",
   "confidence": 0.82,
-  "key_insight": "...",
+  "key_insight": "Single most valuable sentence",
   "tags": ["tag1", "tag2", "tag3"],
-  "facts_markdown": "- fact 1\\n- fact 2",
-  "opinions_markdown": "- viewpoint 1\\n- viewpoint 2",
-  "methods_markdown": "1. Method name — brief description\\n2. ...",
-  "insights_markdown": "→ insight 1\\n→ insight 2",
-  "actions_markdown": "[ ] action 1\\n[ ] action 2"
+  "facts_markdown": "- fact 1\n- fact 2",
+  "opinions_markdown": "- viewpoint 1\n- viewpoint 2",
+  "methods_markdown": "1. Method — description",
+  "insights_markdown": "→ insight 1\n→ insight 2",
+  "actions_markdown": "[ ] action 1\n[ ] action 2"
 }`;
 
 Deno.serve(async (req) => {
@@ -70,7 +41,7 @@ Deno.serve(async (req) => {
     const { content } = await req.json();
     if (!content?.trim()) throw new Error("No content provided");
 
-    const truncated = content.slice(0, 12000);
+    const truncated = content.slice(0, 5000); // Reduced from 12000
 
     const response = await fetch("https://api.enter.pro/code/api/v1/ai/messages", {
       method: "POST",
@@ -83,7 +54,7 @@ Deno.serve(async (req) => {
         system: DISTILL_SYSTEM,
         messages: [{ role: "user", content: `Distill the following content:\n\n${truncated}` }],
         stream: false,
-        max_tokens: 4000,
+        max_tokens: 1500, // Reduced from 4000
       }),
     });
 
