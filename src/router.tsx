@@ -3,6 +3,7 @@ import Auth from "./pages/Auth";
 import NotePage from "./pages/Note";
 import MindMapPage from "./pages/MindMap";
 import NotFound from "./pages/NotFound";
+import Architecture from "./pages/Architecture";
 import { StarMapLayout } from "./components/layout/StarMapLayout";
 
 export const routers = [
@@ -43,6 +44,11 @@ export const routers = [
     ],
   },
   /* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */
+  {
+    path: "/architecture",
+    name: "architecture",
+    element: <Architecture />,
+  },
   {
     path: "*",
     name: "404",
