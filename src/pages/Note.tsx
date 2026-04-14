@@ -13,7 +13,7 @@ import remarkGfm from 'remark-gfm';
 import {
   ArrowLeft, Edit2, Save, Download, MapPin,
   FileText, Copy, Check, X, Sparkles,
-  AlignLeft, Brain, BarChart3, Network
+  AlignLeft, Brain, BarChart3, Network, FlaskConical
 } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
@@ -268,6 +268,16 @@ export default function Note() {
               <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
             ))}
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 border-[rgba(0,255,102,0.25)] text-[#00d070] hover:bg-[rgba(0,255,102,0.08)] hover:border-[rgba(0,255,102,0.45)]"
+            onClick={() => navigate(`/distiller?noteId=${note.id}`)}
+            title="Distill this note into layered insights"
+          >
+            <FlaskConical className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Distill</span>
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="gap-1.5">

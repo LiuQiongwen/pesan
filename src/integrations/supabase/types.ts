@@ -3148,6 +3148,70 @@ export type Database = {
         }
         Relationships: []
       }
+      distillations: {
+        Row: {
+          actions_markdown: string | null
+          confidence: number | null
+          created_at: string | null
+          facts_markdown: string | null
+          id: string
+          insights_markdown: string | null
+          key_insight: string | null
+          methods_markdown: string | null
+          note_id: string | null
+          opinions_markdown: string | null
+          source_label: string | null
+          source_text: string | null
+          tags: string[] | null
+          title: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          actions_markdown?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          facts_markdown?: string | null
+          id?: string
+          insights_markdown?: string | null
+          key_insight?: string | null
+          methods_markdown?: string | null
+          note_id?: string | null
+          opinions_markdown?: string | null
+          source_label?: string | null
+          source_text?: string | null
+          tags?: string[] | null
+          title?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          actions_markdown?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          facts_markdown?: string | null
+          id?: string
+          insights_markdown?: string | null
+          key_insight?: string | null
+          methods_markdown?: string | null
+          note_id?: string | null
+          opinions_markdown?: string | null
+          source_label?: string | null
+          source_text?: string | null
+          tags?: string[] | null
+          title?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "distillations_note_id_fkey"
+            columns: ["note_id"]
+            referencedRelation: "notes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notes: {
         Row: {
           analysis_content: Json | null

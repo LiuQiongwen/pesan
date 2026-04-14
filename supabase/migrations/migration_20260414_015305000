@@ -1,0 +1,28 @@
+
+CREATE TABLE distillations (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  note_id UUID REFERENCES notes(id) ON DELETE SET NULL,
+  title TEXT,
+  source_text TEXT,
+  source_label TEXT,
+  confidence DECIMAL(3,2),
+  key_insight TEXT,
+  facts_markdown TEXT,
+  opinions_markdown TEXT,
+  methods_markdown TEXT,
+  insights_markdown TEXT,
+  actions_markdown TEXT,
+  tags TEXT[] DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE distillations ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users manage their distillations"
+  ON distillations FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+ALTER PUBLICATION supabase_realtime ADD TABLE distillations;

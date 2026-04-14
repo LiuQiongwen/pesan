@@ -5,6 +5,7 @@ import Analyze from "./pages/Analyze";
 import Library from "./pages/Library";
 import NotePage from "./pages/Note";
 import MindMapPage from "./pages/MindMap";
+import Distiller from "./pages/Distiller";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import { AppLayout } from "./components/layout/AppLayout";
@@ -53,6 +54,11 @@ export const routers = [
         path: "mindmap/:id",
         name: "mindmap",
         element: <MindMapPage />,
+      },
+      {
+        path: "distiller",
+        name: "distiller",
+        element: <Distiller />,
       },
       {
         path: "settings",
