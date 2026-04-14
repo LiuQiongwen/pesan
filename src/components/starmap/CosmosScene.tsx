@@ -12,9 +12,9 @@
  * those go through the normal React reconciler and the data-* attributes are ignored.
  */
 
-import { useRef, useMemo, useState, useCallback, useEffect } from 'react';
+import { useRef, useMemo, useState, useCallback, useEffect, createElement } from 'react';
 import { useThree, useFrame }    from '@react-three/fiber';
-import { Stars, OrbitControls, Html } from '@react-three/drei';
+import { OrbitControls, Html } from '@react-three/drei';
 import { EffectComposer, Bloom }  from '@react-three/postprocessing';
 import * as THREE from 'three';
 
@@ -83,6 +83,29 @@ function ImperativeCore({
     const p3      = new THREE.PointLight(0x66f0ff, 0.4, 150, 2);
     p3.position.set(-50, -20, -30);
     group.add(ambient, p1, p2, p3);
+
+    // ── Star field (imperative — avoids <Stars> JSX prop-spreading bug) ─────
+    const starCount = 9000;
+    const starPositions = new Float32Array(starCount * 3);
+    const starColors    = new Float32Array(starCount * 3);
+    for (let i = 0; i < starCount; i++) {
+      const r     = 280 + Math.random() * 200;
+      const theta = Math.acos(1 - 2 * Math.random());
+      const phi   = 2 * Math.PI * Math.random();
+      starPositions[i * 3]     = r * Math.sin(theta) * Math.cos(phi);
+      starPositions[i * 3 + 1] = r * Math.sin(theta) * Math.sin(phi);
+      starPositions[i * 3 + 2] = r * Math.cos(theta);
+      const c = new THREE.Color().setHSL(0.58 + Math.random() * 0.10, 0.25, 0.65 + Math.random() * 0.35);
+      starColors[i * 3] = c.r; starColors[i * 3 + 1] = c.g; starColors[i * 3 + 2] = c.b;
+    }
+    const starGeo = new THREE.BufferGeometry();
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+    starGeo.setAttribute('color',    new THREE.BufferAttribute(starColors,    3));
+    const starMat = new THREE.PointsMaterial({
+      size: 0.28, vertexColors: true, sizeAttenuation: true,
+      transparent: true, opacity: 0.80, depthWrite: false,
+    });
+    group.add(new THREE.Points(starGeo, starMat));
 
     // ── Galaxy cluster halos ────────────────────────────────────────────────
     layout.clusters.forEach(cluster => {
@@ -367,7 +390,6 @@ export function CosmosScene({
       />
 
       {/* ── Background stars (React component — safe) ── */}
-      <Stars radius={380} depth={100} count={9000} factor={4.5} saturation={0.3} fade speed={0.4} />
 
       {/* ── Cluster labels (Html — safe) ── */}
       {layout.clusters.map(c => <ClusterLabel key={c.tag} cluster={c} />)}
@@ -425,29 +447,24 @@ export function CosmosScene({
         );
       })}
 
-      {/* ── Orbit controls (React component — safe) ── */}
-      <OrbitControls
-        enablePan
-        enableZoom
-        enableRotate
-        autoRotate
-        autoRotateSpeed={0.10}
-        zoomSpeed={0.7}
-        panSpeed={0.6}
-        minDistance={8}
-        maxDistance={180}
-        makeDefault
-      />
+      {/* ── Orbit controls — createElement avoids babel data-source-* injection ── */}
+      {createElement(OrbitControls, {
+        enablePan: true, enableZoom: true, enableRotate: true,
+        autoRotate: true, autoRotateSpeed: 0.10,
+        zoomSpeed: 0.7, panSpeed: 0.6,
+        minDistance: 8, maxDistance: 180,
+        makeDefault: true,
+      })}
 
-      {/* ── Post-processing bloom (React component — safe) ── */}
-      <EffectComposer>
-        <Bloom
-          luminanceThreshold={0.18}
-          luminanceSmoothing={0.7}
-          intensity={0.65}
-          mipmapBlur
-        />
-      </EffectComposer>
+      {/* ── Post-processing bloom — createElement avoids babel data-source-* injection ── */}
+      {createElement(EffectComposer, {},
+        createElement(Bloom, {
+          luminanceThreshold: 0.18,
+          luminanceSmoothing: 0.7,
+          intensity: 0.65,
+          mipmapBlur: true,
+        })
+      )}
     </>
   );
 }
