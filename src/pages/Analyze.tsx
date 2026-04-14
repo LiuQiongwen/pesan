@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useAnalysis } from '@/hooks/useNotes';
+import { useT, useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,24 +22,11 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).href;
 
-const tabs: { type: SourceType; icon: typeof Globe; label: string; placeholder: string }[] = [
-  { type: 'url', icon: Globe, label: '网站', placeholder: 'https://example.com 输入网址，AI 将抓取并分析网页内容' },
-  { type: 'text', icon: Type, label: '文字', placeholder: '将文章、段落、笔记等任意文字内容粘贴至此处...' },
-  { type: 'file', icon: FileIcon, label: '文件', placeholder: '' },
-  { type: 'image', icon: Image, label: '图片', placeholder: '' },
-  { type: 'video', icon: Video, label: '视频', placeholder: 'https://youtube.com/watch?v=... 输入视频链接（YouTube等）' },
-];
+const tabIcons: Record<SourceType, typeof Globe> = {
+  url: Globe, text: Type, file: FileIcon, image: Image, video: Video,
+};
 
-const analysisSteps = [
-  { icon: ScanText,    label: '解析输入内容', desc: '读取并预处理输入数据'     },
-  { icon: FileSearch,  label: '提取关键信息', desc: '识别核心实体与数据'       },
-  { icon: Brain,       label: '深度分析观点', desc: '理解主要论点与立场'       },
-  { icon: Scale,       label: '批判性思考',   desc: '评估内容优点与局限'       },
-  { icon: Lightbulb,   label: '生成创新洞见', desc: '提炼独特视角与延伸'       },
-  { icon: Network,     label: '构建思维导图', desc: '建立知识节点与关联'       },
-  { icon: ListTree,    label: '整理知识脉络', desc: '梳理逻辑结构与层次'       },
-  { icon: FileText,    label: '生成完整报告', desc: '输出结构化分析文档'       },
-];
+const stepIcons = [ScanText, FileSearch, Brain, Scale, Lightbulb, Network, ListTree, FileText];
 
 function formatElapsed(seconds: number) {
   if (seconds < 60) return `${seconds}s`;
@@ -66,6 +54,33 @@ export default function Analyze() {
   const { user } = useAuth();
   const { createAnalysis, updateAnalysisStatus, saveNote } = useAnalysis(user?.id);
   const navigate = useNavigate();
+  const t = useT();
+  const { lang } = useLanguage();
+
+  const tabs = [
+    { type: 'url'   as SourceType, icon: tabIcons.url,   label: t('analyze.tab.url'),   placeholder: t('analyze.url.placeholder') },
+    { type: 'text'  as SourceType, icon: tabIcons.text,  label: t('analyze.tab.text'),  placeholder: t('analyze.text.placeholder') },
+    { type: 'file'  as SourceType, icon: tabIcons.file,  label: t('analyze.tab.file'),  placeholder: '' },
+    { type: 'image' as SourceType, icon: tabIcons.image, label: t('analyze.tab.image'), placeholder: '' },
+    { type: 'video' as SourceType, icon: tabIcons.video, label: t('analyze.tab.video'), placeholder: lang === 'zh' ? 'https://youtube.com/watch?v=... 输入视频链接' : 'https://youtube.com/watch?v=... Video URL' },
+  ];
+
+  const analysisStepLabels: { zh: string; en: string; desc_zh: string; desc_en: string }[] = [
+    { zh: '解析输入内容', en: 'Parse Input',       desc_zh: '读取并预处理输入数据', desc_en: 'Read and preprocess input' },
+    { zh: '提取关键信息', en: 'Extract Key Info',  desc_zh: '识别核心实体与数据',   desc_en: 'Identify key entities and data' },
+    { zh: '深度分析观点', en: 'Deep Analysis',     desc_zh: '理解主要论点与立场',   desc_en: 'Understand main arguments' },
+    { zh: '批判性思考',   en: 'Critical Thinking', desc_zh: '评估内容优点与局限',   desc_en: 'Evaluate strengths & limits' },
+    { zh: '生成创新洞见', en: 'Generate Insights', desc_zh: '提炼独特视角与延伸',   desc_en: 'Extract unique perspectives' },
+    { zh: '构建思维导图', en: 'Build Mind Map',    desc_zh: '建立知识节点与关联',   desc_en: 'Build knowledge nodes' },
+    { zh: '整理知识脉络', en: 'Organize Knowledge',desc_zh: '梳理逻辑结构与层次',   desc_en: 'Structure logical hierarchy' },
+    { zh: '生成完整报告', en: 'Generate Report',   desc_zh: '输出结构化分析文档',   desc_en: 'Output structured analysis' },
+  ];
+
+  const analysisSteps = analysisStepLabels.map((s, i) => ({
+    icon: stepIcons[i],
+    label: lang === 'zh' ? s.zh : s.en,
+    desc:  lang === 'zh' ? s.desc_zh : s.desc_en,
+  }));
 
   useEffect(() => {
     return () => {
@@ -219,8 +234,8 @@ export default function Analyze() {
                 <Sparkles className="w-5 h-5 text-white animate-pulse" />
               </div>
               <div>
-                <h2 className="font-bold text-foreground text-lg">AI 深度分析中</h2>
-                <p className="text-xs text-muted-foreground">Claude Sonnet 4.5 · 正在处理</p>
+                <h2 className="font-bold text-foreground text-lg">{t('analyze.analyzing.title')}</h2>
+                <p className="text-xs text-muted-foreground">{t('analyze.analyzing.sub')}</p>
               </div>
             </div>
             <div className="flex items-center gap-1.5 text-muted-foreground text-sm bg-muted px-3 py-1.5 rounded-full">
@@ -244,7 +259,8 @@ export default function Analyze() {
               />
             </div>
             <p className="text-xs text-muted-foreground mt-1.5 text-right">
-              {Math.min(stepIndex + 1, analysisSteps.length)} / {analysisSteps.length} 步骤完成
+              {Math.min(stepIndex + 1, analysisSteps.length)} / {analysisSteps.length}{' '}
+              {lang === 'zh' ? '步骤完成' : 'steps done'}
             </p>
           </div>
 
@@ -292,7 +308,7 @@ export default function Analyze() {
           </div>
 
           <p className="text-center text-xs text-muted-foreground">
-            分析通常需要 20–60 秒，请耐心等待
+            {t('analyze.hint')}
           </p>
         </div>
       </div>
@@ -304,8 +320,8 @@ export default function Analyze() {
       <div className="max-w-3xl mx-auto w-full p-8 flex flex-col flex-1">
         {/* Header */}
         <div className="mb-8 animate-fade-up">
-          <h1 className="text-2xl font-bold text-foreground">新建分析</h1>
-          <p className="text-muted-foreground mt-1">输入任意内容，AI 将自动提炼洞见并整理知识</p>
+          <h1 className="text-2xl font-bold text-foreground">{t('analyze.title')}</h1>
+          <p className="text-muted-foreground mt-1">{t('analyze.subtitle')}</p>
         </div>
 
         {/* Tab switcher */}
@@ -364,9 +380,9 @@ export default function Analyze() {
                 className="hidden"
               />
               {fileParsing ? (
-                <div className="w-full h-48 border border-border rounded-xl flex flex-col items-center justify-center gap-3 text-muted-foreground bg-muted/30">
+                  <div className="w-full h-48 border border-border rounded-xl flex flex-col items-center justify-center gap-3 text-muted-foreground bg-muted/30">
                   <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                  <p className="text-sm font-medium">正在解析文件内容...</p>
+                  <p className="text-sm font-medium">{lang === 'zh' ? '正在解析文件内容...' : 'Parsing file...'}</p>
                 </div>
               ) : !fileContent ? (
                 <button
@@ -467,7 +483,7 @@ export default function Analyze() {
             className="mt-2 h-12 bg-gradient-primary hover:opacity-90 transition-opacity text-base"
           >
             <Sparkles className="w-5 h-5 mr-2" />
-            开始 AI 深度分析
+            {lang === 'zh' ? '开始 AI 深度分析' : 'Start AI Analysis'}
             <ArrowRight className="w-5 h-5 ml-2" />
           </Button>
         </div>

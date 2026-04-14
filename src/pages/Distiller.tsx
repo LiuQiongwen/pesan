@@ -10,6 +10,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useNotes } from '@/hooks/useNotes';
+import { useT, useLanguage } from '@/contexts/LanguageContext';
 import { useDistillations, DistillResult } from '@/hooks/useDistillations';
 
 // Design tokens
@@ -58,6 +59,8 @@ export default function Distiller() {
   const [searchParams] = useSearchParams();
   const navigate       = useNavigate();
   const noteId         = searchParams.get('noteId');
+  const t              = useT();
+  const { lang }       = useLanguage();
 
   const [sourceText, setSourceText] = useState('');
   const [noteTitle, setNoteTitle]   = useState('');
@@ -185,20 +188,20 @@ export default function Distiller() {
         {/* LEFT: Source */}
         <div style={{ width: '40%', minWidth: 300, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${C.border}`, background: C.surface, flexShrink: 0 }}>
           <div style={{ padding: '14px 20px 10px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-            <div style={{ fontFamily: MONO, fontSize: 10, color: C.textMute, letterSpacing: '0.10em', marginBottom: 4 }}>SOURCE CONTENT</div>
+            <div style={{ fontFamily: MONO, fontSize: 10, color: C.textMute, letterSpacing: '0.10em', marginBottom: 4 }}>{lang === 'zh' ? '内容来源' : 'SOURCE CONTENT'}</div>
             {noteId
               ? <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'rgba(102,227,255,0.65)', background: 'rgba(102,227,255,0.07)', border: '1px solid rgba(102,227,255,0.15)', borderRadius: 3, padding: '2px 7px', letterSpacing: '0.08em' }}>FROM NOTE</span>
+                  <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'rgba(102,227,255,0.65)', background: 'rgba(102,227,255,0.07)', border: '1px solid rgba(102,227,255,0.15)', borderRadius: 3, padding: '2px 7px', letterSpacing: '0.08em' }}>{lang === 'zh' ? '来自笔记' : 'FROM NOTE'}</span>
                   {noteTitle && <span style={{ fontFamily: INTER, fontSize: 12, color: C.textSub }}>{noteTitle}</span>}
                 </div>
-              : <div style={{ fontFamily: INTER, fontSize: 12, color: C.textSub }}>Paste any content to distill</div>
+              : <div style={{ fontFamily: INTER, fontSize: 12, color: C.textSub }}>{lang === 'zh' ? '粘贴任意内容进行提炼' : 'Paste any content to distill'}</div>
             }
           </div>
 
           <textarea
             value={sourceText}
             onChange={e => setSourceText(e.target.value)}
-            placeholder="Paste article, transcript, note, PDF content, research, or any text — the distiller extracts what matters."
+            placeholder={lang === 'zh' ? '粘贴文章、笔记、PDF内容、研究材料等——提炼器将萃取精华。' : "Paste article, transcript, note, PDF content, research, or any text — the distiller extracts what matters."}
             style={{ flex: 1, resize: 'none', background: 'transparent', border: 'none', outline: 'none', padding: '16px 20px', fontFamily: MONO, fontSize: 12, color: C.text, lineHeight: 1.65, overflowY: 'auto' }}
             disabled={loading}
           />

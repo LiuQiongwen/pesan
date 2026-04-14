@@ -3,18 +3,13 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ZoomIn, X, ChevronRight, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useT, useLanguage } from '@/contexts/LanguageContext';
 
 const C = { bg:'#070809', surface:'#0e1012', border:'#1e2226', text:'#dde1e8', textSub:'#7a7f8a', textMute:'#4a4f5a', accent:'#00ff66', amber:'#ffaa44', cyan:'#66e3ff' };
 const MONO = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
 
-const LEVELS = [
-  { n:1, name:'ATOM',    desc:'One sentence', color:'#7a7f8a' },
-  { n:2, name:'UNIT',    desc:'Core idea',    color:'#66e3ff' },
-  { n:3, name:'CONCEPT', desc:'Full note',    color:'#00ff66' },
-  { n:4, name:'CLUSTER', desc:'Note + related', color:'#ffaa44' },
-  { n:5, name:'DOMAIN',  desc:'Domain worldview', color:'#b49cff' },
-];
+const LEVEL_COLORS = ['#7a7f8a','#66e3ff','#00ff66','#ffaa44','#b49cff'];
 
 interface Note {
   id: string;
@@ -51,6 +46,15 @@ export default function KnowledgeZoom({ note, relatedNotes, onClose }: Props) {
   const [level, setLevel]     = useState(3);
   const [aiCache, setAiCache] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(false);
+  const t = useT();
+
+  const LEVELS = [
+    { n:1, name:t('zoom.level.1.name'), desc:t('zoom.level.1.desc'), color:LEVEL_COLORS[0] },
+    { n:2, name:t('zoom.level.2.name'), desc:t('zoom.level.2.desc'), color:LEVEL_COLORS[1] },
+    { n:3, name:t('zoom.level.3.name'), desc:t('zoom.level.3.desc'), color:LEVEL_COLORS[2] },
+    { n:4, name:t('zoom.level.4.name'), desc:t('zoom.level.4.desc'), color:LEVEL_COLORS[3] },
+    { n:5, name:t('zoom.level.5.name'), desc:t('zoom.level.5.desc'), color:LEVEL_COLORS[4] },
+  ];
 
   const content = note.content_markdown || note.summary || '';
 
@@ -92,7 +96,7 @@ export default function KnowledgeZoom({ note, relatedNotes, onClose }: Props) {
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 16px', borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
           <ZoomIn size={14} color={cfg.color} />
-          <span style={{ fontFamily:MONO, fontSize:10, fontWeight:700, color:cfg.color, letterSpacing:'0.1em' }}>KNOWLEDGE ZOOM</span>
+          <span style={{ fontFamily:MONO, fontSize:10, fontWeight:700, color:cfg.color, letterSpacing:'0.1em' }}>{t('zoom.title')}</span>
           <span style={{ fontFamily:MONO, fontSize:9, color:C.textMute }}>· {note.title.slice(0,30)}</span>
         </div>
         <div role="button" onClick={onClose} style={{ cursor:'pointer', padding:4, opacity:0.5 }} onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.opacity='1';}} onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.opacity='0.5';}}>
@@ -119,7 +123,7 @@ export default function KnowledgeZoom({ note, relatedNotes, onClose }: Props) {
           <ChevronRight size={9} color={C.textMute} />
           <span style={{ fontFamily:MONO, fontSize:9, color:C.textMute }}>{cfg.desc}</span>
           {(level === 4 || level === 5) && relatedNotes.length > 0 && (
-            <span style={{ fontFamily:MONO, fontSize:9, color:C.textMute }}>· {relatedNotes.length} related notes</span>
+            <span style={{ fontFamily:MONO, fontSize:9, color:C.textMute }}>· {relatedNotes.length} {t('zoom.relatedNotes')}</span>
           )}
         </div>
       </div>
@@ -129,12 +133,12 @@ export default function KnowledgeZoom({ note, relatedNotes, onClose }: Props) {
         {loading ? (
           <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'60%', gap:12 }}>
             <Loader2 size={20} color={cfg.color} style={{ animation:'spin 1s linear infinite' }} />
-            <span style={{ fontFamily:MONO, fontSize:10, color:C.textMute }}>Synthesizing {cfg.name.toLowerCase()}…</span>
+            <span style={{ fontFamily:MONO, fontSize:10, color:C.textMute }}>{t('zoom.synthesizing')}</span>
           </div>
         ) : !displayContent ? (
           <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'60%', gap:10, textAlign:'center' }}>
-            <div style={{ fontFamily:MONO, fontSize:11, color:C.textMute }}>Click to generate {cfg.name.toLowerCase()} synthesis</div>
-            <button onClick={()=>handleLevel(level)} style={{ padding:'7px 16px', borderRadius:4, background:`${cfg.color}12`, border:`1px solid ${cfg.color}30`, cursor:'pointer', fontFamily:MONO, fontSize:10, color:cfg.color }}>GENERATE</button>
+            <div style={{ fontFamily:MONO, fontSize:11, color:C.textMute }}>{t('zoom.clickGenerate')}</div>
+            <button onClick={()=>handleLevel(level)} style={{ padding:'7px 16px', borderRadius:4, background:`${cfg.color}12`, border:`1px solid ${cfg.color}30`, cursor:'pointer', fontFamily:MONO, fontSize:10, color:cfg.color }}>{t('zoom.generate')}</button>
           </div>
         ) : (
           <div style={{ fontFamily:INTER, fontSize:13, color:C.text, lineHeight:1.7 }} className="zoom-prose">

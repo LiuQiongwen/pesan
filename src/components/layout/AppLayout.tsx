@@ -1,11 +1,13 @@
 import { useEffect } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { useT } from '@/contexts/LanguageContext';
 import { Sidebar } from './Sidebar';
 
 export function AppLayout() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const t = useT();
 
   useEffect(() => {
     if (!loading && !user) {
@@ -20,7 +22,7 @@ export function AppLayout() {
           <div className="w-12 h-12 rounded-xl bg-gradient-primary animate-pulse-glow flex items-center justify-center">
             <span className="text-white font-bold text-sm">Pe</span>
           </div>
-          <p className="text-muted-foreground text-sm animate-fade-in">加载中...</p>
+          <p className="text-muted-foreground text-sm animate-fade-in">{t('layout.loading')}</p>
         </div>
       </div>
     );

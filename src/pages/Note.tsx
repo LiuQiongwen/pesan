@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useNotes } from '@/hooks/useNotes';
 import { useMemoryWake } from '@/hooks/useMemoryWake';
+import { useT, useLanguage } from '@/contexts/LanguageContext';
 import { Note as NoteType } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -25,18 +26,11 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { zhCN } from 'date-fns/locale';
+import { zhCN, enUS } from 'date-fns/locale';
 import { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
 type TabId = 'summary' | 'analysis' | 'report' | 'mindmap';
-
-const tabs: { id: TabId; label: string; icon: typeof FileText; desc: string }[] = [
-  { id: 'summary',  label: '摘要',    icon: AlignLeft, desc: '核心内容概览' },
-  { id: 'analysis', label: '深度分析', icon: Brain,    desc: '逻辑结构与洞见' },
-  { id: 'report',   label: '报告',    icon: BarChart3, desc: '正式分析报告' },
-  { id: 'mindmap',  label: '思维导图', icon: Network,  desc: '结构化知识图谱' },
-];
 
 // ── Mind map helpers ──────────────────────────────────────────────────────
 interface MindNode { id: string; label: string; children?: MindNode[] }
@@ -108,6 +102,7 @@ function MarkdownPanel({
   const [draft, setDraft] = useState(content);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
+  const t = useT();
 
   // sync when parent content changes
   useEffect(() => { setDraft(content); }, [content]);
@@ -118,13 +113,13 @@ function MarkdownPanel({
     onSaved(fieldKey, draft);
     setSaving(false);
     setEditing(false);
-    toast.success('已保存');
+    toast.success(t('note.saved'));
   };
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(editing ? draft : content);
     setCopied(true);
-    toast.success('已复制到剪贴板');
+    toast.success(t('common.copied'));
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -135,24 +130,24 @@ function MarkdownPanel({
         <div className="flex items-center gap-2">
           {!editing ? (
             <Button variant="ghost" size="sm" onClick={() => setEditing(true)} className="gap-1.5 text-xs">
-              <Edit2 className="w-3 h-3" />编辑
+              <Edit2 className="w-3 h-3" />{t('common.edit')}
             </Button>
           ) : (
             <>
               <Button variant="ghost" size="sm" onClick={() => { setDraft(content); setEditing(false); }} className="gap-1.5 text-xs">
-                <X className="w-3 h-3" />取消
+                <X className="w-3 h-3" />{t('common.cancel')}
               </Button>
               <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1.5 text-xs bg-gradient-primary hover:opacity-90">
-                <Save className="w-3 h-3" />{saving ? '保存中…' : '保存'}
+                <Save className="w-3 h-3" />{saving ? t('common.saving') : t('common.save')}
               </Button>
             </>
           )}
         </div>
         <div className="flex items-center gap-1.5">
-          {editing && <span className="text-xs text-muted-foreground tabular-nums">{draft.length} 字符</span>}
+          {editing && <span className="text-xs text-muted-foreground tabular-nums">{draft.length} {t('note.charCount')}</span>}
           <Button variant="ghost" size="sm" onClick={handleCopy} className="gap-1.5 text-xs">
             {copied ? <Check className="w-3 h-3 text-primary" /> : <Copy className="w-3 h-3" />}
-            {copied ? '已复制' : '复制 MD'}
+            {copied ? t('common.copied') : t('common.copy')}
           </Button>
         </div>
       </div>
@@ -165,14 +160,13 @@ function MarkdownPanel({
               value={draft}
               onChange={e => setDraft(e.target.value)}
               className="h-full font-mono text-sm resize-none bg-card min-h-[500px]"
-              placeholder="在此输入 Markdown 内容..."
             />
           </div>
         ) : (
           <div ref={reportRef} className="max-w-3xl mx-auto px-6 py-8">
             <div className="prose-ping">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {content || '*暂无内容，请重新分析*'}
+                {content || `*${t('common.noContent')}*`}
               </ReactMarkdown>
             </div>
           </div>
@@ -189,6 +183,15 @@ export default function Note() {
   const { getNote, updateNote, notes: allNotes } = useNotes(user?.id);
   const navigate = useNavigate();
   const { items: wakeItems, loading: wakeLoading, checkForNote, dismiss: dismissWake } = useMemoryWake(user?.id);
+  const t = useT();
+  const { lang } = useLanguage();
+
+  const tabs: { id: TabId; label: string; icon: typeof FileText; desc: string }[] = [
+    { id: 'summary',  label: t('note.tab.summary'),  icon: AlignLeft, desc: t('note.tab.summary.desc') },
+    { id: 'analysis', label: t('note.tab.analysis'), icon: Brain,     desc: t('note.tab.analysis.desc') },
+    { id: 'report',   label: t('note.tab.report'),   icon: BarChart3, desc: t('note.tab.report.desc') },
+    { id: 'mindmap',  label: t('note.tab.mindmap'),  icon: Network,   desc: t('note.tab.mindmap.desc') },
+  ];
 
   const [note, setNote]           = useState<NoteType | null>(null);
   const [loading, setLoading]     = useState(true);
@@ -258,7 +261,7 @@ export default function Note() {
           <div className="w-10 h-10 rounded-xl bg-gradient-primary mx-auto flex items-center justify-center">
             <Sparkles className="w-5 h-5 text-white animate-pulse" />
           </div>
-          <p className="text-muted-foreground text-sm">加载笔记中…</p>
+          <p className="text-muted-foreground text-sm">{t('note.loading')}</p>
         </div>
       </div>
     );
@@ -267,8 +270,8 @@ export default function Note() {
   if (!note) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
-        <p className="text-muted-foreground">笔记不存在</p>
-        <Button variant="outline" onClick={() => navigate('/library')}>返回知识库</Button>
+        <p className="text-muted-foreground">{t('note.notFound')}</p>
+        <Button variant="outline" onClick={() => navigate('/library')}>{t('note.backToLibrary')}</Button>
       </div>
     );
   }
@@ -282,10 +285,10 @@ export default function Note() {
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <div className="min-w-0">
-            <h1 className="font-semibold text-foreground text-base truncate">{note.title || '未命名笔记'}</h1>
+            <h1 className="font-semibold text-foreground text-base truncate">{note.title || t('common.untitled')}</h1>
             <p className="text-xs text-muted-foreground">
-              {note.created_at ? format(new Date(note.created_at), 'PPP', { locale: zhCN }) : ''}
-              {note.is_edited && <span className="ml-2 text-primary">· 已编辑</span>}
+              {note.created_at ? format(new Date(note.created_at), 'PPP', { locale: lang === 'zh' ? zhCN : enUS }) : ''}
+              {note.is_edited && <span className="ml-2 text-primary">{t('note.edited')}</span>}
             </p>
           </div>
         </div>
@@ -304,39 +307,39 @@ export default function Note() {
             title="Distill this note into layered insights"
           >
             <FlaskConical className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Distill</span>
+            <span className="hidden sm:inline">{t('note.distill')}</span>
           </Button>
           <Button
             variant="outline"
             size="sm"
             className="gap-1.5 border-[rgba(102,227,255,0.20)] text-[#66e3ff] hover:bg-[rgba(102,227,255,0.07)] hover:border-[rgba(102,227,255,0.40)]"
             onClick={() => { setShowZoom(v => !v); setShowPersp(false); }}
-            title="Knowledge Zoom — view at different abstraction levels"
+            title="Knowledge Zoom"
           >
             <ZoomIn className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Zoom</span>
+            <span className="hidden sm:inline">{t('note.zoom')}</span>
           </Button>
           <Button
             variant="outline"
             size="sm"
             className="gap-1.5 border-[rgba(180,156,255,0.20)] text-[#b49cff] hover:bg-[rgba(180,156,255,0.07)] hover:border-[rgba(180,156,255,0.40)]"
             onClick={() => { setShowPersp(v => !v); setShowZoom(false); }}
-            title="Perspective Switch — reframe through different lenses"
+            title="Perspective Switch"
           >
             <Repeat2 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Lens</span>
+            <span className="hidden sm:inline">{t('note.lens')}</span>
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="gap-1.5">
                 <Download className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">下载</span>
+                <span className="hidden sm:inline">{t('common.export')}</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => handleExport('md')}>Markdown (.md)</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExport('pdf')}>PDF 文档</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExport('word')}>Word (.docx)</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport('md')}>{t('note.export.md')}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport('pdf')}>{t('note.export.pdf')}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport('word')}>{t('note.export.word')}</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -406,7 +409,7 @@ export default function Note() {
                   mindmapView === 'visual' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
                 )}
               >
-                可视化图谱
+                {t('note.mindmap.visual')}
               </button>
               <button
                 onClick={() => setMindmapView('text')}
@@ -415,7 +418,7 @@ export default function Note() {
                   mindmapView === 'text' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
                 )}
               >
-                层级大纲
+                {t('note.mindmap.text')}
               </button>
             </div>
 
@@ -434,7 +437,7 @@ export default function Note() {
                 ) : (
                   <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
                     <MapPin className="w-10 h-10 opacity-30" />
-                    <p>暂无可视化数据</p>
+                    <p>{t('note.mindmap.noData')}</p>
                   </div>
                 )}
               </div>

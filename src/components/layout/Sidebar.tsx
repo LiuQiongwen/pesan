@@ -1,25 +1,28 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, BookOpen, Settings, LogOut, Brain, Plus, FlaskConical, CheckSquare, Scan, Sparkles } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Settings, LogOut, Brain, Plus, FlaskConical, CheckSquare, Scan, Sparkles, Languages } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
+import { useLanguage, useT } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
-const navItems = [
-  { to: '/dashboard',    icon: LayoutDashboard, label: '总览' },
-  { to: '/analyze',      icon: Brain,            label: '分析' },
-  { to: '/distiller',    icon: FlaskConical,     label: 'Distiller' },
-  { to: '/actions',      icon: CheckSquare,      label: 'Action Layer' },
-  { to: '/mirror',       icon: Scan,             label: 'Cognitive Mirror' },
-  { to: '/anticipation', icon: Sparkles,         label: 'Anticipation' },
-  { to: '/library',      icon: BookOpen,         label: '知识库' },
-  { to: '/settings',     icon: Settings,         label: '设置' },
-];
-
 export function Sidebar() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const { lang, setLang } = useLanguage();
+  const t = useT();
+
+  const navItems = [
+    { to: '/dashboard',    icon: LayoutDashboard, label: t('sidebar.home') },
+    { to: '/analyze',      icon: Brain,            label: t('sidebar.analyze') },
+    { to: '/distiller',    icon: FlaskConical,     label: t('sidebar.distiller') },
+    { to: '/actions',      icon: CheckSquare,      label: t('sidebar.actions') },
+    { to: '/mirror',       icon: Scan,             label: t('sidebar.mirror') },
+    { to: '/anticipation', icon: Sparkles,         label: t('sidebar.anticipation') },
+    { to: '/library',      icon: BookOpen,         label: t('sidebar.library') },
+    { to: '/settings',     icon: Settings,         label: t('sidebar.settings') },
+  ];
 
   const handleSignOut = async () => {
     await signOut();
@@ -47,7 +50,7 @@ export function Sidebar() {
             <Plus className="w-5 h-5" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="right">新建分析</TooltipContent>
+        <TooltipContent side="right">{t('sidebar.newAnalysis')}</TooltipContent>
       </Tooltip>
 
       <div className="w-8 h-px bg-sidebar-border" />
@@ -76,8 +79,25 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* Bottom: user avatar + logout */}
+      {/* Bottom: language toggle + logout + avatar */}
       <div className="flex flex-col items-center gap-2 mt-auto">
+        {/* Language toggle */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="w-10 h-10 rounded-xl text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
+            >
+              <Languages className="w-4 h-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {lang === 'zh' ? 'Switch to English' : '切换为中文'}
+          </TooltipContent>
+        </Tooltip>
+
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -89,7 +109,7 @@ export function Sidebar() {
               <LogOut className="w-4 h-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="right">退出登录</TooltipContent>
+          <TooltipContent side="right">{t('sidebar.signOut')}</TooltipContent>
         </Tooltip>
 
         <Avatar className="w-8 h-8 cursor-pointer" onClick={() => navigate('/settings')}>

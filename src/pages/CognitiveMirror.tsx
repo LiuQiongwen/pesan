@@ -5,6 +5,7 @@ import { Scan, RefreshCw, AlertTriangle, TrendingUp, Eye, Zap, Activity, Chevron
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useNotes } from '@/hooks/useNotes';
+import { useT, useLanguage } from '@/contexts/LanguageContext';
 import { useCognitiveReports, CognitiveReport } from '@/hooks/useCognitiveReports';
 import { format } from 'date-fns';
 
@@ -69,9 +70,23 @@ export default function CognitiveMirror() {
   const { user }     = useAuth();
   const { notes }    = useNotes(user?.id);
   const { latest, loading: reportLoading, save } = useCognitiveReports(user?.id);
+  const t = useT();
+  const { lang } = useLanguage();
   const [running, setRunning]  = useState(false);
   const [step, setStep]        = useState(0);
   const [err, setErr]          = useState('');
+
+  const STEPS_BILINGUAL = [
+    { zh: '扫描知识库…',    en: 'Scanning knowledge corpus…' },
+    { zh: '绘制概念图…',    en: 'Mapping concept topology…' },
+    { zh: '识别主导主题…',  en: 'Identifying dominant themes…' },
+    { zh: '检测认知模式…',  en: 'Detecting cognitive patterns…' },
+    { zh: '浮现盲区…',      en: 'Surfacing blind spots…' },
+    { zh: '分析知识饮食…',  en: 'Analyzing intellectual diet…' },
+    { zh: '撰写镜像报告…',  en: 'Composing mirror report…' },
+    { zh: '校准置信度…',    en: 'Calibrating confidence…' },
+  ];
+  const currentStep = STEPS_BILINGUAL[step]?.[lang] || STEPS_BILINGUAL[step]?.en || '';
 
   const runAnalysis = async () => {
     if (!notes?.length) { setErr('No notes to analyze.'); return; }
@@ -111,12 +126,12 @@ export default function CognitiveMirror() {
             <Scan size={13} color={C.purple} />
           </div>
           <span style={{ fontFamily:MONO, fontSize:11, fontWeight:700, color:C.text, letterSpacing:'0.12em' }}>COGNITIVE MIRROR</span>
-          {report && <span style={{ fontFamily:MONO, fontSize:9, color:C.textMute, marginLeft:6 }}>last scan {format(new Date(report.created_at), 'MM-dd HH:mm')}</span>}
+          {report && <span style={{ fontFamily:MONO, fontSize:9, color:C.textMute, marginLeft:6 }}>{t('mirror.lastScan')} {format(new Date(report.created_at), 'MM-dd HH:mm')}</span>}
         </div>
         <button onClick={runAnalysis} disabled={running}
           style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:5, background: running ? 'rgba(180,156,255,0.08)' : C.purple, border:'none', cursor: running ? 'wait' : 'pointer', fontFamily:MONO, fontSize:10, fontWeight:700, color: running ? C.purple : '#040508', letterSpacing:'0.08em' }}>
           <RefreshCw size={11} style={{ animation: running ? 'spin 1s linear infinite' : 'none' }} />
-          {running ? STEPS[step] : 'RUN ANALYSIS'}
+          {running ? currentStep : t('mirror.runAnalysis')}
         </button>
       </div>
 
@@ -131,14 +146,14 @@ export default function CognitiveMirror() {
               <Scan size={24} color={`rgba(180,156,255,0.4)`} />
             </div>
             <div style={{ textAlign:'center' }}>
-              <div style={{ fontFamily:MONO, fontSize:12, color:C.text, marginBottom:6 }}>No analysis yet</div>
+              <div style={{ fontFamily:MONO, fontSize:12, color:C.text, marginBottom:6 }}>{t('mirror.noAnalysis')}</div>
               <div style={{ fontFamily:INTER, fontSize:13, color:C.textMute, maxWidth:320 }}>
-                The Cognitive Mirror analyzes your entire knowledge base to reveal how you think — not just what you know.
+                {t('mirror.noAnalysis.desc')}
               </div>
             </div>
             <button onClick={runAnalysis}
               style={{ padding:'9px 20px', borderRadius:5, background:C.purple, border:'none', cursor:'pointer', fontFamily:MONO, fontSize:10, fontWeight:700, color:'#040508', letterSpacing:'0.08em' }}>
-              RUN FIRST ANALYSIS
+              {t('mirror.firstAnalysis')}
             </button>
           </div>
         )}
@@ -148,7 +163,7 @@ export default function CognitiveMirror() {
             {/* Portrait */}
             {report.report_markdown && (
               <div style={{ background:`rgba(180,156,255,0.04)`, border:`1px solid rgba(180,156,255,0.15)`, borderRadius:8, padding:16 }}>
-                <div style={{ fontFamily:MONO, fontSize:9, color:C.purple, letterSpacing:'0.1em', marginBottom:10 }}>COGNITIVE PORTRAIT · {report.notes_analyzed} notes analyzed</div>
+                <div style={{ fontFamily:MONO, fontSize:9, color:C.purple, letterSpacing:'0.1em', marginBottom:10 }}>{t('mirror.portrait')} · {report.notes_analyzed} {t('mirror.notesAnalyzed')}</div>
                 <div style={{ fontFamily:INTER, fontSize:13, color:C.text, lineHeight:1.7 }}>
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{report.report_markdown}</ReactMarkdown>
                 </div>
@@ -158,21 +173,21 @@ export default function CognitiveMirror() {
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
               {/* Themes */}
               {report.dominant_themes?.length > 0 && (
-                <Card title="DOMINANT THEMES" icon={TrendingUp} color={C.accent}>
-                  {report.dominant_themes.map(t => <ThemeBar key={t.theme} theme={t.theme} weight={t.weight} count={t.note_count} />)}
+                <Card title={t('mirror.themes')} icon={TrendingUp} color={C.accent}>
+                  {report.dominant_themes.map(th => <ThemeBar key={th.theme} theme={th.theme} weight={th.weight} count={th.note_count} />)}
                 </Card>
               )}
 
               {/* Intellectual Diet */}
               {report.intellectual_diet && Object.keys(report.intellectual_diet).length > 0 && (
-                <Card title="INTELLECTUAL DIET" icon={Activity} color={C.cyan}>
+                <Card title={t('mirror.diet')} icon={Activity} color={C.cyan}>
                   <DietWheel diet={report.intellectual_diet} />
                 </Card>
               )}
 
               {/* Blind Spots */}
               {report.blind_spots?.length > 0 && (
-                <Card title="BLIND SPOTS" icon={Eye} color={C.amber}>
+                <Card title={t('mirror.blindSpots')} icon={Eye} color={C.amber}>
                   <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                     {report.blind_spots.map((s,i) => (
                       <div key={i} style={{ display:'flex', gap:8, alignItems:'flex-start' }}>
@@ -186,7 +201,7 @@ export default function CognitiveMirror() {
 
               {/* Bias Signatures */}
               {report.bias_signatures?.length > 0 && (
-                <Card title="BIAS SIGNATURES" icon={AlertTriangle} color={C.red}>
+                <Card title={t('mirror.biases')} icon={AlertTriangle} color={C.red}>
                   <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                     {report.bias_signatures.map((s,i) => (
                       <div key={i} style={{ display:'flex', gap:8, alignItems:'flex-start' }}>
@@ -202,12 +217,12 @@ export default function CognitiveMirror() {
             {/* Thinking style + stagnation */}
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
               {report.thinking_style && (
-                <Card title="THINKING STYLE" icon={Zap} color={C.purple}>
+                <Card title={t('mirror.thinkingStyle')} icon={Zap} color={C.purple}>
                   <p style={{ fontFamily:INTER, fontSize:13, color:C.text, lineHeight:1.6, margin:0 }}>{report.thinking_style}</p>
                 </Card>
               )}
               {report.stagnation_alerts?.length > 0 && (
-                <Card title="STAGNATION ALERTS" icon={AlertTriangle} color='#ffaa44'>
+                <Card title={t('mirror.stagnation')} icon={AlertTriangle} color='#ffaa44'>
                   <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                     {report.stagnation_alerts.map((s,i) => (
                       <div key={i} style={{ fontFamily:INTER, fontSize:12, color:C.text, padding:'5px 8px', background:'rgba(255,170,68,0.05)', borderRadius:4, border:'1px solid rgba(255,170,68,0.15)' }}>{s}</div>

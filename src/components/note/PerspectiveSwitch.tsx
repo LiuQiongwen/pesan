@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Repeat2, X, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useT } from '@/contexts/LanguageContext';
 
 const C = { bg:'#070809', surface:'#0e1012', border:'#1e2226', text:'#dde1e8', textSub:'#7a7f8a', textMute:'#4a4f5a', accent:'#00ff66', amber:'#ffaa44', cyan:'#66e3ff', purple:'#b49cff' };
 const MONO = "'IBM Plex Mono','Roboto Mono',monospace";
@@ -33,6 +34,7 @@ export default function PerspectiveSwitch({ noteTitle, noteContent, onClose }: P
   const [loading, setLoading]     = useState(false);
   const [err, setErr]             = useState('');
   const [history, setHistory]     = useState<{lens:string,md:string}[]>([]);
+  const t = useT();
 
   const analyze = async (selectedLens: string) => {
     if (!selectedLens || loading) return;
@@ -60,7 +62,7 @@ export default function PerspectiveSwitch({ noteTitle, noteContent, onClose }: P
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 16px', borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
           <Repeat2 size={14} color={C.purple} />
-          <span style={{ fontFamily:MONO, fontSize:10, fontWeight:700, color:C.purple, letterSpacing:'0.1em' }}>PERSPECTIVE SWITCH</span>
+          <span style={{ fontFamily:MONO, fontSize:10, fontWeight:700, color:C.purple, letterSpacing:'0.1em' }}>{t('persp.title')}</span>
           <span style={{ fontFamily:MONO, fontSize:9, color:C.textMute }}>· {noteTitle.slice(0,28)}</span>
         </div>
         <div role="button" onClick={onClose} style={{ cursor:'pointer', padding:4, opacity:0.5 }} onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.opacity='1';}} onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.opacity='0.5';}}>
@@ -70,7 +72,7 @@ export default function PerspectiveSwitch({ noteTitle, noteContent, onClose }: P
 
       {/* Lens selector */}
       <div style={{ padding:'12px 16px', borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
-        <div style={{ fontFamily:MONO, fontSize:9, color:C.textMute, marginBottom:8, letterSpacing:'0.06em' }}>SELECT LENS</div>
+        <div style={{ fontFamily:MONO, fontSize:9, color:C.textMute, marginBottom:8, letterSpacing:'0.06em' }}>{t('persp.selectLens')}</div>
         <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
           {LENSES.map(l => (
             <button key={l.id} onClick={()=>analyze(l.id)} disabled={loading}
@@ -104,7 +106,7 @@ export default function PerspectiveSwitch({ noteTitle, noteContent, onClose }: P
           <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'70%', gap:10, textAlign:'center' }}>
             <Repeat2 size={24} color='rgba(180,156,255,0.3)' />
             <div style={{ fontFamily:INTER, fontSize:13, color:C.textMute, maxWidth:280 }}>
-              Choose a lens above to reframe this note through a different intellectual perspective.
+              {t('persp.instruction')}
             </div>
           </div>
         )}
@@ -112,7 +114,7 @@ export default function PerspectiveSwitch({ noteTitle, noteContent, onClose }: P
         {loading && (
           <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'70%', gap:12 }}>
             <Loader2 size={20} color={activeLens?.color || C.purple} style={{ animation:'spin 1s linear infinite' }} />
-            <span style={{ fontFamily:MONO, fontSize:10, color:C.textMute }}>Applying {lens} lens…</span>
+            <span style={{ fontFamily:MONO, fontSize:10, color:C.textMute }}>{t('persp.applying')} {lens}…</span>
           </div>
         )}
 
@@ -121,7 +123,7 @@ export default function PerspectiveSwitch({ noteTitle, noteContent, onClose }: P
         {!loading && result && (
           <div style={{ fontFamily:INTER, fontSize:13, color:C.text, lineHeight:1.7 }} className="persp-prose">
             <div style={{ fontFamily:MONO, fontSize:9, color:activeLens?.color||C.purple, marginBottom:12, letterSpacing:'0.06em' }}>
-              {lens.toUpperCase()} REFRAMING
+              {lens.toUpperCase()} {t('persp.lens')}
             </div>
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{result}</ReactMarkdown>
           </div>

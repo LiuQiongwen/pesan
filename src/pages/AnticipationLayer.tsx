@@ -4,9 +4,10 @@ import { Sparkles, HelpCircle, TrendingUp, Zap, CheckCircle, XCircle, AlertCircl
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useNotes } from '@/hooks/useNotes';
+import { useT, useLanguage } from '@/contexts/LanguageContext';
 import { useAnticipationItems, AnticipationItem } from '@/hooks/useAnticipationItems';
 import { formatDistanceToNow } from 'date-fns';
-import { zhCN } from 'date-fns/locale';
+import { zhCN, enUS } from 'date-fns/locale';
 
 const C = { bg:'#0a0b0d', surface:'#0e1012', border:'#1e2226', text:'#dde1e8', textSub:'#7a7f8a', textMute:'#4a4f5a', accent:'#00ff66', amber:'#ffaa44', cyan:'#66e3ff', purple:'#b49cff', red:'#ff6666', teal:'#00d4aa' };
 const MONO = "'IBM Plex Mono','Roboto Mono',monospace";
@@ -28,6 +29,8 @@ const TYPES = ['open_question','predicted_need','emerging_tension'] as const;
 
 function ItemCard({ item, notes, onStatus }: { item: AnticipationItem; notes: {id:string,title:string}[]; onStatus:(id:string,s:AnticipationItem['status'])=>void }) {
   const navigate = useNavigate();
+  const t = useT();
+  const { lang } = useLanguage();
   const cfg = TYPE_CONFIG[item.item_type];
   const Icon = cfg.icon;
   const related = item.related_note_ids?.map(id => notes.find(n => n.id === id)).filter(Boolean) as {id:string,title:string}[];
@@ -58,7 +61,7 @@ function ItemCard({ item, notes, onStatus }: { item: AnticipationItem; notes: {i
             </button>
           ))}
           <span style={{ fontFamily:MONO, fontSize:9, color:C.textMute, padding:'2px 0' }}>
-            {formatDistanceToNow(new Date(item.created_at), { locale:zhCN, addSuffix:true })}
+            {formatDistanceToNow(new Date(item.created_at), { locale: lang === 'zh' ? zhCN : enUS, addSuffix:true })}
           </span>
         </div>
         <div style={{ display:'flex', gap:5 }}>
@@ -66,18 +69,18 @@ function ItemCard({ item, notes, onStatus }: { item: AnticipationItem; notes: {i
             <>
               <button onClick={()=>onStatus(item.id,'investigating')}
                 style={{ display:'flex', alignItems:'center', gap:3, padding:'3px 8px', borderRadius:3, background:'rgba(0,212,170,0.08)', border:'1px solid rgba(0,212,170,0.20)', cursor:'pointer', fontFamily:MONO, fontSize:9, color:'#00d4aa' }}>
-                <AlertCircle size={9} /> Investigate
+                <AlertCircle size={9} /> {t('anticipation.status.investigate')}
               </button>
               <button onClick={()=>onStatus(item.id,'dismissed')}
                 style={{ display:'flex', alignItems:'center', gap:3, padding:'3px 8px', borderRadius:3, background:'rgba(255,255,255,0.03)', border:`1px solid ${C.border}`, cursor:'pointer', fontFamily:MONO, fontSize:9, color:C.textMute }}>
-                <XCircle size={9} /> Dismiss
+                <XCircle size={9} /> {t('anticipation.status.dismiss')}
               </button>
             </>
           )}
           {item.status === 'investigating' && (
             <button onClick={()=>onStatus(item.id,'resolved')}
               style={{ display:'flex', alignItems:'center', gap:3, padding:'3px 8px', borderRadius:3, background:'rgba(0,255,102,0.08)', border:'1px solid rgba(0,255,102,0.20)', cursor:'pointer', fontFamily:MONO, fontSize:9, color:C.accent }}>
-              <CheckCircle size={9} /> Resolved
+              <CheckCircle size={9} /> {t('anticipation.status.resolved')}
             </button>
           )}
           {item.status !== 'open' && (
@@ -95,10 +98,24 @@ export default function AnticipationLayer() {
   const { user }   = useAuth();
   const { notes }  = useNotes(user?.id);
   const { items, loading, saveMany, updateStatus } = useAnticipationItems(user?.id);
+  const t = useT();
+  const { lang } = useLanguage();
   const [running, setRunning] = useState(false);
   const [step, setStep]       = useState(0);
   const [err, setErr]         = useState('');
   const [activeType, setActiveType] = useState<typeof TYPES[number] | 'all'>('all');
+
+  const STEPS_BILINGUAL = [
+    { zh: '阅读知识库…',     en: 'Reading knowledge corpus…' },
+    { zh: '绘制概念边界…',   en: 'Mapping conceptual frontier…' },
+    { zh: '识别知识盲区…',   en: 'Identifying knowledge gaps…' },
+    { zh: '生成开放问题…',   en: 'Generating open questions…' },
+    { zh: '预测未来需求…',   en: 'Predicting future needs…' },
+    { zh: '检测新兴张力…',   en: 'Detecting emerging tensions…' },
+    { zh: '校准置信度…',     en: 'Calibrating confidence…' },
+    { zh: '完成前瞻报告…',   en: 'Finalizing anticipations…' },
+  ];
+  const currentStep = STEPS_BILINGUAL[step]?.[lang] || STEPS_BILINGUAL[step]?.en || '';
 
   const generate = async () => {
     if (!notes?.length) { setErr('No notes to analyze.'); return; }
@@ -140,7 +157,7 @@ export default function AnticipationLayer() {
         <button onClick={generate} disabled={running}
           style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:5, background: running ? 'rgba(255,170,68,0.08)' : C.amber, border:'none', cursor: running ? 'wait' : 'pointer', fontFamily:MONO, fontSize:10, fontWeight:700, color: running ? C.amber : '#040508', letterSpacing:'0.08em' }}>
           <RefreshCw size={11} style={{ animation: running ? 'spin 1s linear infinite' : 'none' }} />
-          {running ? STEPS[step] : 'GENERATE'}
+          {running ? currentStep : t('anticipation.generate')}
         </button>
       </div>
 
@@ -168,14 +185,14 @@ export default function AnticipationLayer() {
               <Sparkles size={20} color='rgba(255,170,68,0.4)' />
             </div>
             <div>
-              <div style={{ fontFamily:MONO, fontSize:12, color:C.text, marginBottom:6 }}>No anticipations generated yet</div>
+              <div style={{ fontFamily:MONO, fontSize:12, color:C.text, marginBottom:6 }}>{t('anticipation.noItems')}</div>
               <div style={{ fontFamily:INTER, fontSize:13, color:C.textMute, maxWidth:340 }}>
-                The Anticipation Layer analyzes your knowledge gaps and predicts what you should explore next.
+                {t('anticipation.noItems.desc')}
               </div>
             </div>
             <button onClick={generate}
               style={{ padding:'9px 20px', borderRadius:5, background:C.amber, border:'none', cursor:'pointer', fontFamily:MONO, fontSize:10, fontWeight:700, color:'#040508', letterSpacing:'0.08em' }}>
-              GENERATE ANTICIPATIONS
+              {t('anticipation.generate')}
             </button>
           </div>
         )}

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Brain, ChevronRight, X, ArrowUpRight } from 'lucide-react';
 import { MemoryWakeItem } from '@/hooks/useMemoryWake';
+import { useT } from '@/contexts/LanguageContext';
 
 const C = { bg:'#0e1012', border:'#1e2226', text:'#dde1e8', textSub:'#7a7f8a', textMute:'#4a4f5a', amber:'#ffaa44' };
 const MONO = "'IBM Plex Mono','Roboto Mono',monospace";
@@ -17,6 +18,7 @@ interface Props {
 
 export default function MemoryWakePanel({ items, loading, onDismiss }: Props) {
   const navigate   = useNavigate();
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
@@ -36,7 +38,7 @@ export default function MemoryWakePanel({ items, loading, onDismiss }: Props) {
           style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 10px', borderRadius:20, background:'rgba(255,170,68,0.08)', border:'1px solid rgba(255,170,68,0.25)', cursor:'pointer', boxShadow:'0 4px 16px rgba(255,170,68,0.08)' }}>
           <div style={{ width:6, height:6, borderRadius:'50%', background:C.amber, animation:'pulse 2s ease-in-out infinite' }} />
           <Brain size={12} color={C.amber} />
-          <span style={{ fontFamily:MONO, fontSize:9, color:C.amber, letterSpacing:'0.06em' }}>MEMORY WAKE · {visible.length}</span>
+          <span style={{ fontFamily:MONO, fontSize:9, color:C.amber, letterSpacing:'0.06em' }}>{t('memory.pill')} · {visible.length}</span>
           <ChevronRight size={9} color={C.amber} />
         </button>
       )}
@@ -48,8 +50,8 @@ export default function MemoryWakePanel({ items, loading, onDismiss }: Props) {
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 12px', borderBottom:'1px solid rgba(255,170,68,0.15)', background:'rgba(255,170,68,0.04)' }}>
             <div style={{ display:'flex', alignItems:'center', gap:6 }}>
               <Brain size={11} color={C.amber} />
-              <span style={{ fontFamily:MONO, fontSize:9, color:C.amber, letterSpacing:'0.08em' }}>MEMORY WAKE</span>
-              <span style={{ fontFamily:MONO, fontSize:8, color:C.textMute }}>{visible.length} resurfaced</span>
+              <span style={{ fontFamily:MONO, fontSize:9, color:C.amber, letterSpacing:'0.08em' }}>{t('memory.title')}</span>
+              <span style={{ fontFamily:MONO, fontSize:8, color:C.textMute }}>{visible.length} {t('memory.resurfaced')}</span>
             </div>
             <div role="button" onClick={()=>{ setOpen(false); onDismiss(); }} style={{ cursor:'pointer', opacity:0.5 }}
               onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.opacity='1';}}
@@ -86,7 +88,7 @@ export default function MemoryWakePanel({ items, loading, onDismiss }: Props) {
 
           {/* Footer */}
           <div style={{ padding:'6px 12px', borderTop:`1px solid ${C.border}`, fontFamily:MONO, fontSize:8, color:C.textMute }}>
-            These notes are semantically related to what you're reading now.
+            {t('memory.footer')}
           </div>
         </div>
       )}

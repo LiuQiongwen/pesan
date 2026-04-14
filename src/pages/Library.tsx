@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useNotes } from '@/hooks/useNotes';
+import { useT, useLanguage } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
@@ -14,7 +15,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Search, Plus, MoreVertical, Trash2, Edit, MapPin, Brain, Globe, Type, FileIcon, Image, Video } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { zhCN } from 'date-fns/locale';
+import { zhCN, enUS } from 'date-fns/locale';
 import { Note, SourceType } from '@/types';
 import { cn } from '@/lib/utils';
 
@@ -22,36 +23,39 @@ const sourceIcons: Record<SourceType, typeof Globe> = {
   url: Globe, text: Type, file: FileIcon, image: Image, video: Video,
 };
 
-const filterOptions: { label: string; value: string }[] = [
-  { label: '全部', value: 'all' },
-  { label: '网站', value: 'url' },
-  { label: '文字', value: 'text' },
-  { label: '文件', value: 'file' },
-  { label: '图片', value: 'image' },
-  { label: '视频', value: 'video' },
-];
-
 export default function Library() {
   const { user } = useAuth();
   const { notes, loading, deleteNote } = useNotes(user?.id);
   const navigate = useNavigate();
+  const t = useT();
+  const { lang } = useLanguage();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
+  const filterOptions = [
+    { label: t('library.filter.all'),   value: 'all' },
+    { label: t('library.filter.url'),   value: 'url' },
+    { label: t('library.filter.text'),  value: 'text' },
+    { label: t('library.filter.file'),  value: 'file' },
+    { label: t('library.filter.image'), value: 'image' },
+    { label: t('library.filter.video'), value: 'video' },
+  ];
+
   const filtered = notes.filter(n => {
+    const matchFilter = filter === 'all' || n.source_type === filter;
     const matchSearch = !search ||
       n.title?.toLowerCase().includes(search.toLowerCase()) ||
       n.summary?.toLowerCase().includes(search.toLowerCase()) ||
-      n.tags?.some(t => t.toLowerCase().includes(search.toLowerCase()));
-    return matchSearch;
+      n.tags?.some(tag => tag.toLowerCase().includes(search.toLowerCase()));
+    return matchFilter && matchSearch;
   });
 
   const handleDelete = async () => {
     if (!deleteId) return;
     const { error } = await deleteNote(deleteId);
-    if (error) { toast.error('删除失败'); }
-    else { toast.success('笔记已删除'); }
+    if (error) { toast.error(t('library.deleteError')); }
+    else { toast.success(t('library.deleteSuccess')); }
     setDeleteId(null);
   };
 
@@ -60,31 +64,31 @@ export default function Library() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6 animate-fade-up">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">知识库</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t('library.title')}</h1>
           <p className="text-muted-foreground text-sm mt-0.5">
-            共 {notes.length} 篇笔记
+            {lang === 'zh' ? `共 ${notes.length} 篇笔记` : `${notes.length} notes`}
           </p>
         </div>
         <Button
           className="bg-gradient-primary hover:opacity-90 transition-opacity"
           onClick={() => navigate('/analyze')}
         >
-          <Plus className="w-4 h-4 mr-2" /> 新建分析
+          <Plus className="w-4 h-4 mr-2" /> {t('library.new')}
         </Button>
       </div>
 
       {/* Search & filter */}
-      <div className="flex gap-3 mb-6">
-        <div className="relative flex-1">
+      <div className="flex gap-3 mb-6 flex-wrap">
+        <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
-            placeholder="搜索笔记标题、摘要、标签..."
+            placeholder={t('library.searchPlaceholder')}
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="pl-9"
           />
         </div>
-        <div className="flex gap-1 p-1 bg-muted rounded-lg">
+        <div className="flex gap-1 p-1 bg-muted rounded-lg flex-wrap">
           {filterOptions.map(opt => (
             <button
               key={opt.value}
@@ -113,17 +117,21 @@ export default function Library() {
         <div className="flex flex-col items-center justify-center flex-1 py-20 text-center">
           <Brain className="w-12 h-12 text-muted-foreground/40 mb-4" />
           <p className="text-foreground font-medium">
-            {search ? '没有找到匹配的笔记' : '知识库还是空的'}
+            {search
+              ? (lang === 'zh' ? '没有找到匹配的笔记' : 'No matching notes found')
+              : t('library.empty')}
           </p>
           <p className="text-muted-foreground text-sm mt-1">
-            {search ? '换个关键词试试' : '开始你的第一次分析吧'}
+            {search
+              ? (lang === 'zh' ? '换个关键词试试' : 'Try a different keyword')
+              : t('library.empty.sub')}
           </p>
           {!search && (
             <Button
               className="mt-4 bg-gradient-primary hover:opacity-90 transition-opacity"
               onClick={() => navigate('/analyze')}
             >
-              <Plus className="w-4 h-4 mr-2" /> 新建分析
+              <Plus className="w-4 h-4 mr-2" /> {t('library.new')}
             </Button>
           )}
         </div>
@@ -134,6 +142,8 @@ export default function Library() {
               key={note.id}
               note={note}
               index={i}
+              lang={lang}
+              t={t}
               onView={() => navigate(`/note/${note.id}`)}
               onEdit={() => navigate(`/note/${note.id}?edit=true`)}
               onMindMap={() => navigate(`/mindmap/${note.id}`)}
@@ -147,18 +157,16 @@ export default function Library() {
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除</AlertDialogTitle>
-            <AlertDialogDescription>
-              删除后无法恢复，该笔记的所有内容将被永久删除。
-            </AlertDialogDescription>
+            <AlertDialogTitle>{t('library.delete.title')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('library.delete.desc')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel>{t('library.delete.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              删除
+              {t('library.delete.confirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -168,15 +176,18 @@ export default function Library() {
 }
 
 function NoteCard({
-  note, index, onView, onEdit, onMindMap, onDelete
+  note, index, lang, t, onView, onEdit, onMindMap, onDelete
 }: {
   note: Note;
   index: number;
+  lang: string;
+  t: (k: string) => string;
   onView: () => void;
   onEdit: () => void;
   onMindMap: () => void;
   onDelete: () => void;
 }) {
+  const dateLocale = lang === 'zh' ? zhCN : enUS;
   return (
     <div
       className="group relative p-5 rounded-xl border border-border bg-card shadow-card hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
@@ -189,7 +200,7 @@ function NoteCard({
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">
-            {formatDistanceToNow(new Date(note.created_at), { locale: zhCN, addSuffix: true })}
+            {formatDistanceToNow(new Date(note.created_at), { locale: dateLocale, addSuffix: true })}
           </span>
           <DropdownMenu>
             <DropdownMenuTrigger asChild onClick={e => e.stopPropagation()}>
@@ -199,16 +210,16 @@ function NoteCard({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={e => { e.stopPropagation(); onEdit(); }}>
-                <Edit className="w-4 h-4 mr-2" /> 编辑
+                <Edit className="w-4 h-4 mr-2" /> {t('common.edit')}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={e => { e.stopPropagation(); onMindMap(); }}>
-                <MapPin className="w-4 h-4 mr-2" /> 思维导图
+                <MapPin className="w-4 h-4 mr-2" /> {t('note.tab.mindmap')}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={e => { e.stopPropagation(); onDelete(); }}
                 className="text-destructive"
               >
-                <Trash2 className="w-4 h-4 mr-2" /> 删除
+                <Trash2 className="w-4 h-4 mr-2" /> {t('common.delete')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -216,10 +227,10 @@ function NoteCard({
       </div>
 
       <h3 className="font-semibold text-foreground text-sm mb-2 line-clamp-1">
-        {note.title || '未命名笔记'}
+        {note.title || t('common.untitled')}
       </h3>
       <p className="text-muted-foreground text-xs leading-relaxed line-clamp-2 mb-3">
-        {note.summary || '暂无摘要'}
+        {note.summary || (lang === 'zh' ? '暂无摘要' : 'No summary')}
       </p>
 
       {note.tags?.length > 0 && (

@@ -4,8 +4,9 @@ import { CheckSquare, Plus, Trash2, ArrowUpRight, Circle, Clock, AlertCircle, Ch
 import { useAuth } from '@/hooks/useAuth';
 import { useActions, Action } from '@/hooks/useActions';
 import { useNotes } from '@/hooks/useNotes';
+import { useT, useLanguage } from '@/contexts/LanguageContext';
 import { formatDistanceToNow } from 'date-fns';
-import { zhCN } from 'date-fns/locale';
+import { zhCN, enUS } from 'date-fns/locale';
 
 const C = { bg:'#0a0b0d', surface:'#0e1012', border:'#1e2226', text:'#dde1e8', textSub:'#7a7f8a', textMute:'#4a4f5a', accent:'#00ff66', amber:'#ffaa44', teal:'#00d4aa', red:'#ff6666' };
 const MONO = "'IBM Plex Mono','Roboto Mono',monospace";
@@ -22,6 +23,8 @@ const STATUSES = ['pending','in_progress','done','dropped'] as const;
 
 function ActionCard({ action, notes, onUpdate, onDelete }: { action: Action; notes: {id:string,title:string}[]; onUpdate: (id:string,p:Partial<Action>)=>void; onDelete:(id:string)=>void }) {
   const navigate = useNavigate();
+  const t = useT();
+  const { lang } = useLanguage();
   const [showOutcome, setShowOutcome] = useState(false);
   const [outcome, setOutcome] = useState(action.outcome_note || '');
   const cfg = STATUS_CONFIG[action.status];
@@ -71,7 +74,7 @@ function ActionCard({ action, notes, onUpdate, onDelete }: { action: Action; not
       <div style={{ display:'flex', alignItems:'center', gap:8 }}>
         <span style={{ fontFamily:MONO, fontSize:9, color:cfg.color, background:cfg.bg, border:`1px solid ${cfg.color}28`, borderRadius:3, padding:'1.5px 6px' }}>{cfg.label}</span>
         <span style={{ fontFamily:MONO, fontSize:9, color:C.textMute }}>
-          {formatDistanceToNow(new Date(action.created_at), { locale:zhCN, addSuffix:true })}
+          {formatDistanceToNow(new Date(action.created_at), { locale: lang === 'zh' ? zhCN : enUS, addSuffix:true })}
         </span>
         {note && (
           <button onClick={()=>navigate(`/note/${note.id}`)} style={{ display:'flex', alignItems:'center', gap:3, background:'transparent', border:'none', cursor:'pointer', fontFamily:MONO, fontSize:9, color:'rgba(102,227,255,0.6)', padding:0 }}>
@@ -101,6 +104,8 @@ export default function ActionLayer() {
   const { user }    = useAuth();
   const { actions, loading, create, update, remove } = useActions(user?.id);
   const { notes }   = useNotes(user?.id);
+  const t = useT();
+  const { lang } = useLanguage();
   const [newContent, setNewContent] = useState('');
   const [filter, setFilter]         = useState<Action['status'] | 'all'>('all');
   const [priority, setPriority]     = useState<Action['priority']>('normal');
@@ -142,7 +147,7 @@ export default function ActionLayer() {
       <div style={{ padding:'14px 24px', borderBottom:`1px solid ${C.border}`, background:C.surface, flexShrink:0, display:'flex', gap:8 }}>
         <input value={newContent} onChange={e=>setNewContent(e.target.value)}
           onKeyDown={e=>{ if(e.key==='Enter') addAction(); }}
-          placeholder="Add action — press Enter"
+          placeholder={t('actions.placeholder')}
           style={{ flex:1, background:'rgba(255,255,255,0.03)', border:`1px solid ${C.border}`, borderRadius:5, padding:'8px 12px', fontFamily:MONO, fontSize:12, color:C.text, outline:'none' }} />
         <select value={priority} onChange={e=>setPriority(e.target.value as Action['priority'])}
           style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:5, padding:'0 8px', fontFamily:MONO, fontSize:10, color:C.textSub, cursor:'pointer', outline:'none' }}>
@@ -162,7 +167,7 @@ export default function ActionLayer() {
         {!loading && filtered.length === 0 && (
           <div style={{ textAlign:'center', paddingTop:60 }}>
             <CheckSquare size={28} color={C.textMute} style={{ margin:'0 auto 12px' }} />
-            <div style={{ fontFamily:MONO, fontSize:11, color:C.textMute }}>No actions yet. Add one above or extract from a note.</div>
+            <div style={{ fontFamily:MONO, fontSize:11, color:C.textMute }}>{t('actions.empty')}</div>
           </div>
         )}
         {filtered.map(a => (
@@ -170,7 +175,9 @@ export default function ActionLayer() {
         ))}
         {!loading && actions.length > 0 && (
           <div style={{ fontFamily:MONO, fontSize:10, color:C.textMute, textAlign:'center', paddingTop:8, paddingBottom:16 }}>
-            {counts['done']||0} completed · {counts['pending']||0} pending · {counts['in_progress']||0} in progress
+            {lang === 'zh'
+              ? `${counts['done']||0} 已完成 · ${counts['pending']||0} 待处理 · ${counts['in_progress']||0} 进行中`
+              : `${counts['done']||0} completed · ${counts['pending']||0} pending · ${counts['in_progress']||0} in progress`}
           </div>
         )}
       </div>
