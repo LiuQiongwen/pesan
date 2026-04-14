@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useNotes } from '@/hooks/useNotes';
-import { useToolbox } from '@/contexts/ToolboxContext';
 import KnowledgeStarMap, { type HoveredNodeInfo } from '@/components/starmap/KnowledgeStarMap';
 import { NodeLightBand } from '@/components/layout/NodeLightBand';
 import { CommandDock } from '@/components/floating/CommandDock';
@@ -23,7 +22,6 @@ export function StarMapLayout() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const { notes } = useNotes(user?.id);
-  const { pods } = useToolbox();
 
   const [hoveredNode,    setHoveredNode]    = useState<HoveredNodeInfo | null>(null);
   const [highlightedIds, setHighlightedIds] = useState<string[]>([]);
@@ -37,17 +35,13 @@ export function StarMapLayout() {
     setHoveredNode(info);
   }, []);
 
-  const handleNodeClick = useCallback((noteId: string) => {
-    navigate(`/app/note/${noteId}`);
-  }, [navigate]);
-
   const highlightNotes = useCallback((ids: string[]) => {
     setHighlightedIds(ids);
   }, []);
 
   const flashNote = useCallback((noteId: string) => {
     setFlashNoteId(noteId);
-    setTimeout(() => setFlashNoteId(null), 1000);
+    setTimeout(() => setFlashNoteId(null), 1200);
   }, []);
 
   if (loading) {
@@ -87,7 +81,6 @@ export function StarMapLayout() {
         notes={notes}
         loading={loading}
         onNodeHover={handleNodeHover}
-        onNodeClick={handleNodeClick}
         highlightedNoteIds={highlightedIds}
         flashNoteId={flashNoteId}
       />
