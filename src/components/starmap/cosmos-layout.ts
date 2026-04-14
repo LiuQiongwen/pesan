@@ -39,6 +39,8 @@ export interface CosmosEdge {
   from: [number, number, number];
   to: [number, number, number];
   color: string;
+  fromNoteId: string;
+  toNoteId: string;
 }
 
 export interface CosmosLayout {
@@ -63,13 +65,7 @@ function seededRng(seed: string) {
   };
 }
 
-function hash01(s: string, salt = ''): number {
-  const rng = seededRng(s + salt);
-  return rng();
-}
-
 // ── Fibonacci sphere distribution ─────────────────────────────────────────────
-// Evenly distributes N points on a sphere surface (deterministic)
 function fibonacciPoint(i: number, total: number, radius: number): [number, number, number] {
   const goldenAngle = Math.PI * (3 - Math.sqrt(5));
   const y = 1 - (i / (total - 1)) * 2;
@@ -115,14 +111,12 @@ export function buildCosmosLayout(notes: CosmosNote[]): CosmosLayout {
       ? [0, 0, 0]
       : fibonacciPoint(i, Math.max(tagList.length, 2), CLUSTER_RADIUS);
 
-    // Spread radius scales with cluster size
     const spread = 4 + Math.sqrt(noteIds.length) * 2.5;
     const clusterRadius = spread * 1.6;
 
     clusters.push({ tag, center, color, noteIds, radius: clusterRadius });
 
-    // Place each note within the cluster using seeded offsets
-    noteIds.forEach((noteId, j) => {
+    noteIds.forEach((noteId) => {
       const rng = seededRng(noteId + 'pos');
       const angle1 = rng() * Math.PI * 2;
       const angle2 = rng() * Math.PI;
@@ -142,9 +136,9 @@ export function buildCosmosLayout(notes: CosmosNote[]): CosmosLayout {
     });
   });
 
-  // Build edges: connect notes sharing ≥1 tag (within reasonable limit)
+  // Build edges: connect notes sharing ≥1 tag (cap at 120 for performance)
   const edges: CosmosEdge[] = [];
-  const noteList = notes.slice(0, 120); // cap at 120 for performance
+  const noteList = notes.slice(0, 120);
   for (let i = 0; i < noteList.length; i++) {
     for (let j = i + 1; j < noteList.length; j++) {
       const ni = noteList[i];
@@ -154,7 +148,13 @@ export function buildCosmosLayout(notes: CosmosNote[]): CosmosLayout {
         const pi = positions[ni.id];
         const pj = positions[nj.id];
         if (pi && pj) {
-          edges.push({ from: pi.pos, to: pj.pos, color: pi.color });
+          edges.push({
+            from: pi.pos,
+            to: pj.pos,
+            color: pi.color,
+            fromNoteId: ni.id,
+            toNoteId: nj.id,
+          });
         }
       }
     }
