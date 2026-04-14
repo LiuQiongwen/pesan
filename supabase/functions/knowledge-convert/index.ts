@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "anthropic/claude-sonnet-4.5",
+        model: "google/gemini-3.1-flash-lite-preview",
         messages: [{ role: "user", content: `${instruction}\n\n---\n\n${content.slice(0, 2000)}` }],
         stream: false,
         max_tokens: 600,

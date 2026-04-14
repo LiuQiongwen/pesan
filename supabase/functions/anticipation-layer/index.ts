@@ -9,7 +9,6 @@ Deno.serve(async (req) => {
     const { notes } = await req.json();
     if (!notes?.length) throw new Error("No notes provided");
 
-    // Hard limit: 12 notes, very short summaries
     const noteList = (notes as {id:string,title:string,tags:string[]}[])
       .slice(0, 12)
       .map(n => `${n.id.slice(0,8)}|"${n.title.slice(0,40)}"[${(n.tags||[]).slice(0,2).join(",")}]`)
@@ -26,14 +25,19 @@ Use the first 8 chars of note IDs. Max 2 items per type (6 total). Output JSON o
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "anthropic/claude-sonnet-4.5",
+        model: "google/gemini-3.1-flash-lite-preview",
         system,
         messages: [{ role: "user", content: `${notes.length} notes:\n${noteList}` }],
         stream: false,
         max_tokens: 700,
       }),
     });
-    if (!r.ok) throw new Error("AI error");
+    if (!r.ok) {
+      const txt = await r.text();
+      let msg = `AI error (${r.status})`;
+      try { msg = JSON.parse(txt).error?.message || msg; } catch (_e) { /* ignore */ }
+      return new Response(JSON.stringify({ success: false, error: msg }), { status: 200, headers: { ...cors, "Content-Type": "application/json" } });
+    }
     const data = await r.json();
     const text = (data.content?.[0]?.text || "{}").trim();
     let result = { items: [] };
@@ -44,6 +48,6 @@ Use the first 8 chars of note IDs. Max 2 items per type (6 total). Output JSON o
     } catch (_e) { /* use empty */ }
     return new Response(JSON.stringify({ success: true, data: result }), { headers: { ...cors, "Content-Type": "application/json" } });
   } catch (e) {
-    return new Response(JSON.stringify({ success: false, error: e.message }), { status: 500, headers: { ...cors, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ success: false, error: e.message }), { status: 200, headers: { ...cors, "Content-Type": "application/json" } });
   }
 });

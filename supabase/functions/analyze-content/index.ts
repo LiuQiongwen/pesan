@@ -13,7 +13,6 @@ Deno.serve(async (req) => {
     if (!AI_API_TOKEN) throw new Error("AI_API_TOKEN is not configured");
 
     const body = await req.json();
-    // Support both camelCase (new) and snake_case (legacy) field names
     const sourceType = body.sourceType || body.source_type || "text";
     const content    = body.content    || body.text        || "";
     const sourceUrl  = body.sourceUrl  || body.url         || "";
@@ -56,7 +55,7 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "anthropic/claude-sonnet-4.5",
+        model: "google/gemini-3.1-flash-lite-preview",
         system: systemPrompt,
         messages: [{ role: "user", content: `分析以下内容：\n\n${rawContent}` }],
         stream: false,

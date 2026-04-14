@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "anthropic/claude-sonnet-4.5",
+        model: "google/gemini-3.1-flash-lite-preview",
         system: systemPrompt,
         messages: [{ role: "user", content: `标题：${title}\n\n内容：${content.slice(0, 3000)}` }],
         stream: false,
