@@ -4,7 +4,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
-import { useNavigate } from 'react-router-dom';
 
 const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
@@ -21,10 +20,10 @@ interface NodeWindowProps {
   note: NoteData;
   accentColor: string;
   onClose: () => void;
+  onNavigate?: (noteId: string) => void;
 }
 
-export function NodeWindow({ note, accentColor, onClose }: NodeWindowProps) {
-  const navigate = useNavigate();
+export function NodeWindow({ note, accentColor, onClose, onNavigate }: NodeWindowProps) {
   const [editing,  setEditing]  = useState(false);
   const [title,    setTitle]    = useState(note.title    ?? '');
   const [summary,  setSummary]  = useState(note.summary  ?? '');
@@ -227,7 +226,7 @@ export function NodeWindow({ note, accentColor, onClose }: NodeWindowProps) {
               <Edit3 size={9} />编辑
             </button>
             <button
-              onClick={() => navigate(`/app/note/${note.id}`)}
+              onClick={() => onNavigate?.(note.id)}
               style={actionBtn('#66f0ff', 102, 240, 255)}
             >
               <ExternalLink size={9} />详情

@@ -24,6 +24,7 @@ import { useRef, useMemo, useState, useCallback, useEffect, createElement } from
 import { useThree, useFrame }   from '@react-three/fiber';
 import { OrbitControls, Html }  from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
+import { useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
 
 import { type CosmosLayout, type CosmosNote } from './cosmos-layout';
@@ -513,6 +514,7 @@ export function CosmosScene({
   recenterActiveRef, onLodChange,
 }: CosmosSceneProps) {
   const highlightSet  = useMemo(() => new Set(highlightedNoteIds), [highlightedNoteIds]);
+  const navigate      = useNavigate();
   const [hoveredId,   setHoveredId]  = useState<string | null>(null);
   const currentPosRef = useRef(new Map<string, THREE.Vector3>());
   const notesMap      = useMemo(() => new Map(notes.map(n => [n.id, n])), [notes]);
@@ -589,6 +591,7 @@ export function CosmosScene({
             note={{ id: note.id, title: note.title, summary: note.summary, tags: note.tags, created_at: note.created_at }}
             accentColor={np.color}
             onClose={() => onNodeToggle(noteId)}
+            onNavigate={(id) => navigate(`/app/note/${id}`)}
           />
         );
       })}
