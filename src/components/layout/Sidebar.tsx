@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, BookOpen, Settings, LogOut, Brain, Plus, FlaskConical, CheckSquare, Scan, Sparkles, Languages } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Settings, LogOut, Brain, Plus, FlaskConical, CheckSquare, Scan, Sparkles, Languages, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { useLanguage, useT } from '@/contexts/LanguageContext';
@@ -15,6 +15,7 @@ export function Sidebar() {
 
   const navItems = [
     { to: '/dashboard',    icon: LayoutDashboard, label: t('sidebar.home') },
+    { to: '/search',       icon: Search,           label: t('sidebar.search') },
     { to: '/analyze',      icon: Brain,            label: t('sidebar.analyze') },
     { to: '/distiller',    icon: FlaskConical,     label: t('sidebar.distiller') },
     { to: '/actions',      icon: CheckSquare,      label: t('sidebar.actions') },

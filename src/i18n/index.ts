@@ -291,6 +291,30 @@ export const translations: T = {
   'memory.resurfaced': { zh: '条相关笔记', en: 'resurfaced' },
   'memory.pill':    { zh: '记忆唤醒', en: 'MEMORY WAKE' },
   'memory.footer':  { zh: '这些笔记与你正在阅读的内容语义相关。', en: 'These notes are semantically related to what you\'re reading now.' },
+
+  // ── RAG Search ────────────────────────────────────────────────────────────
+  'sidebar.search':      { zh: '知识搜索', en: 'Knowledge Search' },
+  'rag.title':           { zh: 'KNOWLEDGE SEARCH', en: 'KNOWLEDGE SEARCH' },
+  'rag.subtitle':        { zh: '从你的私有知识库中检索、召回、得到有来源依据的回答', en: 'Search your private knowledge corpus and get grounded answers with citations' },
+  'rag.placeholder':     { zh: '问一个问题，或搜索任意主题…', en: 'Ask a question or search any topic…' },
+  'rag.search':          { zh: '搜索', en: 'Search' },
+  'rag.searching':       { zh: '检索中…', en: 'Searching…' },
+  'rag.answer':          { zh: '回答', en: 'ANSWER' },
+  'rag.sources':         { zh: '来源', en: 'sources' },
+  'rag.history':         { zh: '近期查询', en: 'RECENT QUERIES' },
+  'rag.openNote':        { zh: '打开笔记', en: 'Open Note' },
+  'rag.emptyHint':       { zh: '输入任意问题，从你的知识库中检索', en: 'Enter any question to search your knowledge base' },
+  'rag.chunkCount':      { zh: '知识库已索引 {n} 个片段', en: '{n} chunks indexed in your knowledge base' },
+  'rag.noIndex':         { zh: '知识库尚未建立索引', en: 'Knowledge base not indexed yet' },
+  'rag.noIndexDesc':     { zh: '点击重新建立索引，将所有笔记加入检索范围', en: 'Click to index your notes and enable semantic search' },
+  'rag.reindexBtn':      { zh: '建立索引', en: 'Build Index' },
+  'rag.reindexing':      { zh: '索引中…', en: 'Indexing…' },
+  'rag.reindexDone':     { zh: '索引完成！现在可以搜索你的知识库了', en: 'Index built! Your knowledge base is now searchable.' },
+  'rag.results':         { zh: '搜索结果', en: 'Results' },
+  'rag.empty':           { zh: '输入任意问题，从你的知识库中检索答案', en: 'Enter a question to retrieve answers from your knowledge base' },
+  'rag.reindex':         { zh: '全库重新索引', en: 'Re-index All Notes' },
+  'rag.reindexDesc':     { zh: '将所有笔记内容分块写入知识检索库', en: 'Chunk and index all your notes for retrieval' },
+  'rag.indexing':        { zh: '索引中…', en: 'Indexing…' },
 };
 
 export function translate(key: string, lang: Lang): string {

@@ -1,0 +1,46 @@
+-- knowledge_chunks: chunked + indexed content from all notes
+CREATE TABLE knowledge_chunks (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL DEFAULT 'default',
+  note_id UUID NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+  chunk_index INTEGER NOT NULL,
+  content TEXT NOT NULL,
+  source_title TEXT,
+  source_type TEXT,
+  tokens_estimate INTEGER DEFAULT 0,
+  metadata JSONB DEFAULT '{}',
+  search_vector TSVECTOR GENERATED ALWAYS AS (
+    to_tsvector('simple', COALESCE(content, ''))
+  ) STORED,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE knowledge_chunks ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users own chunks" ON knowledge_chunks
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE INDEX idx_knowledge_chunks_fts ON knowledge_chunks USING GIN(search_vector);
+CREATE INDEX idx_knowledge_chunks_user ON knowledge_chunks (user_id);
+CREATE INDEX idx_knowledge_chunks_note ON knowledge_chunks (note_id);
+CREATE INDEX idx_knowledge_chunks_project ON knowledge_chunks (user_id, project_id);
+
+-- rag_conversations: persisted Q&A with citations
+CREATE TABLE rag_conversations (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL DEFAULT 'default',
+  query TEXT NOT NULL,
+  answer TEXT NOT NULL,
+  citations JSONB DEFAULT '[]',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE rag_conversations ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users own rag convos" ON rag_conversations
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE INDEX idx_rag_convos_user ON rag_conversations (user_id, created_at DESC);
+
+ALTER PUBLICATION supabase_realtime ADD TABLE knowledge_chunks;
+ALTER PUBLICATION supabase_realtime ADD TABLE rag_conversations;

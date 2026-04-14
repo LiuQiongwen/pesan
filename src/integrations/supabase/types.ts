@@ -3348,6 +3348,58 @@ export type Database = {
           },
         ]
       }
+      knowledge_chunks: {
+        Row: {
+          chunk_index: number
+          content: string
+          created_at: string | null
+          id: string
+          metadata: Json | null
+          note_id: string
+          project_id: string
+          search_vector: unknown | null
+          source_title: string | null
+          source_type: string | null
+          tokens_estimate: number | null
+          user_id: string
+        }
+        Insert: {
+          chunk_index: number
+          content: string
+          created_at?: string | null
+          id?: string
+          metadata?: Json | null
+          note_id: string
+          project_id?: string
+          search_vector?: unknown | null
+          source_title?: string | null
+          source_type?: string | null
+          tokens_estimate?: number | null
+          user_id: string
+        }
+        Update: {
+          chunk_index?: number
+          content?: string
+          created_at?: string | null
+          id?: string
+          metadata?: Json | null
+          note_id?: string
+          project_id?: string
+          search_vector?: unknown | null
+          source_title?: string | null
+          source_type?: string | null
+          tokens_estimate?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_chunks_note_id_fkey"
+            columns: ["note_id"]
+            referencedRelation: "notes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       memory_wake_items: {
         Row: {
           created_at: string | null
@@ -3482,6 +3534,36 @@ export type Database = {
           theme?: string | null
           updated_at?: string | null
           username?: string | null
+        }
+        Relationships: []
+      }
+      rag_conversations: {
+        Row: {
+          answer: string
+          citations: Json | null
+          created_at: string | null
+          id: string
+          project_id: string
+          query: string
+          user_id: string
+        }
+        Insert: {
+          answer: string
+          citations?: Json | null
+          created_at?: string | null
+          id?: string
+          project_id?: string
+          query: string
+          user_id: string
+        }
+        Update: {
+          answer?: string
+          citations?: Json | null
+          created_at?: string | null
+          id?: string
+          project_id?: string
+          query?: string
+          user_id?: string
         }
         Relationships: []
       }

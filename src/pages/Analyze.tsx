@@ -210,7 +210,27 @@ export default function Analyze() {
       });
 
       await updateAnalysisStatus(analysis.id, 'done');
-      toast.success('分析完成！');
+
+      // Fire-and-forget: chunk and index for RAG (non-blocking)
+      if (note?.id && user?.id) {
+        const ragContent = [
+          analysisData.summary || '',
+          analysisData.summary_markdown || '',
+          analysisData.analysis_markdown || '',
+          analysisData.report_markdown || analysisData.content_markdown || '',
+        ].join('\n\n').slice(0, 4000);
+        supabase.functions.invoke('chunk-and-index', {
+          body: {
+            note_id: note.id,
+            user_id: user.id,
+            content: ragContent,
+            title: analysisData.title || 'Untitled',
+            source_type: activeTab,
+          },
+        }).catch(() => { /* silent — RAG indexing failure doesn't block UX */ });
+      }
+
+      toast.success(t('analyze.done'));
       navigate(`/note/${note?.id}`);
     } catch (error: unknown) {
       if (stepIntervalRef.current) clearInterval(stepIntervalRef.current);
