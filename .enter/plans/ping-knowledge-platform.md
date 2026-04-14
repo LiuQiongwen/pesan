@@ -1,131 +1,111 @@
-# Knowledge Star Map Landing Page
+# Bilingual (中/EN) Interface Plan
 
-## What's Being Built
-Replace the scrollable SaaS landing page in `src/pages/Index.tsx` with a single-screen immersive knowledge cosmos. The entire viewport is an animated star-map canvas with minimal floating UI chrome.
-
-## Files to Modify
-- `src/pages/Index.tsx` — complete rewrite (only file needed)
+## Goal
+Every visible UI string supports switching between Chinese (zh) and English (en). 
+Language preference persists in localStorage. Toggle button in Sidebar + Settings.
 
 ## Architecture
 
-### Layout (no scroll)
-```
-position: fixed, 100vw × 100vh
-├── <canvas> — full-viewport animated star map (z: 0)
-├── <FloatingNav> — absolute, top, nearly invisible (z: 10)
-├── <HeroText> — absolute, lower-left quadrant (z: 10)
-├── <CommandBar> — absolute, bottom-center (z: 10)
-└── <NodeTooltip> — absolute, follows cursor (z: 20)
+### New Files
+1. `src/i18n/index.ts` — flat key→{zh,en} translation map for ALL pages
+2. `src/contexts/LanguageContext.tsx` — Context + Provider + `useLanguage()` + `useT()` hooks
+
+### Pattern
+```tsx
+// In any component:
+const t = useT();
+// Usage:
+<button>{t('common.save')}</button>
 ```
 
-### Canvas Animation (requestAnimationFrame)
+`useT()` returns `(key: string) => string` using current `lang` from context.
 
-**Node data structure:**
+### Language Toggle
+- **Sidebar**: bottom section, `Languages` icon button (between logout + avatar), tooltip shows "中/EN"
+- **Settings page**: new "Language / 语言" row in Appearance section
+
+## Files to Create
+| File | Purpose |
+|---|---|
+| `src/i18n/index.ts` | Complete translations: common, auth, analyze, library, note, distiller, actions, mirror, anticipation, zoom, persp, memory, settings, sidebar |
+| `src/contexts/LanguageContext.tsx` | Context + useLanguage + useT hooks |
+
+## Files to Update
+| File | Changes |
+|---|---|
+| `src/App.tsx` | Wrap root with `<LanguageProvider>` |
+| `src/components/layout/Sidebar.tsx` | Add Languages toggle button; use `t()` for tooltips |
+| `src/components/layout/AppLayout.tsx` | Use `t()` for loading text |
+| `src/pages/Auth.tsx` | All form labels, placeholders, buttons |
+| `src/pages/Analyze.tsx` | All section labels, tabs, steps, placeholders |
+| `src/pages/Library.tsx` | Filter labels, search placeholder, empty state, toasts |
+| `src/pages/Note.tsx` | Tab labels, toolbar buttons, empty states |
+| `src/pages/Settings.tsx` | All section headers + new Language row |
+| `src/pages/Distiller.tsx` | Layer names, button labels, status messages |
+| `src/pages/ActionLayer.tsx` | Status labels, filter tabs, placeholders |
+| `src/pages/CognitiveMirror.tsx` | Section titles, buttons, descriptions |
+| `src/pages/AnticipationLayer.tsx` | Type labels, status labels, buttons |
+| `src/components/note/KnowledgeZoom.tsx` | Level names, button labels |
+| `src/components/note/PerspectiveSwitch.tsx` | Lens labels, instruction text |
+| `src/components/layout/MemoryWakePanel.tsx` | Labels, description text |
+
+## Translation Keys (namespaced)
+
 ```ts
-interface StarNode {
-  id: number
-  x, y: number          // current position (canvas px)
-  baseX, baseY: number  // original position (canvas px)
-  vx, vy: number        // micro drift velocity (~0.02–0.12)
-  size: number          // base radius (2–10)
-  phase: number         // sin oscillation offset
-  color: 'white' | 'green' | 'cyan' | 'purple'
-  alpha: number         // base opacity
-  label: string
-  cluster: number       // 0–4
-  isAnchor: boolean
-  connections: number[] // connected node ids
-}
-```
+// common
+'common.save', 'common.cancel', 'common.edit', 'common.delete', 'common.copy',
+'common.loading', 'common.generate', 'common.analyze', 'common.back', 'common.search',
+'common.filter', 'common.dismiss', 'common.add', 'common.new', ...
 
-**5 thematic clusters (normalized positions):**
-| # | Theme | Position | Color |
-|---|-------|----------|-------|
-| 0 | AI / ML | 0.72, 0.28 | green |
-| 1 | Systems | 0.30, 0.38 | cyan |
-| 2 | Philosophy | 0.18, 0.68 | purple |
-| 3 | Design | 0.64, 0.62 | cyan |
-| 4 | Knowledge | 0.50, 0.30 | green |
+// auth
+'auth.title', 'auth.subtitle', 'auth.email', 'auth.password', 'auth.signIn', 
+'auth.signUp', 'auth.switchToSignUp', 'auth.switchToSignIn', ...
 
-**~50 named nodes** spread around cluster centers with Gaussian noise (σ~0.08).
+// sidebar
+'sidebar.home', 'sidebar.analyze', 'sidebar.distiller', 'sidebar.actions',
+'sidebar.mirror', 'sidebar.anticipation', 'sidebar.library', 'sidebar.settings',
+'sidebar.newAnalysis', 'sidebar.signOut', 'sidebar.language', ...
 
-**Connections:**
-- Within cluster: ~35% chance per pair
-- Cross-cluster: anchor nodes bridge to nearest anchor in another cluster
-- Rendered as thin lines, opacity based on distance
+// analyze
+'analyze.title', 'analyze.subtitle', 'analyze.tabs.*', 'analyze.steps.*',
+'analyze.inputPlaceholder.*', 'analyze.analyzing', ...
 
-**Per-frame draw loop:**
-1. Deep space background gradient (radial, slightly lighter center)
-2. Faint nebula blobs behind each cluster (radial gradient smear)
-3. Draw connections (lineWidth 0.5, varying alpha)
-4. Update node positions: basePos + drift*t + sin(phase + t*0.001)*jitter
-5. Draw nodes (arc + shadowBlur glow)
-6. Draw anchor labels (always visible, small, monospace)
-7. Draw hovered node label (larger, highlighted)
-8. "Shooting star" streaks (rare, ~1 every 8 seconds)
+// library
+'library.title', 'library.searchPlaceholder', 'library.filter.*',
+'library.empty', 'library.delete', 'library.deleteConfirm', ...
 
-**Mouse interactions:**
-- `mousemove` → find closest node within 48px → set as `hovered`
-- Hovered node: radius × 1.6, brighter glow, full-opacity label
-- Parallax: deeper clusters shift slightly more with mouse movement
-- `click` on node → navigate to `/auth` (with node label as query hint)
+// note
+'note.tabs.*', 'note.edit', 'note.save', 'note.copy', 'note.export',
+'note.distill', 'note.zoom', 'note.lens', ...
 
-**Glow technique:**
-```js
-ctx.shadowBlur = 20
-ctx.shadowColor = nodeColor
-ctx.fill()
-ctx.shadowBlur = 0
-```
+// settings
+'settings.title', 'settings.sections.*', 'settings.labels.*', ...
 
-### Floating Nav (absolute, top)
-- `position: absolute, top: 0, left: 0, right: 0, z-index: 10`
-- Background: `rgba(4,5,8, 0.0)` (fully transparent by default)
-- No border, very subtle
-- Left: Pe logo square + "Pesan"
-- Right: "登录" text button + "开始使用 →" pill button (neon green)
-- Height: 64px, padding: 0 40px
+// distiller
+'distiller.title', 'distiller.layers.*', 'distiller.steps.*', ...
 
-### Hero Text Overlay (absolute, lower-left)
-- `position: absolute, bottom: 120px, left: 60px`
-- Very brief — 2 lines max
-- Small monospace overline: `[ PERSONAL KNOWLEDGE OS ]`
-- H1 (two lines, large, tight): "思维的宇宙\n知识的星图"
-- Subtle CTA hint: "点击任意知识节点开始探索 →"
-- Semi-transparent backdrop behind text (very subtle blur)
+// actions
+'actions.title', 'actions.statuses.*', 'actions.priorities.*', 
+'actions.placeholder', 'actions.empty', ...
 
-### Command Bar (absolute, bottom-center)
-- `position: absolute, bottom: 40px, centered`
-- Pill shape, width ~360px
-- Dark surface, thin green border on focus
-- Placeholder: "搜索你的知识宇宙..."
-- Left icon: Search (14px, muted)
-- Right: `⌘K` monospace badge
-- On focus: subtle neon green border glow
+// mirror
+'mirror.title', 'mirror.runAnalysis', 'mirror.sections.*', ...
 
-### Node Tooltip
-- Follows cursor (offset 16px right, 16px up)
-- Shows: node label (bold) + cluster name + small connecting line count
-- Dark surface, thin border, no shadow
-- Fades in on hover (opacity transition)
+// anticipation
+'anticipation.title', 'anticipation.types.*', 'anticipation.statuses.*', ...
 
-## Color Constants
-```ts
-BG = '#040508'          // deep space
-NODE_WHITE = [220,225,235]
-NODE_GREEN = [0,255,102]
-NODE_CYAN = [102,227,255]
-NODE_PURPLE = [180,150,255]
-LINE_ALPHA_MAX = 0.25
-GLOW_GREEN = 'rgba(0,255,102,0.6)'
-GLOW_CYAN = 'rgba(102,227,255,0.5)'
-GLOW_PURPLE = 'rgba(180,150,255,0.4)'
+// zoom
+'zoom.title', 'zoom.levels.*', ...
+
+// perspective
+'persp.title', 'persp.instruction', ...
+
+// memory
+'memory.title', 'memory.footer', ...
 ```
 
 ## Verification
-- Navigate to `/landing` in preview → see full-viewport animated star map
-- Move mouse → nodes respond, tooltips appear
-- Hover cluster anchors → labels visible
-- Click any node → navigates to /auth
-- "开始使用" button → navigates to /auth
-- No scrollbar, no layout overflow
+1. Toggle language in Sidebar → all UI strings switch immediately
+2. Reload page → language persists (localStorage)
+3. Auth page, Settings, Library, Note, all AI feature pages all properly bilingual
+4. No lint errors
