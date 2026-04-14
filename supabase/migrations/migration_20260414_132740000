@@ -1,0 +1,77 @@
+
+-- Action Layer
+CREATE TABLE actions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  note_id UUID REFERENCES notes(id) ON DELETE SET NULL,
+  distillation_id UUID REFERENCES distillations(id) ON DELETE SET NULL,
+  content TEXT NOT NULL,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending','in_progress','done','dropped')),
+  priority TEXT DEFAULT 'normal' CHECK (priority IN ('high','normal','low')),
+  source_context TEXT,
+  outcome_note TEXT,
+  due_date DATE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE actions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage actions" ON actions FOR ALL USING (auth.uid()=user_id) WITH CHECK (auth.uid()=user_id);
+
+-- Anticipation Layer
+CREATE TABLE anticipation_items (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  item_type TEXT NOT NULL CHECK (item_type IN ('open_question','predicted_need','emerging_tension')),
+  content TEXT NOT NULL,
+  reasoning TEXT,
+  confidence TEXT DEFAULT 'medium' CHECK (confidence IN ('high','medium','low')),
+  status TEXT DEFAULT 'open' CHECK (status IN ('open','investigating','resolved','dismissed')),
+  related_note_ids TEXT[] DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE anticipation_items ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage anticipation" ON anticipation_items FOR ALL USING (auth.uid()=user_id) WITH CHECK (auth.uid()=user_id);
+
+-- Cognitive Mirror reports
+CREATE TABLE cognitive_reports (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  notes_analyzed INTEGER DEFAULT 0,
+  dominant_themes JSONB DEFAULT '[]',
+  blind_spots JSONB DEFAULT '[]',
+  bias_signatures JSONB DEFAULT '[]',
+  thinking_style TEXT,
+  intellectual_diet JSONB DEFAULT '{}',
+  stagnation_alerts JSONB DEFAULT '[]',
+  report_markdown TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE cognitive_reports ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage reports" ON cognitive_reports FOR ALL USING (auth.uid()=user_id) WITH CHECK (auth.uid()=user_id);
+
+-- Memory Wake suggestions
+CREATE TABLE memory_wake_items (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  trigger_note_id UUID REFERENCES notes(id) ON DELETE CASCADE,
+  related_note_id UUID REFERENCES notes(id) ON DELETE CASCADE,
+  reason TEXT,
+  relevance TEXT DEFAULT 'medium' CHECK (relevance IN ('high','medium','low')),
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending','accepted','dismissed')),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE memory_wake_items ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage memory wake" ON memory_wake_items FOR ALL USING (auth.uid()=user_id) WITH CHECK (auth.uid()=user_id);
+
+-- Zoom cache (optional save of level 4/5 synthesis)
+CREATE TABLE zoom_cache (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  note_id UUID NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+  zoom_level INTEGER NOT NULL CHECK (zoom_level IN (4,5)),
+  content_markdown TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(note_id, zoom_level)
+);
+ALTER TABLE zoom_cache ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage zoom cache" ON zoom_cache FOR ALL USING (auth.uid()=user_id) WITH CHECK (auth.uid()=user_id);

@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, BookOpen, Settings, LogOut, Brain, Plus, FlaskConical } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Settings, LogOut, Brain, Plus, FlaskConical, CheckSquare, Scan, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -7,11 +7,14 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 const navItems = [
-  { to: '/dashboard',  icon: LayoutDashboard, label: '总览' },
-  { to: '/analyze',    icon: Brain,            label: '分析' },
-  { to: '/distiller',  icon: FlaskConical,     label: 'Distiller' },
-  { to: '/library',    icon: BookOpen,         label: '知识库' },
-  { to: '/settings',   icon: Settings,         label: '设置' },
+  { to: '/dashboard',    icon: LayoutDashboard, label: '总览' },
+  { to: '/analyze',      icon: Brain,            label: '分析' },
+  { to: '/distiller',    icon: FlaskConical,     label: 'Distiller' },
+  { to: '/actions',      icon: CheckSquare,      label: 'Action Layer' },
+  { to: '/mirror',       icon: Scan,             label: 'Cognitive Mirror' },
+  { to: '/anticipation', icon: Sparkles,         label: 'Anticipation' },
+  { to: '/library',      icon: BookOpen,         label: '知识库' },
+  { to: '/settings',     icon: Settings,         label: '设置' },
 ];
 
 export function Sidebar() {

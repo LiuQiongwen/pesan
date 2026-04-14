@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useNotes } from '@/hooks/useNotes';
+import { useMemoryWake } from '@/hooks/useMemoryWake';
 import { Note as NoteType } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -10,10 +11,14 @@ import { toast } from 'sonner';
 import { exportMarkdown, exportPDF, exportWord } from '@/lib/export';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import KnowledgeZoom from '@/components/note/KnowledgeZoom';
+import PerspectiveSwitch from '@/components/note/PerspectiveSwitch';
+import MemoryWakePanel from '@/components/layout/MemoryWakePanel';
 import {
   ArrowLeft, Edit2, Save, Download, MapPin,
   FileText, Copy, Check, X, Sparkles,
-  AlignLeft, Brain, BarChart3, Network, FlaskConical
+  AlignLeft, Brain, BarChart3, Network, FlaskConical,
+  ZoomIn, Repeat2
 } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
@@ -181,8 +186,9 @@ function MarkdownPanel({
 export default function Note() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
-  const { getNote, updateNote } = useNotes(user?.id);
+  const { getNote, updateNote, notes: allNotes } = useNotes(user?.id);
   const navigate = useNavigate();
+  const { items: wakeItems, loading: wakeLoading, checkForNote, dismiss: dismissWake } = useMemoryWake(user?.id);
 
   const [note, setNote]           = useState<NoteType | null>(null);
   const [loading, setLoading]     = useState(true);
@@ -190,6 +196,8 @@ export default function Note() {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [mindmapView, setMindmapView] = useState<'visual' | 'text'>('visual');
+  const [showZoom, setShowZoom]   = useState(false);
+  const [showPersp, setShowPersp] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -205,6 +213,26 @@ export default function Note() {
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // Trigger memory wake when note + allNotes are loaded
+  useEffect(() => {
+    if (!note || !allNotes?.length) return;
+    checkForNote(
+      { id: note.id, title: note.title||'', summary: note.summary, tags: note.tags||[] },
+      allNotes.map(n => ({ id:n.id, title:n.title||'', summary:n.summary||null, tags:n.tags||[], created_at:n.created_at||'' }))
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [note?.id, allNotes?.length]);
+
+  // Related notes for Knowledge Zoom (same tags)
+  const relatedNotes = useMemo(() => {
+    if (!note || !allNotes?.length) return [];
+    const tags = new Set(note.tags || []);
+    return allNotes
+      .filter(n => n.id !== note.id && (n.tags||[]).some((t: string) => tags.has(t)))
+      .slice(0, 5)
+      .map(n => ({ id:n.id, title:n.title||'', summary:n.summary||null, content_markdown:n.content_markdown||null, tags:n.tags||[] }));
+  }, [note, allNotes]);
 
   const handleSaved = (key: keyof NoteType, val: string) => {
     setNote(prev => prev ? { ...prev, [key]: val, is_edited: true } : prev);
@@ -277,6 +305,26 @@ export default function Note() {
           >
             <FlaskConical className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Distill</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 border-[rgba(102,227,255,0.20)] text-[#66e3ff] hover:bg-[rgba(102,227,255,0.07)] hover:border-[rgba(102,227,255,0.40)]"
+            onClick={() => { setShowZoom(v => !v); setShowPersp(false); }}
+            title="Knowledge Zoom — view at different abstraction levels"
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Zoom</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 border-[rgba(180,156,255,0.20)] text-[#b49cff] hover:bg-[rgba(180,156,255,0.07)] hover:border-[rgba(180,156,255,0.40)]"
+            onClick={() => { setShowPersp(v => !v); setShowZoom(false); }}
+            title="Perspective Switch — reframe through different lenses"
+          >
+            <Repeat2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Lens</span>
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -403,6 +451,23 @@ export default function Note() {
         )}
 
       </div>
+
+      {/* ── Side panels ── */}
+      {showZoom && (
+        <KnowledgeZoom
+          note={{ id: note.id, title: note.title||'', summary: note.summary||null, content_markdown: note.content_markdown||null, tags: note.tags||[] }}
+          relatedNotes={relatedNotes}
+          onClose={() => setShowZoom(false)}
+        />
+      )}
+      {showPersp && (
+        <PerspectiveSwitch
+          noteTitle={note.title || ''}
+          noteContent={note.content_markdown || note.summary || ''}
+          onClose={() => setShowPersp(false)}
+        />
+      )}
+      <MemoryWakePanel items={wakeItems} loading={wakeLoading} onDismiss={dismissWake} />
     </div>
   );
 }

@@ -3109,6 +3109,64 @@ export type Database = {
   }
   public: {
     Tables: {
+      actions: {
+        Row: {
+          content: string
+          created_at: string | null
+          distillation_id: string | null
+          due_date: string | null
+          id: string
+          note_id: string | null
+          outcome_note: string | null
+          priority: string | null
+          source_context: string | null
+          status: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string | null
+          distillation_id?: string | null
+          due_date?: string | null
+          id?: string
+          note_id?: string | null
+          outcome_note?: string | null
+          priority?: string | null
+          source_context?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string | null
+          distillation_id?: string | null
+          due_date?: string | null
+          id?: string
+          note_id?: string | null
+          outcome_note?: string | null
+          priority?: string | null
+          source_context?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "actions_distillation_id_fkey"
+            columns: ["distillation_id"]
+            referencedRelation: "distillations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "actions_note_id_fkey"
+            columns: ["note_id"]
+            referencedRelation: "notes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       analyses: {
         Row: {
           created_at: string | null
@@ -3144,6 +3202,84 @@ export type Database = {
           status?: string | null
           title?: string | null
           updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      anticipation_items: {
+        Row: {
+          confidence: string | null
+          content: string
+          created_at: string | null
+          id: string
+          item_type: string
+          reasoning: string | null
+          related_note_ids: string[] | null
+          status: string | null
+          user_id: string
+        }
+        Insert: {
+          confidence?: string | null
+          content: string
+          created_at?: string | null
+          id?: string
+          item_type: string
+          reasoning?: string | null
+          related_note_ids?: string[] | null
+          status?: string | null
+          user_id: string
+        }
+        Update: {
+          confidence?: string | null
+          content?: string
+          created_at?: string | null
+          id?: string
+          item_type?: string
+          reasoning?: string | null
+          related_note_ids?: string[] | null
+          status?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      cognitive_reports: {
+        Row: {
+          bias_signatures: Json | null
+          blind_spots: Json | null
+          created_at: string | null
+          dominant_themes: Json | null
+          id: string
+          intellectual_diet: Json | null
+          notes_analyzed: number | null
+          report_markdown: string | null
+          stagnation_alerts: Json | null
+          thinking_style: string | null
+          user_id: string
+        }
+        Insert: {
+          bias_signatures?: Json | null
+          blind_spots?: Json | null
+          created_at?: string | null
+          dominant_themes?: Json | null
+          id?: string
+          intellectual_diet?: Json | null
+          notes_analyzed?: number | null
+          report_markdown?: string | null
+          stagnation_alerts?: Json | null
+          thinking_style?: string | null
+          user_id: string
+        }
+        Update: {
+          bias_signatures?: Json | null
+          blind_spots?: Json | null
+          created_at?: string | null
+          dominant_themes?: Json | null
+          id?: string
+          intellectual_diet?: Json | null
+          notes_analyzed?: number | null
+          report_markdown?: string | null
+          stagnation_alerts?: Json | null
+          thinking_style?: string | null
           user_id?: string
         }
         Relationships: []
@@ -3207,6 +3343,52 @@ export type Database = {
           {
             foreignKeyName: "distillations_note_id_fkey"
             columns: ["note_id"]
+            referencedRelation: "notes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      memory_wake_items: {
+        Row: {
+          created_at: string | null
+          id: string
+          reason: string | null
+          related_note_id: string | null
+          relevance: string | null
+          status: string | null
+          trigger_note_id: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          reason?: string | null
+          related_note_id?: string | null
+          relevance?: string | null
+          status?: string | null
+          trigger_note_id?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          reason?: string | null
+          related_note_id?: string | null
+          relevance?: string | null
+          status?: string | null
+          trigger_note_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "memory_wake_items_related_note_id_fkey"
+            columns: ["related_note_id"]
+            referencedRelation: "notes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "memory_wake_items_trigger_note_id_fkey"
+            columns: ["trigger_note_id"]
             referencedRelation: "notes"
             referencedColumns: ["id"]
           },
@@ -3302,6 +3484,132 @@ export type Database = {
           username?: string | null
         }
         Relationships: []
+      }
+      thought_edges: {
+        Row: {
+          confidence: number | null
+          created_at: string | null
+          description: string | null
+          edge_type: string
+          id: string
+          source_id: string
+          target_id: string
+          user_id: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string | null
+          description?: string | null
+          edge_type: string
+          id?: string
+          source_id: string
+          target_id: string
+          user_id: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string | null
+          description?: string | null
+          edge_type?: string
+          id?: string
+          source_id?: string
+          target_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "thought_edges_source_id_fkey"
+            columns: ["source_id"]
+            referencedRelation: "notes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "thought_edges_target_id_fkey"
+            columns: ["target_id"]
+            referencedRelation: "notes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      thought_relationships: {
+        Row: {
+          created_at: string | null
+          id: string
+          rationale: string | null
+          relationship_type: string
+          source_note_id: string
+          strength: number | null
+          target_note_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          rationale?: string | null
+          relationship_type: string
+          source_note_id: string
+          strength?: number | null
+          target_note_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          rationale?: string | null
+          relationship_type?: string
+          source_note_id?: string
+          strength?: number | null
+          target_note_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "thought_relationships_source_note_id_fkey"
+            columns: ["source_note_id"]
+            referencedRelation: "notes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "thought_relationships_target_note_id_fkey"
+            columns: ["target_note_id"]
+            referencedRelation: "notes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      zoom_cache: {
+        Row: {
+          content_markdown: string | null
+          created_at: string | null
+          id: string
+          note_id: string
+          user_id: string
+          zoom_level: number
+        }
+        Insert: {
+          content_markdown?: string | null
+          created_at?: string | null
+          id?: string
+          note_id: string
+          user_id: string
+          zoom_level: number
+        }
+        Update: {
+          content_markdown?: string | null
+          created_at?: string | null
+          id?: string
+          note_id?: string
+          user_id?: string
+          zoom_level?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "zoom_cache_note_id_fkey"
+            columns: ["note_id"]
+            referencedRelation: "notes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

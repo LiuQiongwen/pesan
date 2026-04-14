@@ -6,6 +6,9 @@ import Library from "./pages/Library";
 import NotePage from "./pages/Note";
 import MindMapPage from "./pages/MindMap";
 import Distiller from "./pages/Distiller";
+import ActionLayer from "./pages/ActionLayer";
+import CognitiveMirror from "./pages/CognitiveMirror";
+import AnticipationLayer from "./pages/AnticipationLayer";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import { AppLayout } from "./components/layout/AppLayout";
@@ -59,6 +62,21 @@ export const routers = [
         path: "distiller",
         name: "distiller",
         element: <Distiller />,
+      },
+      {
+        path: "actions",
+        name: "actions",
+        element: <ActionLayer />,
+      },
+      {
+        path: "mirror",
+        name: "mirror",
+        element: <CognitiveMirror />,
+      },
+      {
+        path: "anticipation",
+        name: "anticipation",
+        element: <AnticipationLayer />,
       },
       {
         path: "settings",
