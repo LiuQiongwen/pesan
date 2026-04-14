@@ -51,7 +51,7 @@ export default function Auth() {
   };
 
   return (
-    <div className="flex min-h-full bg-background">
+    <div className="flex min-h-screen bg-background">
       {/* Left - Branding Panel */}
       <div className="hidden lg:flex flex-col w-1/2 bg-gradient-hero relative overflow-hidden p-12">
         <div className="absolute inset-0 bg-gradient-glow" />

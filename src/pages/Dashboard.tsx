@@ -428,7 +428,7 @@ export default function Dashboard() {
   const ttY = hoveredInfo ? Math.max(hoveredInfo.py - 70, 12) : 0;
 
   const totalTags = Array.from(new Set(notes.flatMap(n => n.tags || []))).length;
-  const thisWeek  = notes.filter(n => Date.now() - new Date(n.created_at).getTime() < 7 * 86400000).length;
+  const thisWeek  = notes.filter(n => n.created_at && Date.now() - new Date(n.created_at).getTime() < 7 * 86400000).length;
 
   return (
     <div

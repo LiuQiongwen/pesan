@@ -323,9 +323,9 @@ export default function Distiller() {
                       {'special' in layer && layer.special && <Sparkles size={10} color={layer.color} />}
                       {count > 0 && <span style={{ fontFamily: MONO, fontSize: 9, color: layer.color, background: layer.color + '14', border: `1px solid ${layer.color}28`, borderRadius: 3, padding: '1.5px 6px' }}>{count}</span>}
                       {isOpen && (
-                        <button onClick={e => { e.stopPropagation(); copyLayer(layer.id, content); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 4px' }}>
+                        <div role="button" tabIndex={0} onClick={e => { e.stopPropagation(); copyLayer(layer.id, content); }} onKeyDown={e => e.key === 'Enter' && copyLayer(layer.id, content)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}>
                           {copied === layer.id ? <Check size={11} color={layer.color} /> : <Copy size={11} color={C.textMute} />}
-                        </button>
+                        </div>
                       )}
                       {isOpen ? <ChevronDown size={12} color={C.textMute} /> : <ChevronRight size={12} color={C.textMute} />}
                     </button>
