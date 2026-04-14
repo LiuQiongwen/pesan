@@ -271,17 +271,18 @@ export default function Note() {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
         <p className="text-muted-foreground">{t('note.notFound')}</p>
-        <Button variant="outline" onClick={() => navigate('/library')}>{t('note.backToLibrary')}</Button>
+        <Button variant="outline" onClick={() => navigate(-1)}>{t('note.backToLibrary')}</Button>
       </div>
     );
   }
 
   return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: '#040508', overflow: 'hidden' }}>
     <div className="flex flex-col h-full overflow-hidden">
       {/* ── Top bar ── */}
       <div className="flex items-center justify-between px-6 py-3 border-b border-border bg-card/60 backdrop-blur-sm flex-shrink-0">
         <div className="flex items-center gap-3 min-w-0">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/library')} className="flex-shrink-0">
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="flex-shrink-0">
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <div className="min-w-0">
@@ -471,6 +472,7 @@ export default function Note() {
         />
       )}
       <MemoryWakePanel items={wakeItems} loading={wakeLoading} onDismiss={dismissWake} />
+    </div>
     </div>
   );
 }

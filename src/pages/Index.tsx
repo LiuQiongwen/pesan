@@ -190,7 +190,7 @@ export default function Index({ preview = false }: { preview?: boolean }) {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!preview && !loading && user) navigate('/dashboard');
+    if (!preview && !loading && user) navigate('/app');
   }, [preview, user, loading, navigate]);
 
   const canvasRef   = useRef<HTMLCanvasElement>(null);

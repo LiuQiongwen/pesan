@@ -22,7 +22,7 @@ export default function Auth() {
   const t = useT();
 
   useEffect(() => {
-    if (user) navigate('/dashboard');
+    if (user) navigate('/app');
   }, [user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -32,7 +32,7 @@ export default function Auth() {
       if (mode === 'login') {
         const { error } = await signIn(email, password);
         if (error) { toast.error(t('auth.error.signIn')); return; }
-        navigate('/dashboard');
+        navigate('/app');
       } else if (mode === 'register') {
         if (password !== confirmPassword) { toast.error('两次密码不一致 / Passwords do not match'); return; }
         if (password.length < 6) { toast.error('密码至少6位 / Password must be at least 6 chars'); return; }

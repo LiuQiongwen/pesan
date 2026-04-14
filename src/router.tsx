@@ -1,18 +1,9 @@
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
-import Dashboard from "./pages/Dashboard";
-import Analyze from "./pages/Analyze";
-import Library from "./pages/Library";
 import NotePage from "./pages/Note";
 import MindMapPage from "./pages/MindMap";
-import Distiller from "./pages/Distiller";
-import ActionLayer from "./pages/ActionLayer";
-import CognitiveMirror from "./pages/CognitiveMirror";
-import AnticipationLayer from "./pages/AnticipationLayer";
-import RAGSearch from "./pages/RAGSearch";
-import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
-import { AppLayout } from "./components/layout/AppLayout";
+import { StarMapLayout } from "./components/layout/StarMapLayout";
 
 export const routers = [
   {
@@ -31,23 +22,13 @@ export const routers = [
     element: <Auth />,
   },
   {
-    path: "/",
-    element: <AppLayout />,
+    path: "/app",
+    element: <StarMapLayout />,
     children: [
       {
-        path: "dashboard",
-        name: "dashboard",
-        element: <Dashboard />,
-      },
-      {
-        path: "analyze",
-        name: "analyze",
-        element: <Analyze />,
-      },
-      {
-        path: "library",
-        name: "library",
-        element: <Library />,
+        index: true,
+        name: "cosmos",
+        element: null,
       },
       {
         path: "note/:id",
@@ -58,36 +39,6 @@ export const routers = [
         path: "mindmap/:id",
         name: "mindmap",
         element: <MindMapPage />,
-      },
-      {
-        path: "distiller",
-        name: "distiller",
-        element: <Distiller />,
-      },
-      {
-        path: "search",
-        name: "search",
-        element: <RAGSearch />,
-      },
-      {
-        path: "actions",
-        name: "actions",
-        element: <ActionLayer />,
-      },
-      {
-        path: "mirror",
-        name: "mirror",
-        element: <CognitiveMirror />,
-      },
-      {
-        path: "anticipation",
-        name: "anticipation",
-        element: <AnticipationLayer />,
-      },
-      {
-        path: "settings",
-        name: "settings",
-        element: <Settings />,
       },
     ],
   },
