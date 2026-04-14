@@ -3,31 +3,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const DISTILL_SYSTEM = `You are a precision knowledge distillation engine — not a summarizer.
+const DISTILL_SYSTEM = `You are a knowledge distillation engine. Extract knowledge into 5 layers. Be brief — max 4 bullets per layer.
 
-Extract and classify knowledge from raw input into exactly 5 structured layers.
-Be concise and high-signal. Keep each layer brief (5-7 bullets max).
+Output ONLY compact valid JSON:
+{"title":"sharp title (40 chars max)","source_label":"Article","confidence":0.82,"key_insight":"single most valuable sentence (80 chars max)","tags":["tag1","tag2","tag3"],"facts_markdown":"- fact1\\n- fact2","opinions_markdown":"- view1\\n- view2","methods_markdown":"1. method","insights_markdown":"→ insight1\\n→ insight2","actions_markdown":"[ ] action1\\n[ ] action2"}
 
-LAYER 1 — FACTS: Verifiable claims, data points, statistics. Format: dash bullet list.
-LAYER 2 — VIEWPOINTS: Subjective claims, perspectives, contested assertions. Format: dash bullet list.
-LAYER 3 — METHODS: Processes, frameworks, mental models. Format: numbered list. If none: "No explicit methods identified."
-LAYER 4 — INSIGHTS: Non-obvious patterns, hidden implications, emergent truths. Format: bullet list prefixed with →
-LAYER 5 — NEXT ACTIONS: Concrete executable next steps. Format: numbered list with [ ] prefix.
-
-OUTPUT: Strictly valid JSON only. No preamble. No markdown outside values.
-
-{
-  "title": "Sharp title (max 60 chars)",
-  "source_label": "Article",
-  "confidence": 0.82,
-  "key_insight": "Single most valuable sentence",
-  "tags": ["tag1", "tag2", "tag3"],
-  "facts_markdown": "- fact 1\n- fact 2",
-  "opinions_markdown": "- viewpoint 1\n- viewpoint 2",
-  "methods_markdown": "1. Method — description",
-  "insights_markdown": "→ insight 1\n→ insight 2",
-  "actions_markdown": "[ ] action 1\n[ ] action 2"
-}`;
+Rules: each markdown field max 4 items, each item max 60 chars. Output JSON only.`;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -41,7 +22,8 @@ Deno.serve(async (req) => {
     const { content } = await req.json();
     if (!content?.trim()) throw new Error("No content provided");
 
-    const truncated = content.slice(0, 5000); // Reduced from 12000
+    // Hard limit: 2500 chars
+    const truncated = content.slice(0, 2500);
 
     const response = await fetch("https://api.enter.pro/code/api/v1/ai/messages", {
       method: "POST",
@@ -52,9 +34,9 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         model: "anthropic/claude-sonnet-4.5",
         system: DISTILL_SYSTEM,
-        messages: [{ role: "user", content: `Distill the following content:\n\n${truncated}` }],
+        messages: [{ role: "user", content: `Distill:\n\n${truncated}` }],
         stream: false,
-        max_tokens: 1500, // Reduced from 4000
+        max_tokens: 900,
       }),
     });
 
@@ -66,11 +48,12 @@ Deno.serve(async (req) => {
     }
 
     const data = await response.json();
-    const rawText = data.content?.[0]?.text || "";
+    const rawText = (data.content?.[0]?.text || "").trim();
 
     let result;
     try {
-      const match = rawText.match(/\{[\s\S]*\}/);
+      const cleaned = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+      const match = cleaned.match(/\{[\s\S]*\}/);
       if (!match) throw new Error("No JSON in response");
       result = JSON.parse(match[0]);
     } catch (_parseErr) {
@@ -78,9 +61,9 @@ Deno.serve(async (req) => {
         title: "Distillation",
         source_label: "Unknown",
         confidence: 0.5,
-        key_insight: rawText.slice(0, 200),
+        key_insight: rawText.slice(0, 100),
         tags: [],
-        facts_markdown: rawText,
+        facts_markdown: rawText.slice(0, 200),
         opinions_markdown: "",
         methods_markdown: "",
         insights_markdown: "",
