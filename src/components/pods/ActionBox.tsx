@@ -66,8 +66,9 @@ export default function ActionBox() {
       const { data, error } = await supabase.functions.invoke('knowledge-convert', {
         body: { content: input.slice(0, 2000), convert_type: t },
       });
-      if (error || !data?.success) throw new Error(error?.message || '转化失败');
-      setOutput(data.result || data.output || '');
+      if (error) throw new Error(error?.message || '调用失败');
+      if (!data?.success) throw new Error(data?.error || '转化失败');
+      setOutput(data.result || '');
       workflow.markStepComplete('action');
       toast.success('转化完成');
     } catch (e) {

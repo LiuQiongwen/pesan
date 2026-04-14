@@ -73,11 +73,13 @@ export function useAgentPipeline(userId: string | undefined) {
 
       // ── STEP 2: PARSE ───────────────────────────────────────────
       setStepStatus('parse', 'active');
-      const body: Record<string, string> = { source_type: params.sourceType };
-      if (params.sourceType === 'url') body.url = params.sourceUrl!;
-      else body.text = params.content;
-
-      const { data: fn, error: fnErr } = await supabase.functions.invoke('analyze-content', { body });
+      const { data: fn, error: fnErr } = await supabase.functions.invoke('analyze-content', {
+        body: {
+          sourceType: params.sourceType,
+          content:    params.content,
+          sourceUrl:  params.sourceUrl,
+        },
+      });
       if (fnErr || !fn?.success) throw new Error(fnErr?.message || fn?.error || '内容解析失败');
       const d = fn.data;
       setStepStatus('parse', 'done');

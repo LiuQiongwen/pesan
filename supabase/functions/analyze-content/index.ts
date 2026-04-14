@@ -12,9 +12,12 @@ Deno.serve(async (req) => {
     const AI_API_TOKEN = Deno.env.get("AI_API_TOKEN_2c7d5422f5cf");
     if (!AI_API_TOKEN) throw new Error("AI_API_TOKEN is not configured");
 
-    const { sourceType, content, sourceUrl } = await req.json();
+    const body = await req.json();
+    // Support both camelCase (new) and snake_case (legacy) field names
+    const sourceType = body.sourceType || body.source_type || "text";
+    const content    = body.content    || body.text        || "";
+    const sourceUrl  = body.sourceUrl  || body.url         || "";
 
-    // ── Extract raw text (hard limit: 2000 chars) ─────────────────────────
     let rawContent = "";
     if (sourceType === "url") {
       try {
@@ -38,25 +41,13 @@ Deno.serve(async (req) => {
       rawContent = (content || "").slice(0, 2000);
     }
 
-    // ── Single compact system prompt ─────────────────────────────────────
-    const systemPrompt = `你是知识分析助手。严格按以下 JSON 格式输出，每个 markdown 字段严格控制在 200 字以内，不得超出：
+    if (!rawContent.trim()) throw new Error("内容不能为空");
 
-{
-  "title": "标题（20字以内）",
-  "summary": "一句话概括（50字以内）",
-  "tags": ["标签1", "标签2", "标签3"],
-  "summary_markdown": "## 核心观点\\n要点1\\n要点2\\n## 一句话总结\\n总结",
-  "analysis_markdown": "## 核心逻辑\\n分析\\n## 深层洞见\\n洞见\\n## 行动启发\\n启发",
-  "report_markdown": "# 报告\\n## 背景\\n内容\\n## 关键发现\\n发现\\n## 结论\\n结论",
-  "mindmap_markdown": "# 主题\\n- 一级A\\n  - 二级A1\\n  - 二级A2\\n- 一级B\\n  - 二级B1",
-  "mindmap_data": {"root": "主题", "nodes": [{"id": "1", "label": "一级主题", "children": [{"id": "1-1", "label": "子主题", "children": []}]}]}
-}
+    const systemPrompt = `你是知识分析助手。严格按以下 JSON 格式输出，不加任何其他文字：
 
-关键要求：
-1. 每个 markdown 字段严格 200 字以内
-2. 输出合法 JSON，不加任何其他文字
-3. markdown 中换行用 \\n
-4. mindmap_data 的 nodes 最多 3 个一级节点，每个最多 2 个子节点`;
+{"title":"标题（20字以内）","summary":"一句话概括（50字以内）","tags":["标签1","标签2","标签3"],"summary_markdown":"核心要点（100字以内）","analysis_markdown":"核心逻辑与洞见（150字以内）","report_markdown":"背景与结论（150字以内）","mindmap_markdown":"# 主题\\n- 一级A\\n  - 二级A1\\n- 一级B","mindmap_data":{"root":"主题","nodes":[{"id":"1","label":"一级主题","children":[]}]}}
+
+规则：输出合法JSON，不加任何其他文字，markdown换行用\\n`;
 
     const response = await fetch("https://api.enter.pro/code/api/v1/ai/messages", {
       method: "POST",
@@ -69,18 +60,21 @@ Deno.serve(async (req) => {
         system: systemPrompt,
         messages: [{ role: "user", content: `分析以下内容：\n\n${rawContent}` }],
         stream: false,
-        max_tokens: 1800,
+        max_tokens: 1500,
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      let errorMessage = "AI service error";
+      let errorMessage = `AI service error (${response.status})`;
       try {
         const errorData = JSON.parse(errorText);
         errorMessage = errorData.error?.message || errorMessage;
-      } catch (_parseErr) { /* use default */ }
-      throw new Error(errorMessage);
+      } catch (_e) { /* use default */ }
+      return new Response(
+        JSON.stringify({ success: false, error: errorMessage }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const data = await response.json();
@@ -88,7 +82,6 @@ Deno.serve(async (req) => {
 
     let analysisResult;
     try {
-      // Strip markdown code fences if present
       const cleaned = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
       const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
@@ -109,7 +102,6 @@ Deno.serve(async (req) => {
       };
     }
 
-    // Backward compatibility
     analysisResult.content_markdown = analysisResult.report_markdown || analysisResult.content_markdown || "";
 
     return new Response(JSON.stringify({ success: true, data: analysisResult }), {
@@ -118,7 +110,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

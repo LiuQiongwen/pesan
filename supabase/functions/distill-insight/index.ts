@@ -3,13 +3,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const DISTILL_SYSTEM = `You are a knowledge distillation engine. Extract knowledge into 5 layers. Be brief — max 4 bullets per layer.
-
-Output ONLY compact valid JSON:
-{"title":"sharp title (40 chars max)","source_label":"Article","confidence":0.82,"key_insight":"single most valuable sentence (80 chars max)","tags":["tag1","tag2","tag3"],"facts_markdown":"- fact1\\n- fact2","opinions_markdown":"- view1\\n- view2","methods_markdown":"1. method","insights_markdown":"→ insight1\\n→ insight2","actions_markdown":"[ ] action1\\n[ ] action2"}
-
-Rules: each markdown field max 4 items, each item max 60 chars. Output JSON only.`;
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -19,11 +12,26 @@ Deno.serve(async (req) => {
     const AI_API_TOKEN = Deno.env.get("AI_API_TOKEN_2c7d5422f5cf");
     if (!AI_API_TOKEN) throw new Error("AI_API_TOKEN is not configured");
 
-    const { content } = await req.json();
+    const body = await req.json();
+    const content = body.content || "";
+    const title   = body.title   || "";
+    const mode    = body.mode    || "summary";
+
     if (!content?.trim()) throw new Error("No content provided");
 
-    // Hard limit: 2500 chars
-    const truncated = content.slice(0, 2500);
+    const modePrompts: Record<string, string> = {
+      summary:    "提炼核心观点，简明扼要",
+      research:   "深度分析拆解，识别假设与论据",
+      writing:    "转化为写作素材，提炼可引用内容",
+      reflection: "从个人角度提炼意义与启示",
+    };
+
+    const systemPrompt = `你是知识洞察引擎。模式：${modePrompts[mode] || modePrompts.summary}。
+
+严格输出以下 JSON 格式，不加任何其他文字：
+{"success":true,"summary":"核心摘要（60字以内）","key_points":["要点1","要点2","要点3"],"insights":["洞见1","洞见2"],"actionables":["下一步行动1","下一步行动2"]}
+
+规则：key_points 3-5条每条40字以内，insights 2-3条每条50字以内，actionables 1-3条每条40字以内，输出合法JSON不加任何其他文字`;
 
     const response = await fetch("https://api.enter.pro/code/api/v1/ai/messages", {
       method: "POST",
@@ -33,18 +41,21 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         model: "anthropic/claude-sonnet-4.5",
-        system: DISTILL_SYSTEM,
-        messages: [{ role: "user", content: `Distill:\n\n${truncated}` }],
+        system: systemPrompt,
+        messages: [{ role: "user", content: `标题：${title}\n\n内容：${content.slice(0, 3000)}` }],
         stream: false,
-        max_tokens: 900,
+        max_tokens: 800,
       }),
     });
 
     if (!response.ok) {
       const txt = await response.text();
-      let msg = "AI service error";
-      try { msg = JSON.parse(txt).error?.message || msg; } catch (_e) { /* use default */ }
-      throw new Error(msg);
+      let msg = `AI error (${response.status})`;
+      try { msg = JSON.parse(txt).error?.message || msg; } catch (_e) { /* ignore */ }
+      return new Response(
+        JSON.stringify({ success: false, error: msg }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const data = await response.json();
@@ -58,26 +69,23 @@ Deno.serve(async (req) => {
       result = JSON.parse(match[0]);
     } catch (_parseErr) {
       result = {
-        title: "Distillation",
-        source_label: "Unknown",
-        confidence: 0.5,
-        key_insight: rawText.slice(0, 100),
-        tags: [],
-        facts_markdown: rawText.slice(0, 200),
-        opinions_markdown: "",
-        methods_markdown: "",
-        insights_markdown: "",
-        actions_markdown: "",
+        success: true,
+        summary: rawText.slice(0, 100),
+        key_points: [rawText.slice(0, 60)],
+        insights: [],
+        actionables: [],
       };
     }
 
-    return new Response(JSON.stringify({ success: true, data: result }), {
+    result.success = true;
+
+    return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

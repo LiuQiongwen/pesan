@@ -118,8 +118,10 @@ export default function InsightBox() {
       const { data, error } = await supabase.functions.invoke('distill-insight', {
         body: { note_id: selectedId || 'free', content, title, mode: interpMode },
       });
-      if (error || !data?.success) throw new Error(error?.message || '洞察失败');
-      setResult(data.data || data);
+      if (error) throw new Error(error?.message || '调用失败');
+      if (!data?.success) throw new Error(data?.error || '洞察失败');
+      // new format: { success, summary, key_points, insights, actionables }
+      setResult(data);
       workflow.markStepComplete('insight');
       toast.success('洞察完成');
     } catch (e) {
