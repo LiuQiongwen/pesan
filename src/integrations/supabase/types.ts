@@ -3458,6 +3458,7 @@ export type Database = {
           key_points: Json | null
           mindmap_data: Json | null
           mindmap_markdown: string | null
+          node_type: string | null
           summary: string | null
           summary_markdown: string | null
           tags: string[] | null
@@ -3476,6 +3477,7 @@ export type Database = {
           key_points?: Json | null
           mindmap_data?: Json | null
           mindmap_markdown?: string | null
+          node_type?: string | null
           summary?: string | null
           summary_markdown?: string | null
           tags?: string[] | null
@@ -3494,6 +3496,7 @@ export type Database = {
           key_points?: Json | null
           mindmap_data?: Json | null
           mindmap_markdown?: string | null
+          node_type?: string | null
           summary?: string | null
           summary_markdown?: string | null
           tags?: string[] | null

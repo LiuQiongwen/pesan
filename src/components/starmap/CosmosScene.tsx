@@ -30,8 +30,22 @@ import * as THREE from 'three';
 import { type CosmosLayout, type CosmosNote } from './cosmos-layout';
 import { NodeWindow }  from './NodeWindow';
 import type { HoveredNodeInfo } from './KnowledgeStarMap';
+import type { NodeType } from '@/types';
 
 const MONO = "'IBM Plex Mono','Roboto Mono',monospace";
+
+/** Pick Three.js geometry based on knowledge node type */
+function makeNodeGeometry(nodeType: NodeType | undefined, size: number): THREE.BufferGeometry {
+  switch (nodeType) {
+    case 'summary':  return new THREE.OctahedronGeometry(size * 1.05);
+    case 'insight':  return new THREE.IcosahedronGeometry(size * 0.95, 1);
+    case 'action':   return new THREE.BoxGeometry(size * 1.2, size * 1.2, size * 1.2);
+    case 'question': return new THREE.TetrahedronGeometry(size * 1.15);
+    case 'relation': return new THREE.TorusGeometry(size * 0.8, size * 0.25, 8, 16);
+    default:         return new THREE.SphereGeometry(size, 18, 18); // 'capture' or unknown
+  }
+}
+
 const INIT_CAM_POS  = new THREE.Vector3(0, 0, 90);
 const INIT_CAM_TGT  = new THREE.Vector3(0, 0, 0);
 
@@ -46,6 +60,8 @@ export interface CosmosSceneProps {
   onNodeHover?:        (info: HoveredNodeInfo | null) => void;
   recenterActiveRef:   React.MutableRefObject<boolean>;
   onLodChange?:        (level: 0 | 1 | 2) => void;
+  onFlashNote?:        (id: string) => void;  // for NodeWindow derived-node flash
+  userId?:             string;
 }
 
 // ── ImperativeCore ────────────────────────────────────────────────────────────
@@ -237,8 +253,9 @@ function ImperativeCore({
       }
       const mat = sharedMatsRef.current.get(np.color)!.clone(); // clone for per-node intensity
 
-      const size = 0.55 + (note.tags?.length ?? 0) * 0.08;
-      const mesh = new THREE.Mesh(new THREE.SphereGeometry(size, 18, 18), mat);
+      const size = 0.50 + (note.tags?.length ?? 0) * 0.06;
+      const geo  = makeNodeGeometry(note.node_type, size);
+      const mesh = new THREE.Mesh(geo, mat);
       mesh.position.set(...np.pos);
       mesh.name     = `note-${note.id}`;
       mesh.userData = { noteId: note.id };
@@ -511,7 +528,7 @@ function EmptyHint() {
 export function CosmosScene({
   layout, notes, highlightedNoteIds = [],
   flashNoteId = null, openNodes, onNodeToggle, onNodeHover,
-  recenterActiveRef, onLodChange,
+  recenterActiveRef, onLodChange, onFlashNote, userId,
 }: CosmosSceneProps) {
   const highlightSet  = useMemo(() => new Set(highlightedNoteIds), [highlightedNoteIds]);
   const navigate      = useNavigate();
@@ -592,6 +609,8 @@ export function CosmosScene({
             accentColor={np.color}
             onClose={() => onNodeToggle(noteId)}
             onNavigate={(id) => navigate(`/app/note/${id}`)}
+            onNewNode={onFlashNote}
+            userId={userId}
           />
         );
       })}

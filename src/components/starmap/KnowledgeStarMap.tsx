@@ -19,6 +19,8 @@ interface KnowledgeStarMapProps {
   highlightedNoteIds?: string[];
   flashNoteId?:        string | null;
   recenterTrigger?:    number; // increment to trigger smooth camera recenter
+  onFlashNote?:        (id: string) => void;  // for NodeWindow → derived node flash
+  userId?:             string;
 }
 
 // ── Loading fallback ──────────────────────────────────────────────────────────
@@ -49,6 +51,8 @@ export default function KnowledgeStarMap({
   highlightedNoteIds = [],
   flashNoteId = null,
   recenterTrigger = 0,
+  onFlashNote,
+  userId,
 }: KnowledgeStarMapProps) {
   const layout           = useMemo(() => buildCosmosLayout(notes), [notes]);
   const [openNodes,      setOpenNodes]   = useState<Set<string>>(new Set());
@@ -139,6 +143,8 @@ export default function KnowledgeStarMap({
               onNodeToggle={toggleNode}
               onNodeHover={onNodeHover}
               recenterActiveRef={recenterActiveRef}
+              onFlashNote={onFlashNote}
+              userId={userId}
             />
           )}
         </Suspense>

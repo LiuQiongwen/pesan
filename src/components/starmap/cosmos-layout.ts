@@ -19,6 +19,7 @@ export interface CosmosNote {
   summary: string | null;
   tags: string[];
   created_at: string;
+  node_type?: string;   // 'capture'|'summary'|'insight'|'action'|'question'|'relation'
 }
 
 export interface NotePosition {

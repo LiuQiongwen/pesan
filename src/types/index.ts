@@ -1,5 +1,6 @@
 export type SourceType = 'url' | 'text' | 'file' | 'image' | 'video';
 export type AnalysisStatus = 'pending' | 'analyzing' | 'done' | 'error';
+export type NodeType = 'capture' | 'summary' | 'insight' | 'action' | 'question' | 'relation';
 
 export interface Analysis {
   id: string;
@@ -47,6 +48,7 @@ export interface Note {
   analysis_markdown: string | null;
   mindmap_markdown: string | null;
   is_edited: boolean;
+  node_type: NodeType;
   created_at: string;
   updated_at: string;
 }

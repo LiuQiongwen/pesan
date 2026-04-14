@@ -1,6 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Note, Analysis, SourceType } from '@/types';
+import { Note, Analysis, SourceType, NodeType } from '@/types';
+
+// Normalize a raw DB row to a typed Note
+function normalizeNote(n: Record<string, unknown>): Note {
+  return {
+    ...(n as Note),
+    key_points: (n.key_points as string[]) || [],
+    analysis_content: (n.analysis_content as Note['analysis_content']) || {
+      main_viewpoints: [], critical_analysis: '', innovative_insights: [], knowledge_connections: [],
+    },
+    tags: (n.tags as string[]) || [],
+    mindmap_data: (n.mindmap_data as Note['mindmap_data']) || { root: '', nodes: [] },
+    node_type: ((n.node_type as NodeType) || 'capture'),
+  };
+}
 
 export function useNotes(userId?: string) {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -15,49 +29,44 @@ export function useNotes(userId?: string) {
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
-    if (!error && data) {
-      setNotes(data.map(n => ({
-        ...n,
-        key_points: (n.key_points as string[]) || [],
-        analysis_content: (n.analysis_content as Note['analysis_content']) || {
-          main_viewpoints: [], critical_analysis: '', innovative_insights: [], knowledge_connections: []
-        },
-        tags: n.tags || [],
-        mindmap_data: (n.mindmap_data as Note['mindmap_data']) || { root: '', nodes: [] },
-      })));
-    }
+    if (!error && data) setNotes(data.map(n => normalizeNote(n as Record<string, unknown>)));
     setLoading(false);
   }, [userId]);
 
+  // Initial load
+  useEffect(() => { fetchNotes(); }, [fetchNotes]);
+
+  // Realtime: auto-add newly inserted notes (from any source, including derived nodes)
   useEffect(() => {
-    fetchNotes();
-  }, [fetchNotes]);
+    if (!userId) return;
+    const channel = supabase
+      .channel(`notes:user:${userId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notes', filter: `user_id=eq.${userId}` },
+        (payload) => {
+          const newNote = normalizeNote(payload.new as Record<string, unknown>);
+          setNotes(prev => {
+            if (prev.some(n => n.id === newNote.id)) return prev;
+            return [newNote, ...prev];
+          });
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [userId]);
 
   const getNote = async (id: string): Promise<Note | null> => {
-    const { data, error } = await supabase
-      .from('notes')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle();
+    const { data, error } = await supabase.from('notes').select('*').eq('id', id).maybeSingle();
     if (error || !data) return null;
-    return {
-      ...data,
-      key_points: (data.key_points as string[]) || [],
-      analysis_content: (data.analysis_content as Note['analysis_content']) || {
-        main_viewpoints: [], critical_analysis: '', innovative_insights: [], knowledge_connections: []
-      },
-      tags: data.tags || [],
-      mindmap_data: (data.mindmap_data as Note['mindmap_data']) || { root: '', nodes: [] },
-    };
+    return normalizeNote(data as Record<string, unknown>);
   };
 
   const updateNote = async (id: string, updates: Partial<Note>) => {
     const { data, error } = await supabase
       .from('notes')
       .update({ ...updates, is_edited: true, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .select()
-      .maybeSingle();
+      .eq('id', id).select().maybeSingle();
     if (!error && data) {
       setNotes(prev => prev.map(n => n.id === id ? { ...n, ...updates, is_edited: true } : n));
     }
@@ -66,9 +75,7 @@ export function useNotes(userId?: string) {
 
   const deleteNote = async (id: string) => {
     const { error } = await supabase.from('notes').delete().eq('id', id);
-    if (!error) {
-      setNotes(prev => prev.filter(n => n.id !== id));
-    }
+    if (!error) setNotes(prev => prev.filter(n => n.id !== id));
     return { error };
   };
 
@@ -91,8 +98,7 @@ export function useAnalysis(userId?: string) {
         source_url: sourceUrl || null,
         status: 'pending',
       })
-      .select()
-      .maybeSingle();
+      .select().maybeSingle();
     if (error) return null;
     return data as Analysis;
   };
@@ -122,12 +128,44 @@ export function useAnalysis(userId?: string) {
         analysis_markdown: noteData.analysis_markdown || null,
         mindmap_markdown: noteData.mindmap_markdown || null,
         is_edited: false,
+        node_type: noteData.node_type || 'capture',
       })
-      .select()
-      .maybeSingle();
+      .select().maybeSingle();
     if (error) return null;
     return data as Note;
   };
 
-  return { createAnalysis, updateAnalysisStatus, saveNote };
+  // Create a standalone derived node (no analysis record required)
+  const insertDerivedNode = async (params: {
+    userId: string;
+    node_type: NodeType;
+    title: string;
+    summary: string;
+    tags: string[];
+    sourceNoteId?: string;
+  }): Promise<Note | null> => {
+    const { data, error } = await supabase
+      .from('notes')
+      .insert({
+        analysis_id: null,
+        user_id: params.userId,
+        title: params.title,
+        summary: params.summary,
+        key_points: [],
+        analysis_content: {},
+        tags: params.tags,
+        mindmap_data: {},
+        content_markdown: null,
+        summary_markdown: null,
+        analysis_markdown: null,
+        mindmap_markdown: null,
+        is_edited: false,
+        node_type: params.node_type,
+      })
+      .select().maybeSingle();
+    if (error) return null;
+    return data as Note;
+  };
+
+  return { createAnalysis, updateAnalysisStatus, saveNote, insertDerivedNode };
 }

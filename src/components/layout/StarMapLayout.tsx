@@ -27,6 +27,7 @@ export function StarMapLayout() {
   const [highlightedIds, setHighlightedIds] = useState<string[]>([]);
   const [flashNoteId,    setFlashNoteId]    = useState<string | null>(null);
   const [recenterTrigger, setRecenterTrigger] = useState(0);
+  const [agentActive,    setAgentActive]    = useState(false);
 
   useEffect(() => {
     if (!loading && !user) navigate('/auth');
@@ -85,6 +86,8 @@ export function StarMapLayout() {
         highlightedNoteIds={highlightedIds}
         flashNoteId={flashNoteId}
         recenterTrigger={recenterTrigger}
+        onFlashNote={flashNote}
+        userId={user?.id}
       />
 
       {/* Layer 1 — Top-left HUD */}
@@ -126,6 +129,24 @@ export function StarMapLayout() {
         >
           ↺ 回到中心
         </button>
+
+        {/* Agent working indicator */}
+        {agentActive && (
+          <div style={{
+            marginTop: 10, display: 'flex', alignItems: 'center', gap: 7,
+            fontFamily: MONO, fontSize: 8, letterSpacing: '0.10em',
+            color: '#00ff66',
+            pointerEvents: 'none',
+          }}>
+            <div style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: '#00ff66',
+              animation: 'cosmos-pulse 0.8s ease-in-out infinite',
+              boxShadow: '0 0 8px #00ff66',
+            }} />
+            AGENT WORKING…
+          </div>
+        )}
       </div>
 
       {/* Layer 2 — Floating Pods */}
@@ -133,7 +154,11 @@ export function StarMapLayout() {
         <div style={{ pointerEvents: 'auto' }}>
 
           <FloatingPod id="capture"   title="Capture Pod"   subtitle="捕捉舱 · 知识入口"     icon={Feather}      accentColor="#00ff66" width={360}>
-            <CaptureBox onFlashNote={flashNote} />
+            <CaptureBox
+              onFlashNote={flashNote}
+              onAgentStart={() => setAgentActive(true)}
+              onAgentEnd={()   => setAgentActive(false)}
+            />
           </FloatingPod>
 
           <FloatingPod id="retrieval" title="Retrieval Pod" subtitle="检索舱 · 语义召回"     icon={Radar}        accentColor="#66f0ff" width={420}>
