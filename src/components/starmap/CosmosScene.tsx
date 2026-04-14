@@ -329,35 +329,28 @@ function ImperativeCore({
 // ── Cluster label (Html — React component, babel-safe) ─────────────────────
 function ClusterLabel({ cluster }: { cluster: CosmosLayout['clusters'][0] }) {
   if (cluster.tag === '__untagged__' || cluster.noteIds.length < 3) return null;
-  return (
-    <Html
-      position={[cluster.center[0], cluster.center[1] + cluster.radius + 1.5, cluster.center[2]]}
-      center
-      style={{ pointerEvents: 'none', whiteSpace: 'nowrap' }}
-    >
-      <div style={{
-        fontFamily: MONO, fontSize: 8, letterSpacing: '0.10em',
-        color: `${cluster.color}66`,
-        textTransform: 'uppercase',
-      }}>
-        {cluster.tag}
-      </div>
-    </Html>
+  // Use createElement(Html, ...) — NOT <Html> JSX — because drei's Html spreads
+  // unknown props (incl. babel-injected data-source-stack) onto an internal
+  // THREE.Group, causing R3F to throw "Cannot set data-source-stack".
+  return createElement(Html,
+    { position: [cluster.center[0], cluster.center[1] + cluster.radius + 1.5, cluster.center[2]] as [number,number,number],
+      center: true, style: { pointerEvents: 'none', whiteSpace: 'nowrap' } },
+    <div style={{ fontFamily: MONO, fontSize: 8, letterSpacing: '0.10em',
+      color: `${cluster.color}66`, textTransform: 'uppercase' as const }}>
+      {cluster.tag}
+    </div>
   );
 }
 
 // ── Empty state hint (Html — babel-safe) ─────────────────────────────────────
 function EmptyHint() {
-  return (
-    <Html position={[0, -13, 0]} center style={{ pointerEvents: 'none' }}>
-      <div style={{
-        fontFamily: MONO, fontSize: 9, letterSpacing: '0.08em',
-        color: 'rgba(60,72,95,0.50)', textAlign: 'center', lineHeight: 1.8,
-      }}>
-        KNOWLEDGE COSMOS<br />
-        <span style={{ fontSize: 8, opacity: 0.6 }}>使用 Capture Pod 投入第一条知识</span>
-      </div>
-    </Html>
+  return createElement(Html,
+    { position: [0, -13, 0] as [number,number,number], center: true, style: { pointerEvents: 'none' } },
+    <div style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '0.08em',
+      color: 'rgba(60,72,95,0.50)', textAlign: 'center' as const, lineHeight: 1.8 }}>
+      KNOWLEDGE COSMOS<br />
+      <span style={{ fontSize: 8, opacity: 0.6 }}>使用 Capture Pod 投入第一条知识</span>
+    </div>
   );
 }
 
@@ -397,53 +390,40 @@ export function CosmosScene({
       {/* ── Empty state ── */}
       {notes.length === 0 && <EmptyHint />}
 
-      {/* ── Hover label (Html — safe) ── */}
+      {/* ── Hover label ── */}
       {hoveredId && !openNodes.has(hoveredId) && (() => {
         const pos = currentPosRef.current.get(hoveredId);
         const note = notesMap.get(hoveredId);
         const np   = layout.positions[hoveredId];
         if (!pos || !note || !np) return null;
-        return (
-          <Html
-            key={`label-${hoveredId}`}
-            position={[pos.x, pos.y + 1.2, pos.z]}
-            center
-            style={{ pointerEvents: 'none', whiteSpace: 'nowrap' }}
-          >
-            <div style={{
-              fontFamily: MONO, fontSize: 9, letterSpacing: '0.05em',
-              color:      np.color,
-              background: 'rgba(4,6,14,0.88)',
-              border:     `1px solid ${np.color}44`,
-              borderRadius: 5, padding: '3px 7px',
-              boxShadow:  `0 0 10px ${np.color}28`,
-            }}>
-              {(note.title || '未命名').slice(0, 26)}{(note.title || '').length > 26 ? '…' : ''}
-            </div>
-          </Html>
+        return createElement(Html,
+          { key: `label-${hoveredId}`,
+            position: [pos.x, pos.y + 1.2, pos.z] as [number,number,number],
+            center: true, style: { pointerEvents: 'none', whiteSpace: 'nowrap' } },
+          <div style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '0.05em',
+            color: np.color, background: 'rgba(4,6,14,0.88)',
+            border: `1px solid ${np.color}44`, borderRadius: 5, padding: '3px 7px',
+            boxShadow: `0 0 10px ${np.color}28` }}>
+            {(note.title || '未命名').slice(0, 26)}{(note.title || '').length > 26 ? '…' : ''}
+          </div>
         );
       })()}
 
-      {/* ── Open node windows (Html — safe) ── */}
+      {/* ── Open node windows ── */}
       {Array.from(openNodes).map(noteId => {
         const pos  = currentPosRef.current.get(noteId);
         const note = notesMap.get(noteId);
         const np   = layout.positions[noteId];
         if (!pos || !note || !np) return null;
-        return (
-          <Html
-            key={`win-${noteId}`}
-            position={[pos.x + 1.5, pos.y + 1.0, pos.z]}
-            center={false}
-            distanceFactor={18}
-            style={{ pointerEvents: 'all' }}
-          >
-            <NodeWindow
-              note={{ id: note.id, title: note.title, summary: note.summary, tags: note.tags, created_at: note.created_at }}
-              accentColor={np.color}
-              onClose={() => onNodeToggle(noteId)}
-            />
-          </Html>
+        return createElement(Html,
+          { key: `win-${noteId}`,
+            position: [pos.x + 1.5, pos.y + 1.0, pos.z] as [number,number,number],
+            center: false, distanceFactor: 18, style: { pointerEvents: 'all' } },
+          <NodeWindow
+            note={{ id: note.id, title: note.title, summary: note.summary, tags: note.tags, created_at: note.created_at }}
+            accentColor={np.color}
+            onClose={() => onNodeToggle(noteId)}
+          />
         );
       })}
 
