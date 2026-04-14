@@ -1,205 +1,189 @@
-# Plan: 3D Knowledge Cosmos — Infinite Star Map
+# 知识宇宙 · 完整优化方案
 
 ## Context
-The current KnowledgeStarMap is a 2D Canvas animation. The user wants a true 3D immersive
-knowledge universe: infinite space, real 3D navigation (orbit/zoom/pan), clickable knowledge
-nodes that expand into floating edit windows, and tag-based galaxy clusters. This requires
-replacing Canvas 2D with Three.js WebGL.
+User confirmed all design consultation suggestions. Implement the performance/UX/visual improvements
+for the 3D knowledge cosmos. No DB schema changes needed (skip node-type polymorphism, version tree,
+bi-directional links — those require migrations). Focus on rendering, interaction, and controls.
 
 ---
 
-## Technology
+## Scope — what will change
 
-**New packages to install:**
-- `three` — WebGL 3D engine
-- `@react-three/fiber` — React renderer for Three.js
-- `@react-three/drei` — Three.js helpers (Stars, OrbitControls, Html)
-- `@react-three/postprocessing` — Bloom glow effect
-
----
-
-## Architecture
-
-### Layer model (z-index unchanged)
-```
-KnowledgeStarMap  →  <Canvas> WebGL scene  (z-index: 0)
-FloatingPods      →  HTML overlays           (z-index: 20)
-CommandDock       →  HTML overlay            (z-index: 30)
-SettingsCapsule   →  HTML overlay            (z-index: 40)
-```
-
-### Files to CREATE
-1. `src/components/starmap/CosmosScene.tsx` — Inner Three.js scene (all 3D objects)
-2. `src/components/starmap/NodeWindow.tsx`  — Floating edit window via `<Html>` from drei
-3. `src/components/starmap/cosmos-layout.ts` — Deterministic 3D position algorithm
-
-### Files to REWRITE
-4. `src/components/starmap/KnowledgeStarMap.tsx` — becomes `<Canvas>` wrapper + state manager
-
-### Files to UPDATE
-5. `src/components/layout/StarMapLayout.tsx` — remove navigate-on-click; nodes now open inline windows
+| File | Changes |
+|---|---|
+| `cosmos-layout.ts` | Add `fromNoteId`/`toNoteId` to `CosmosEdge` |
+| `CosmosScene.tsx` | LOD system, hover-only edges, camera recenter, auto-rotate pause, raycasting throttle, shared materials, halo proximity opacity |
+| `KnowledgeStarMap.tsx` | Max-3 windows, Space/Escape keys, double-click recenter, `recenterTrigger` prop, LOD level state, background tweak |
+| `StarMapLayout.tsx` | "↺ 中心" recenter button in HUD, `recenterTrigger` state |
 
 ---
 
-## 3D Layout Algorithm (`cosmos-layout.ts`)
+## 1. `cosmos-layout.ts` — minimal change
 
-```typescript
-// Input: notes with tags, created_at, id
-// Output: { positions: Map<noteId, [x,y,z]>, clusters: ClusterInfo[] }
-
-// 1. Group notes by primary tag
-// 2. Place each tag cluster center using Fibonacci sphere distribution
-//    (deterministic, evenly spread around a sphere of radius 25-40)
-// 3. Place each note within its cluster:
-//    - seeded random offset (± 5 units) around cluster center
-//    - Recent notes float slightly closer to origin (lower Z offset)
-// 4. Build connection list: notes sharing ≥1 tag are connected
-// 5. Build cluster metadata: center, color (from PALETTE), noteIds, tag name
+Add to `CosmosEdge`:
+```ts
+fromNoteId: string;
+toNoteId: string;
 ```
-
-Deterministic hash: `hash01(noteId, salt)` → same positions every load.
+Populate in `buildCosmosLayout`: `edges.push({ ..., fromNoteId: ni.id, toNoteId: nj.id })`.
 
 ---
 
-## `CosmosScene.tsx` — Three.js Components
+## 2. `CosmosScene.tsx` — core changes
 
-```
-<CosmosScene>
- ├── ambientLight intensity=0.03
- ├── <Stars radius=400 depth=120 count=10000 factor=5 saturation=0.4 />
- ├── {clusters.map(c => <GalaxyHalo center radius color opacity=0.04 />)}
- ├── {edges.map(e => <ConnectionLine from to color alpha />)}
- ├── {notes.map(n => <NoteNode ... />)}
- ├── <OrbitControls enablePan enableZoom autoRotate autoRotateSpeed=0.08 />
- └── <EffectComposer>
-      └── <Bloom luminanceThreshold=0.15 intensity=0.6 mipmapBlur />
-```
+### A. Hover-only edges
+- Build `edgesByNoteIdRef: Map<string, THREE.Line[]>` and `allEdgeLinesRef: THREE.Line[]` in useEffect
+- All edges start at `opacity: 0`
+- In `useFrame`: when `hoveredId` changes, set connected edges `opacity → 0.25`, all others `opacity → 0`
+- Use a `lastHoveredId` ref to detect change and avoid setting material every frame
 
-**`<NoteNode>`**: 
-- `<mesh>` with `<sphereGeometry args={[0.7, 16, 16]}>`
-- `<meshStandardMaterial emissive={color} emissiveIntensity={glow} color="black">`
-- `onPointerOver/Out` → trigger onNodeHover callback
-- `onClick` → toggle NodeWindow open
-- When hovered: `<Html center><NodeLabel /></Html>` (title chip, no transform)
-- When open: `<Html center distanceFactor={18}><NodeWindow /></Html>`
+### B. LOD system (camera-distance based)
+In `useFrame`, compute `dist = camera.position.length()`:
 
-**`<GalaxyHalo>`**:
-- `<mesh>` position={clusterCenter}
-- `<sphereGeometry args={[radius, 12, 12]}>`
-- `<meshBasicMaterial color wireframe={false} transparent opacity=0.025 />`
-- Subtle glow ring around cluster
+| Distance | Halo opacity | Ring opacity | Edges (non-hover) |
+|---|---|---|---|
+| < 70 | 0.022 | 0.055 | 0 (hover-only) |
+| 70–130 | fade to 0 | fade to 0 | 0 |
+| > 130 | 0 | 0 | 0 |
 
-**`<ConnectionLine>`**:
-- `<Line>` from drei between two 3D points
-- Width 0.3, color = cluster palette, opacity 0.12 (0.6 when hover-active)
+Lerp halo/ring material opacity toward target (factor 0.04 — smooth).
+Store `haloMeshesRef: THREE.Mesh[]` and `ringMeshesRef: THREE.Mesh[]` to iterate over.
 
----
+**Cluster labels LOD** (in React layer):
+- Add `CosmosLOD` sub-component inside Canvas that tracks camera distance in `useFrame`
+- When `dist` crosses thresholds call `setLodLevel` (only on threshold crossing, not every frame)
+- `CosmosScene` props pass `onLodChange(level: 0|1|2)` up, parent stores `lodLevel` state
+- Conditionally: `lodLevel === 0` renders cluster labels
 
-## `NodeWindow.tsx` — Knowledge Card (inside Html)
-
-```
-┌─────────────────────────────────┐
-│ ▸ NOTE TITLE              [×][⊔]│ ← monospace header, accent color
-├─────────────────────────────────┤
-│ Summary text (2-3 lines)        │ ← read mode
-│                                 │
-│ [tag1] [tag2]   2025-01-15      │ ← metadata row
-├─────────────────────────────────┤
-│ [Edit] [Connect] [Full Note →]  │ ← action row
-└─────────────────────────────────┘
-```
-
-**Edit mode**: summary becomes `<textarea>`, title becomes `<input>`, Save/Cancel buttons appear
-**State**: title, summary, tags read from note prop; on save → `supabase.from('notes').update()`
-**Multiple windows**: each node manages its own open state; parent tracks Set<openNodeId>
-**Style**: `width: 280px`, glass morphism (`rgba(5,7,12,0.92)` + blur + accent border)
-
----
-
-## `KnowledgeStarMap.tsx` (rewrite)
-
-```typescript
-// Props interface UNCHANGED (backward compat):
-// notes, loading, onNodeHover, onNodeClick, highlightedNoteIds, flashNoteId
-
-export default function KnowledgeStarMap(props) {
-  const layout = useMemo(() => buildCosmosLayout(props.notes), [props.notes]);
-  const [openNodes, setOpenNodes] = useState<Set<string>>(new Set());
-  
-  const toggleNode = (id: string) => setOpenNodes(prev => {
-    const next = new Set(prev);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    return next;
-  });
-
-  return (
-    <div style={{ position:'fixed', inset:0, zIndex:0 }}>
-      <Canvas camera={{ position:[0,0,90], fov:55 }} gl={{ antialias:true }}>
-        <CosmosScene
-          {...layout}
-          notes={props.notes}
-          highlightedNoteIds={props.highlightedNoteIds}
-          flashNoteId={props.flashNoteId}
-          openNodes={openNodes}
-          onNodeToggle={toggleNode}
-          onNodeHover={props.onNodeHover}
-        />
-      </Canvas>
-    </div>
-  );
+### C. Camera recenter tween
+Add props `recenterActiveRef: React.MutableRefObject<boolean>` to `ImperativeCore`.
+In `useFrame`:
+```ts
+if (recenterActiveRef.current) {
+  camera.position.lerp(INIT_POS, 0.065);
+  (controls as any)?.target?.lerp(ZERO3, 0.065);
+  (controls as any)?.update?.();
+  if (camera.position.distanceTo(INIT_POS) < 0.8) {
+    recenterActiveRef.current = false;
+  }
 }
 ```
+`INIT_POS = new THREE.Vector3(0, 0, 90)`.
+Uses `useThree().controls` (available because `makeDefault: true` on OrbitControls).
+
+### D. Auto-rotate pause/resume
+In click/hover `useEffect` on `gl.domElement`:
+- `mousedown` → `orbitAutoRotateRef.current = false` + clear pending timer
+- `mouseup` → start 3s timer → set `orbitAutoRotateRef.current = true`
+In `useFrame`: `(controls as any)?.autoRotate = orbitAutoRotateRef.current` (only set when changed).
+
+### E. Raycasting throttle
+```ts
+const frameCountRef = useRef(0);
+useFrame((...) => {
+  frameCountRef.current++;
+  // ... animation (every frame)
+  if (frameCountRef.current % 3 === 0) {
+    // raycasting
+  }
+});
+```
+
+### F. Shared materials per cluster color
+Instead of creating one `MeshStandardMaterial` per node, build a `Map<string, THREE.MeshStandardMaterial>`
+keyed by color. Nodes of the same cluster share a material. Use `emissiveIntensity` per-mesh via
+a separate `Float32Array` approach OR keep per-mesh materials but reuse geometry by color. 
+**Simpler**: just create one material per unique color (≤8 palette entries), clone only if needed.
+Reduces material count from N to ≤8.
+
+### G. Camera damping
+`OrbitControls` props: add `enableDamping: true, dampingFactor: 0.08`.
+
+### H. New node flash (white pulse)
+Existing `flashNoteId` logic already scales+glows. Enhance: add white flash overlay by setting
+`emissive: new THREE.Color('white')` temporarily then fading back to cluster color in useFrame.
+Track `flashStartTime` per note in a `flashTimesRef: Map<string, number>`.
 
 ---
 
-## `StarMapLayout.tsx` changes
+## 3. `KnowledgeStarMap.tsx` — interaction layer
 
-- Remove `navigate('/app/note/:id')` as the click handler
-- The `onNodeClick` prop now does nothing (clicking a node opens NodeWindow inline)
-- The `onNodeHover` still feeds `NodeLightBand`
-- Add "Open Full Note" button inside NodeWindow that calls `navigate`
+### Max 3 node windows
+```ts
+const toggleNode = useCallback((id: string) => {
+  setOpenNodes(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) { next.delete(id); return next; }
+    if (next.size >= 3) {
+      const oldest = Array.from(next)[0];
+      next.delete(oldest);
+    }
+    next.add(id);
+    return next;
+  });
+}, []);
+```
+
+### Keyboard shortcuts
+```ts
+useEffect(() => {
+  const onKey = (e: KeyboardEvent) => {
+    const tag = (e.target as HTMLElement).tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (e.code === 'Space') { e.preventDefault(); recenterRef.current = true; }
+    if (e.code === 'Escape') setOpenNodes(new Set());
+  };
+  window.addEventListener('keydown', onKey);
+  return () => window.removeEventListener('keydown', onKey);
+}, []);
+```
+
+### Double-click recenter
+On the wrapper `<div>`: `onDoubleClick={() => { recenterRef.current = true; }}`.
+
+### `recenterTrigger` prop
+```ts
+interface KnowledgeStarMapProps { ...; recenterTrigger?: number; }
+useEffect(() => {
+  if (recenterTrigger) recenterRef.current = true;
+}, [recenterTrigger]);
+```
+
+### LOD level upward callback
+Pass `onLodChange?: (level: 0|1|2) => void` prop (optional, used by StarMapLayout for future UI).
+Actually, cluster labels live inside Canvas — just conditionally render them inside CosmosScene
+based on `lodLevel` state held in `KnowledgeStarMap` (passed down via CosmosScene props).
+
+### Background
+Change `#040508` → `#01040d` (slight blue tint, as spec'd).
 
 ---
 
-## Visual Design
+## 4. `StarMapLayout.tsx` — minimal HUD update
 
-| Element | Color | Detail |
-|---------|-------|--------|
-| Node (untagged) | `rgba(100,110,130,0.8)` | dim grey |
-| Node (cluster 0) | `#00ff66` neon green | emissive glow |
-| Node (cluster 1) | `#66f0ff` cyan | emissive glow |
-| Node (cluster 2) | `#b496ff` purple | emissive glow |
-| Node (cluster 3) | `#ffa040` amber | emissive glow |
-| Node (cluster 4) | `#ff4466` red-pink | emissive glow |
-| Highlighted node | `#66f0ff` + 2x scale | search result |
-| Flash node | white burst → color | new note created |
-| Galaxy halo | cluster color, 2-4% opacity | sphere cloud |
-| Connections | cluster color, 12% opacity | thin lines |
-| Background stars | white + blue tint | 10k particles |
-| Bloom | luminance 0.15, intensity 0.6 | glow effect |
+Add to existing HUD (`pointerEvents: 'none'` div):
+- Make that div's inner area `pointerEvents: 'auto'` for the button area
+- Add "↺" button styled with MONO font, accent color, that calls `setRecenterTrigger(t => t+1)`
+- Add `[recenterTrigger, setRecenterTrigger] = useState(0)` state
+- Pass `recenterTrigger` prop to `<KnowledgeStarMap>`
 
 ---
 
-## Implementation Order
-
-1. Install 4 packages
-2. Write `cosmos-layout.ts` (pure TS, no React)
-3. Write `NodeWindow.tsx` (pure HTML component)
-4. Write `CosmosScene.tsx` (Three.js scene)
-5. Rewrite `KnowledgeStarMap.tsx` (Canvas wrapper)
-6. Update `StarMapLayout.tsx` (remove nav-on-click)
-7. TypeScript check + lint + build
+## 5. Visual tweaks
+- Bloom: `luminanceThreshold: 0.20, intensity: 0.60` (slightly reduced for realism)
+- OrbitControls: `enableDamping: true, dampingFactor: 0.08`
+- Star field: `opacity: 0.75` (slightly reduced to not compete with nodes)
 
 ---
 
 ## Verification
-
-- `npx tsc --noEmit` → 0 errors
-- `npm run build` → successful
-- App loads at `/app` showing 3D canvas
-- Notes visible as glowing spheres
-- Click node → NodeWindow opens inline
-- Edit + save → Supabase update
-- OrbitControls: mouse drag rotates, scroll zooms, right-click pans
-- Bloom effect visible on nodes
-- CommandDock and pods render above canvas (not inside Canvas)
+1. Open `/app` → stars and galaxy halos visible
+2. Hover a node → connected edges appear (opacity ~0.25), disappear on un-hover
+3. Zoom out far → halos fade out, cluster labels disappear
+4. Double-click empty space → camera smoothly returns to origin
+5. Press Space → same recenter behavior
+6. Press Escape → all node windows close
+7. Open 3 node windows, click a 4th → oldest closes, 4th opens
+8. Stop interacting 3s → auto-rotate resumes
+9. Click "↺" button in top-left HUD → camera recenters
+10. Build: 0 TS errors, 0 lint errors
