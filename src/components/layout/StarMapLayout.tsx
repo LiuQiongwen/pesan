@@ -2,39 +2,32 @@ import { useEffect, useState, useCallback } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useNotes } from '@/hooks/useNotes';
-import { useT } from '@/contexts/LanguageContext';
 import { useToolbox } from '@/contexts/ToolboxContext';
 import KnowledgeStarMap, { type HoveredNodeInfo } from '@/components/starmap/KnowledgeStarMap';
 import { NodeLightBand } from '@/components/layout/NodeLightBand';
 import { CommandDock } from '@/components/floating/CommandDock';
-import { FloatingToolbox } from '@/components/floating/FloatingToolbox';
-import {
-  Brain, Search, BookOpen, FlaskConical, Scan, Sparkles, CheckSquare, Settings
-} from 'lucide-react';
+import { FloatingPod } from '@/components/floating/FloatingPod';
+import { SettingsCapsule } from '@/components/floating/SettingsCapsule';
+import { Feather, Radar, FlaskConical, Layers, Zap } from 'lucide-react';
 
-// Lazy-loaded toolbox content
-import AnalyzeBox from '@/components/toolboxes/AnalyzeBox';
-import SearchBox from '@/components/toolboxes/SearchBox';
-import LibraryBox from '@/components/toolboxes/LibraryBox';
-import DistillerBox from '@/components/toolboxes/DistillerBox';
-import MirrorBox from '@/components/toolboxes/MirrorBox';
-import AnticipationBox from '@/components/toolboxes/AnticipationBox';
-import ActionsBox from '@/components/toolboxes/ActionsBox';
-import SettingsBox from '@/components/toolboxes/SettingsBox';
+import CaptureBox   from '@/components/pods/CaptureBox';
+import RetrievalBox from '@/components/pods/RetrievalBox';
+import InsightBox   from '@/components/pods/InsightBox';
+import MemoryBox    from '@/components/pods/MemoryBox';
+import ActionBox    from '@/components/pods/ActionBox';
 
-const MONO = "'IBM Plex Mono','Roboto Mono',monospace";
+const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
 
 export function StarMapLayout() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
-  const t = useT();
   const { notes } = useNotes(user?.id);
-  const { toolboxes } = useToolbox();
+  const { pods } = useToolbox();
 
-  const [hoveredNode, setHoveredNode] = useState<HoveredNodeInfo | null>(null);
+  const [hoveredNode,    setHoveredNode]    = useState<HoveredNodeInfo | null>(null);
   const [highlightedIds, setHighlightedIds] = useState<string[]>([]);
-  const [flashNoteId, setFlashNoteId] = useState<string | null>(null);
+  const [flashNoteId,    setFlashNoteId]    = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) navigate('/auth');
@@ -45,10 +38,9 @@ export function StarMapLayout() {
   }, []);
 
   const handleNodeClick = useCallback((noteId: string) => {
-    navigate(`/note/${noteId}`);
+    navigate(`/app/note/${noteId}`);
   }, [navigate]);
 
-  // Expose callbacks for toolboxes to highlight nodes
   const highlightNotes = useCallback((ids: string[]) => {
     setHighlightedIds(ids);
   }, []);
@@ -61,8 +53,7 @@ export function StarMapLayout() {
   if (loading) {
     return (
       <div style={{
-        width: '100vw', height: '100vh',
-        background: '#040508',
+        width: '100vw', height: '100vh', background: '#040508',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         flexDirection: 'column', gap: 14,
       }}>
@@ -73,10 +64,10 @@ export function StarMapLayout() {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           animation: 'pulse-glow 2s ease-in-out infinite',
         }}>
-          <span style={{ fontFamily: MONO, fontWeight: 700, fontSize: 14, color: '#00ff66' }}>Pe</span>
+          <span style={{ fontFamily: MONO, fontWeight: 700, fontSize: 14, color: '#00ff66' }}>平</span>
         </div>
         <p style={{ fontFamily: MONO, fontSize: 10, color: 'rgba(80,90,110,0.60)', letterSpacing: '0.08em' }}>
-          {t('layout.loading')}
+          LOADING…
         </p>
       </div>
     );
@@ -84,14 +75,14 @@ export function StarMapLayout() {
 
   if (!user) return null;
 
-  // Count stats
+  // HUD stats
   const totalTags = Array.from(new Set(notes.flatMap(n => n.tags || []))).length;
-  const thisWeek  = notes.filter(n => n.created_at && Date.now() - new Date(n.created_at).getTime() < 7 * 86400000).length;
+  const thisWeek  = notes.filter(n => n.created_at && Date.now() - new Date(n.created_at).getTime() < 7*86400000).length;
 
   return (
     <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', background: '#040508' }}>
 
-      {/* Layer 0: Star Map Canvas */}
+      {/* Layer 0 — Star Map */}
       <KnowledgeStarMap
         notes={notes}
         loading={loading}
@@ -101,76 +92,59 @@ export function StarMapLayout() {
         flashNoteId={flashNoteId}
       />
 
-      {/* Layer 1: Top HUD */}
+      {/* Layer 1 — Top-left HUD (pointer-none) */}
       <div style={{
-        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 10,
-        display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-        padding: '16px 24px',
+        position: 'fixed', top: 0, left: 0, zIndex: 10,
+        padding: '18px 22px',
         pointerEvents: 'none',
-        background: 'linear-gradient(to bottom, rgba(4,5,8,0.7) 0%, transparent 100%)',
+        background: 'linear-gradient(135deg, rgba(4,5,8,0.60) 0%, transparent 70%)',
       }}>
-        <div>
-          <div style={{ fontFamily: INTER, fontWeight: 700, fontSize: 14, color: '#ffffff', marginBottom: 2 }}>
-            {user.email?.split('@')[0]}
-          </div>
-          <div style={{ fontFamily: MONO, fontSize: 9, color: 'rgba(80,90,110,0.60)', letterSpacing: '0.07em' }}>
-            KNOWLEDGE COSMOS
-          </div>
+        <div style={{ fontFamily: INTER, fontWeight: 700, fontSize: 13, color: 'rgba(230,238,255,0.75)', marginBottom: 2 }}>
+          {user.email?.split('@')[0]}
         </div>
-        <div style={{ fontFamily: MONO, fontSize: 9, color: 'rgba(80,90,110,0.50)', textAlign: 'right', letterSpacing: '0.06em' }}>
-          <div>{notes.length} nodes</div>
-          <div>{totalTags} clusters</div>
-          <div>+{thisWeek} this week</div>
+        <div style={{ fontFamily: MONO, fontSize: 8, color: 'rgba(60,72,95,0.60)', letterSpacing: '0.08em' }}>
+          {notes.length} nodes · {totalTags} clusters · +{thisWeek} this week
         </div>
       </div>
 
-      {/* Layer 2: Floating Toolboxes */}
+      {/* Layer 2 — Floating Pods */}
       <div style={{ position: 'fixed', inset: 0, zIndex: 20, pointerEvents: 'none' }}>
         <div style={{ pointerEvents: 'auto' }}>
 
-          <FloatingToolbox id="analyze" title={t('sidebar.analyze')} icon={Brain} width={440}>
-            <AnalyzeBox onFlashNote={flashNote} />
-          </FloatingToolbox>
+          <FloatingPod id="capture"   title="Capture Pod"   subtitle="捕捉舱 · 知识入口"     icon={Feather}      accentColor="#00ff66" width={360}>
+            <CaptureBox onFlashNote={flashNote} />
+          </FloatingPod>
 
-          <FloatingToolbox id="search" title={t('sidebar.search')} icon={Search} width={420} accentColor="cyan">
-            <SearchBox onHighlight={highlightNotes} />
-          </FloatingToolbox>
+          <FloatingPod id="retrieval" title="Retrieval Pod" subtitle="检索舱 · 语义召回"     icon={Radar}        accentColor="#66f0ff" width={420}>
+            <RetrievalBox onHighlight={highlightNotes} />
+          </FloatingPod>
 
-          <FloatingToolbox id="library" title={t('sidebar.library')} icon={BookOpen} width={360} accentColor="cyan">
-            <LibraryBox onHighlight={id => highlightNotes([id])} />
-          </FloatingToolbox>
+          <FloatingPod id="insight"   title="Insight Pod"   subtitle="洞察舱 · 知识精炼"     icon={FlaskConical} accentColor="#b496ff" width={400}>
+            <InsightBox />
+          </FloatingPod>
 
-          <FloatingToolbox id="distiller" title={t('sidebar.distiller')} icon={FlaskConical} width={400}>
-            <DistillerBox />
-          </FloatingToolbox>
+          <FloatingPod id="memory"    title="Memory Pod"    subtitle="记忆舱 · 上下文唤醒"   icon={Layers}       accentColor="#ffa040" width={360}>
+            <MemoryBox hoveredNoteId={hoveredNode?.noteId} />
+          </FloatingPod>
 
-          <FloatingToolbox id="mirror" title={t('sidebar.mirror')} icon={Scan} width={380} accentColor="cyan">
-            <MirrorBox />
-          </FloatingToolbox>
-
-          <FloatingToolbox id="anticipation" title={t('sidebar.anticipation')} icon={Sparkles} width={380}>
-            <AnticipationBox />
-          </FloatingToolbox>
-
-          <FloatingToolbox id="actions" title={t('sidebar.actions')} icon={CheckSquare} width={380} accentColor="cyan">
-            <ActionsBox />
-          </FloatingToolbox>
-
-          <FloatingToolbox id="settings" title={t('sidebar.settings')} icon={Settings} width={320}>
-            <SettingsBox />
-          </FloatingToolbox>
+          <FloatingPod id="action"    title="Action Pod"    subtitle="行动舱 · 知识转执行"   icon={Zap}          accentColor="#ff4466" width={360}>
+            <ActionBox />
+          </FloatingPod>
 
         </div>
       </div>
 
-      {/* Layer 3: Note detail overlay (route-rendered pages, e.g., /note/:id) */}
+      {/* Layer 3 — Route overlay (e.g. /app/note/:id) */}
       <Outlet />
 
-      {/* Layer 4: Node light band */}
+      {/* Layer 4 — Node hover light band */}
       <NodeLightBand node={hoveredNode} />
 
-      {/* Layer 5: Command dock */}
+      {/* Layer 5 — Command Dock */}
       <CommandDock />
+
+      {/* Layer 6 — Settings Capsule (top-right, fixed, pointer-auto) */}
+      <SettingsCapsule />
 
     </div>
   );
