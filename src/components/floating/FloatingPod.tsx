@@ -11,6 +11,7 @@ interface FloatingPodProps {
   icon: LucideIcon;
   accentColor: string;   // hex, e.g. '#00ff66'
   width?: number;
+  mode?: 'primary' | 'secondary'; // secondary = dimmed
   children: ReactNode;
 }
 
@@ -28,6 +29,7 @@ export function FloatingPod({
   icon: Icon,
   accentColor,
   width = 380,
+  mode = 'primary',
   children,
 }: FloatingPodProps) {
   const { pods, closePod, minimizePod, bringToFront, setPos } = useToolbox();
@@ -37,9 +39,10 @@ export function FloatingPod({
   const dragOffset = useRef({ x: 0, y: 0 });
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const border  = hexToRgba(accentColor, 0.28);
-  const glow    = hexToRgba(accentColor, 0.12);
-  const barBg   = hexToRgba(accentColor, 0.15);
+  const dimmed = mode === 'secondary';
+  const border  = hexToRgba(accentColor, dimmed ? 0.14 : 0.28);
+  const glow    = hexToRgba(accentColor, dimmed ? 0.05 : 0.12);
+  const barBg   = hexToRgba(accentColor, dimmed ? 0.07 : 0.15);
 
   const onMouseDownHeader = useCallback((e: React.MouseEvent) => {
     if (pinned) return;
@@ -77,7 +80,9 @@ export function FloatingPod({
         top: state.pos.y,
         width,
         zIndex: state.zIndex,
+        opacity: dimmed ? 0.72 : 1,
         animation: 'toolbox-in 0.18s cubic-bezier(0.16,1,0.3,1)',
+        transition: 'opacity 0.22s ease',
       }}
     >
       <div style={{
@@ -128,8 +133,18 @@ export function FloatingPod({
                 letterSpacing: '0.09em',
                 textTransform: 'uppercase',
                 lineHeight: 1,
+                display: 'flex', alignItems: 'center', gap: 6,
               }}>
                 {title}
+                {dimmed && (
+                  <span style={{
+                    fontFamily: MONO, fontSize: 6, letterSpacing: '0.07em',
+                    color: hexToRgba(accentColor, 0.40),
+                    border: `1px solid ${hexToRgba(accentColor, 0.18)}`,
+                    borderRadius: 3, padding: '1px 4px',
+                    fontWeight: 400,
+                  }}>SECONDARY</span>
+                )}
               </div>
               {subtitle && !state.minimized && (
                 <div style={{
