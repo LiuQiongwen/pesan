@@ -4,10 +4,7 @@ const corsHeaders = {
 };
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
-
+  if (req.method === "OPTIONS") { return new Response(null, { headers: corsHeaders }); }
   try {
     const AI_API_TOKEN = Deno.env.get("AI_API_TOKEN_2c7d5422f5cf");
     if (!AI_API_TOKEN) throw new Error("AI_API_TOKEN is not configured");
@@ -23,17 +20,12 @@ Deno.serve(async (req) => {
       action:   "将以下内容转化为清晰的行动步骤。格式：Step N: 动作描述。输出3-6步，简洁可执行。",
     };
 
-    const instruction = prompts[convert_type] || prompts.task;
-
     const response = await fetch("https://api.enter.pro/code/api/v1/ai/messages", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${AI_API_TOKEN}`,
-        "Content-Type": "application/json",
-      },
+      headers: { Authorization: `Bearer ${AI_API_TOKEN}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-3.1-flash-lite-preview",
-        messages: [{ role: "user", content: `${instruction}\n\n---\n\n${content.slice(0, 2000)}` }],
+        model: "anthropic/claude-sonnet-4.6",
+        messages: [{ role: "user", content: `${prompts[convert_type] || prompts.task}\n\n---\n\n${content.slice(0, 2000)}` }],
         stream: false,
         max_tokens: 600,
       }),
@@ -42,24 +34,13 @@ Deno.serve(async (req) => {
     if (!response.ok) {
       const txt = await response.text();
       let msg = `AI error (${response.status})`;
-      try { msg = JSON.parse(txt).error?.message || msg; } catch (_e) { /* ignore */ }
-      return new Response(
-        JSON.stringify({ success: false, error: msg }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      try { msg = JSON.parse(txt).error?.message || msg; } catch (_e) {}
+      return new Response(JSON.stringify({ success: false, error: msg }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const data = await response.json();
-    const result = (data.content?.[0]?.text || "").trim();
-
-    return new Response(
-      JSON.stringify({ success: true, result }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ success: true, result: (data.content?.[0]?.text || "").trim() }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error) {
-    return new Response(
-      JSON.stringify({ success: false, error: error.message }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ success: false, error: error.message }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });

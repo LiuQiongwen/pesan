@@ -50,12 +50,9 @@ Deno.serve(async (req) => {
 
     const response = await fetch("https://api.enter.pro/code/api/v1/ai/messages", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${AI_API_TOKEN}`,
-        "Content-Type": "application/json",
-      },
+      headers: { Authorization: `Bearer ${AI_API_TOKEN}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-3.1-flash-lite-preview",
+        model: "anthropic/claude-sonnet-4.6",
         system: systemPrompt,
         messages: [{ role: "user", content: `分析以下内容：\n\n${rawContent}` }],
         stream: false,
@@ -66,14 +63,8 @@ Deno.serve(async (req) => {
     if (!response.ok) {
       const errorText = await response.text();
       let errorMessage = `AI service error (${response.status})`;
-      try {
-        const errorData = JSON.parse(errorText);
-        errorMessage = errorData.error?.message || errorMessage;
-      } catch (_e) { /* use default */ }
-      return new Response(
-        JSON.stringify({ success: false, error: errorMessage }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      try { const errorData = JSON.parse(errorText); errorMessage = errorData.error?.message || errorMessage; } catch (_e) {}
+      return new Response(JSON.stringify({ success: false, error: errorMessage }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const data = await response.json();
@@ -83,33 +74,15 @@ Deno.serve(async (req) => {
     try {
       const cleaned = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
       const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        analysisResult = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error("No JSON found");
-      }
+      if (jsonMatch) { analysisResult = JSON.parse(jsonMatch[0]); } else { throw new Error("No JSON found"); }
     } catch (_parseErr) {
-      analysisResult = {
-        title: "分析结果",
-        summary: rawText.slice(0, 80),
-        tags: [],
-        summary_markdown: rawText.slice(0, 300),
-        analysis_markdown: "",
-        report_markdown: "",
-        mindmap_markdown: "",
-        mindmap_data: { root: "主题", nodes: [] },
-      };
+      analysisResult = { title: "分析结果", summary: rawText.slice(0, 80), tags: [], summary_markdown: rawText.slice(0, 300), analysis_markdown: "", report_markdown: "", mindmap_markdown: "", mindmap_data: { root: "主题", nodes: [] } };
     }
 
     analysisResult.content_markdown = analysisResult.report_markdown || analysisResult.content_markdown || "";
 
-    return new Response(JSON.stringify({ success: true, data: analysisResult }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(JSON.stringify({ success: true, data: analysisResult }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error) {
-    return new Response(
-      JSON.stringify({ success: false, error: error.message }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ success: false, error: error.message }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
