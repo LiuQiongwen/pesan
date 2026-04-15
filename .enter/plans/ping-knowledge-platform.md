@@ -1,271 +1,133 @@
-# Plan: Drag Node to Pod — "委托给能力舱"
+# 局部临时工作台 (Local Workbench) — Design & Implementation Plan
 
 ## Context
-
-The system has 5 ability pods (Capture / Retrieval / Insight / Memory / Action) in the CommandDock.
-Users currently click dock buttons to open pods. This plan adds a spatial drag interaction:
-hold-drag a note from the 3D star map, move toward the dock, and release over a pod button to
-"delegate" that knowledge to that ability for processing.
-
-The existing drag mechanism (350 ms hold) is already implemented in CosmosScene.tsx and feeds
-`onNodeConnect` (node-to-node) and `onNodeDropToGalaxy` (galaxy assignment). This plan adds a
-third destination type: **pod drop**, detected when the cursor is over a dock button on mouseup.
-
-The `AgentWorkflowContext.sendRelay(content, from, to)` system already handles cross-pod
-content delivery — Retrieval, Insight, Action, and Memory pods all need to be wired to consume it.
+用户需要一个"临时思考桌面"机制：从星图中提取 2-5 个节点，在宇宙空间中悬浮出一个可操作的工作区，进行比较、整理和 AI 加工。要求保持漂浮感，不做成传统白板或 Kanban，不新增路由或后台面板。
 
 ---
 
-## Architecture Decision
+## Design Answers
 
-**Detection method**: On hold-drag start, add global `window.mousemove` + `window.mouseup`
-listeners (in addition to existing canvas-level ones). Global events fire regardless of which
-HTML element the cursor is over, solving the cross-layer detection problem.
+### 1. 工作台如何创建
+- **Shift + 点击** 节点 → 节点被选中（星图中发出持续选中光晕）
+- 选中 2-5 个节点后，**底部浮现召唤栏**（WorkbenchSummonBar）显示："已选 N 个节点 · [召唤工作台] [取消选择]"
+- 点击"召唤工作台"→ `WorkbenchPanel` 以缩放动画从屏幕中心浮现
+- 也可单独从一个节点 Shift+点击后再 Shift+点击更多节点，逐步组装
 
-**Dock hit-testing**: Each dock button gets `data-pod-id="xxx"` attribute. On global `mouseup`,
-use `document.querySelectorAll('[data-pod-id]')` + `getBoundingClientRect()` to detect pod drop.
+### 2. 视觉设计
+- **外观**：极深暗玻璃面板 `rgba(3,7,22,0.94)` + `backdrop-filter: blur(40px)`
+- **边框**：1px 霓虹渐变 rim，颜色从所含节点的星系色插值混合
+- **形态**：圆角矩形，默认位置屏幕中右侧，可拖拽，不遮挡 CommandDock
+- **入场**：`scale(0.85)→1 + opacity 0→1`，200ms cubic-bezier
+- **与星图连接感**：`highlightedNoteIds = workbenchNoteIds` → 被选节点持续发出青色选中光晕；鼠标悬停工作台卡片 → `onFlashNote(id)` 让对应星节点脉冲闪光
 
-**Dock feedback**: Use `window.dispatchEvent(new CustomEvent('cosmos:pod-drag', {...}))` from
-CosmosScene during drag. CommandDock listens to these events (via `useEffect`) and shows
-receiving-mode visuals — no prop drilling needed.
+### 3. 工作台内布局
+```
+┌─────────────────────────────────────────────┐
+│ ◈ 临时工作台 · 3 nodes        [—] [×]       │ ← 拖拽区
+├──────────────────────────────────────────────┤
+│ [Card A]     [Card B]     [Card C]          │ ← 节点卡片横排
+│  ↕ 类型标·标题·摘要·标签                         │
+│  [检索] [洞见] [行动]                           │
+├──────────────────────────────────────────────┤
+│ [⊕ 融合成新节点]                              │ ← 组合操作区
+└──────────────────────────────────────────────┘
+```
+- 节点卡片**可横向拖拽排序**（mousedown on drag handle）
+- 每张卡有 X 按钮（从工作台移除，不删除节点）
+- 卡片内 [检索][洞见][行动] 按钮 → 调用 `onDropToPod(noteId, podId)` → 走现有 relay 系统打开对应功能舱
+
+### 4. 节点操作
+
+| 操作 | 实现方式 |
+|------|----------|
+| 移除 | 卡片 X → `onRemoveNote(id)` → 从 workbenchNoteIds 中删除 |
+| 重排 | 卡片内 drag handle → mousedown 拖拽横排位置 |
+| 融合 | "融合成新节点" → `supabase.from('notes').insert(merged)` |
+| 收起 | [—] 按钮 → `minimized=true` → panel 收缩为标题栏 |
+| 关闭 | [×] 按钮 → 清空 workbenchNoteIds，隐藏 panel |
+
+**融合逻辑**：
+- title = "工作台合并 · [date]"
+- content_markdown = 各节点 `## [title]\n[summary]\n[key_points]` 拼接
+- tags = 所有节点 tags 并集去重
+
+### 5. 与主星图联系
+- 选中的节点通过 `highlightedNoteIds` 维持**持续的青色光晕**（已有 highlight 系统）
+- hover 工作台卡片 → `onFlashNote(id)` → 对应星节点做 1.2s 脉冲闪光（已有 flash 系统）
+- 工作台打开时，星图仍然完全可交互（pan、zoom、点击其他节点）
+- 工作台关闭/清空时，高亮自动消除
+
+### 6. 轻量存在
+- 纯 React state，位于 `KnowledgeStarMap.tsx`（或 StarMapLayout）
+- 不需要后台 endpoint，不新增 DB 表（仅"融合"功能需要一次 notes insert）
+- 不新增路由
+- Escape 键 → 清空选择并关闭工作台
 
 ---
 
-## Files to Modify
+## Files to Create / Modify
 
-| File | Change |
-|---|---|
-| `src/components/starmap/CosmosScene.tsx` | Global drag listeners + pod-drop detection + CustomEvent dispatch |
-| `src/components/floating/CommandDock.tsx` | `data-pod-id` attrs + receiving-mode visuals |
-| `src/components/starmap/KnowledgeStarMap.tsx` | Pass `onNodeDropToPod` prop to CosmosScene |
-| `src/components/layout/StarMapLayout.tsx` | `handleNodeDropToPod` handler + relay dispatch |
-| `src/components/pods/RetrievalBox.tsx` | Add `consumeRelay('retrieval')` + auto-search |
-| `src/components/pods/InsightBox.tsx` | Add `consumeRelay('insight')` + auto-select note |
-| `src/components/pods/MemoryBox.tsx` | Add `pinnedNoteId?: string` prop |
+### NEW `src/components/starmap/WorkbenchSummonBar.tsx`
+- Props: `selectedCount: number`, `onSummon(): void`, `onClear(): void`
+- Fixed position at bottom center, above CommandDock (`bottom: clamp(110px, 12vh, 150px)`)
+- Appears when `selectedCount >= 2`, hides when 0
+- Animation: slide up from dock
 
----
-
-## Implementation Steps
-
-### 1. `CosmosScene.tsx` — Global Listeners + Pod-Drop Detection
-
-**New props** (added to both `CosmosSceneProps` and `CoreProps`):
-```ts
-onNodeDropToPod?: (noteId: string, podId: string) => void;
-```
-
-**Hold timer callback** (when 350ms fires): additionally attach global listeners:
-```ts
-// After setting connectStateRef:
-window.addEventListener('mousemove', onMoveGlobal);
-window.addEventListener('mouseup',   onUpGlobal);
-window.dispatchEvent(new CustomEvent('cosmos:pod-drag', {
-  detail: { active: true, noteId }
-}));
-```
-
-**`cancelConnect` cleanup**: remove global listeners + dispatch deactivate event:
-```ts
-window.removeEventListener('mousemove', onMoveGlobal);
-window.removeEventListener('mouseup',   onUpGlobal);
-window.dispatchEvent(new CustomEvent('cosmos:pod-drag', { detail: { active: false } }));
-```
-
-**`onMoveGlobal`**: Same as canvas `onMove` PLUS dispatch cursor position:
-```ts
-window.dispatchEvent(new CustomEvent('cosmos:pod-drag', {
-  detail: { active: true, noteId: cs.sourceId, x: e.clientX, y: e.clientY }
-}));
-```
-
-**`onUpGlobal`** — pod drop detection runs BEFORE galaxy/node detection:
-```ts
-// Check dock button bounds FIRST
-const podEls = document.querySelectorAll('[data-pod-id]');
-for (const el of podEls) {
-  const r = el.getBoundingClientRect();
-  // Expand hit area slightly (±12px) for easier targeting
-  if (e.clientX >= r.left - 12 && e.clientX <= r.right + 12 &&
-      e.clientY >= r.top  - 12 && e.clientY <= r.bottom + 12) {
-    const podId = el.getAttribute('data-pod-id')!;
-    cancelConnect();
-    onNodeDropToPodRef.current?.(sourceId, podId);
-    return;
-  }
-}
-// Else: fall through to existing galaxy/node logic
-```
-
-### 2. `CommandDock.tsx` — Receiving Mode
-
-Add `data-pod-id={step.id}` to each button element.
-
-Listen to `cosmos:pod-drag` CustomEvent in `useEffect`:
-```ts
-const [receiveMode, setReceiveMode] = useState(false);
-const [receiveHover, setReceiveHover] = useState<PodId | null>(null);
-
-useEffect(() => {
-  const handler = (e: CustomEvent) => {
-    const { active, x, y } = e.detail;
-    setReceiveMode(active);
-    if (!active) { setReceiveHover(null); return; }
-    // Determine which button cursor is nearest / over
-    const podEls = document.querySelectorAll('[data-pod-id]');
-    let closest: PodId | null = null, closestDist = Infinity;
-    for (const el of podEls) {
-      const r = el.getBoundingClientRect();
-      const cx = (r.left + r.right) / 2;
-      const cy = (r.top + r.bottom) / 2;
-      const dist = Math.hypot(x - cx, y - cy);
-      if (dist < closestDist) { closestDist = dist; closest = el.getAttribute('data-pod-id') as PodId; }
-    }
-    // Only highlight if within 120px of a button
-    setReceiveHover(closestDist < 120 ? closest : null);
-  };
-  window.addEventListener('cosmos:pod-drag', handler as EventListener);
-  return () => window.removeEventListener('cosmos:pod-drag', handler as EventListener);
-}, []);
-```
-
-**Visual states during receive mode**:
-- `receiveMode === true`: dock container rises 6px (`translateY(-6px)`), all buttons: 
-  border brightens to `accentAlpha(0.35)`, background: `accentAlpha(0.07)`
-- `receiveHover === step.id`: button scales 1.10×, border full brightness `accentAlpha(0.90)`,
-  background gradient brightens, bottom indicator bar glows, label changes to `"委托"`,
-  sublabel changes to `"释放以处理"`
-- Drop flash: on `cosmos:pod-drop` event, trigger a 400ms scale-flash animation on the dropped button
-
-New CSS animation:
-```css
-@keyframes pod-receive-flash {
-  0%   { transform: scale(1.10); box-shadow: 0 0 40px var(--accent); }
-  60%  { transform: scale(1.20); }
-  100% { transform: scale(1.00); box-shadow: none; }
+### NEW `src/components/starmap/WorkbenchPanel.tsx`
+```typescript
+interface WorkbenchPanelProps {
+  notes:          CosmosNote[];
+  onRemoveNote:   (id: string) => void;
+  onClose:        () => void;
+  onFlashNote:    (id: string) => void;
+  onDropToPod:    (noteId: string, podId: string) => void;
+  onCombine:      (noteIds: string[]) => Promise<void>;
+  userId?:        string;
 }
 ```
+- Draggable header (mousedown → move tracking)
+- Default position: `{ x: window.innerWidth * 0.55, y: window.innerHeight * 0.2 }`
+- Node cards in horizontal flex layout, each card draggable to reorder
+- Minimize / close controls
+- Combination button at bottom
 
-### 3. `KnowledgeStarMap.tsx`
+### MODIFY `src/components/starmap/CosmosScene.tsx`
+- Add `onNodeWorkbenchSelect?: (noteId: string) => void` to `CosmosSceneProps` and `CoreProps`
+- Add `shiftKeyRef = useRef(false)` inside event handler scope
+- In `onDown`: `shiftKeyRef.current = e.shiftKey`
+- In `onUp` normal-click path: if `shiftKeyRef.current` → fire `onNodeWorkbenchSelectRef.current?.(id)` instead of `onToggleRef.current(id)`
+- Skip hold-timer when `e.shiftKey` (Shift+click should not start drag-to-connect)
 
-Add prop to `KnowledgeStarMapProps`:
-```ts
-onNodeDropToPod?: (noteId: string, podId: string) => void;
-```
-
-Pass through to `CosmosScene` in the `createElement(Canvas, ...)` block.
-
-### 4. `StarMapLayout.tsx`
-
-Add handler using existing `notes`, `openPod`, `sendRelay`:
-
-```ts
-const handleNodeDropToPod = useCallback((noteId: string, podId: string) => {
-  const note = notes.find(n => n.id === noteId);
-  if (!note) return;
-
-  // Format note content for relay
-  const content = [
-    note.title,
-    note.summary,
-    note.tags?.join(', '),
-  ].filter(Boolean).join('\n\n');
-
-  openPod(podId as PodId);
-
-  if (podId === 'memory') {
-    // Memory uses hoveredNode — set it directly, no relay needed
-    setHoveredNode({ noteId: note.id, title: note.title, tags: note.tags, summary: note.summary });
-  } else {
-    sendRelay(content, 'capture', podId as PodId);
-  }
-
-  // Dispatch drop-flash event for dock button
-  window.dispatchEvent(new CustomEvent('cosmos:pod-drop', { detail: { podId } }));
-}, [notes, openPod, sendRelay, setHoveredNode]);
-```
-
-Wire into `KnowledgeStarMap`: `onNodeDropToPod={handleNodeDropToPod}`.
-
-Note: `sendRelay` is from `useAgentWorkflow()`. Currently `AgentWorkflowProvider` wraps `StarMapInner` children. We need to call `useAgentWorkflow()` in `StarMapInner` and pass `sendRelay` to the handler.
-
-### 5. `RetrievalBox.tsx` — Relay Support
-
-Add `consumeRelay('retrieval')` with auto-search:
-```ts
-// At top of RetrievalBox component:
-const workflow = useAgentWorkflow();
-
-useEffect(() => {
-  const relayed = workflow.consumeRelay('retrieval');
-  if (relayed) {
-    // Extract first line as query
-    const query = relayed.split('\n')[0]?.slice(0, 120) || '';
-    setQuery(query);
-    workflow.setActiveStep('retrieval');
-    // Auto-search after brief delay
-    setTimeout(() => search(query), 400);
-  }
-}, [workflow.relay?.timestamp]);
-```
-
-### 6. `InsightBox.tsx` — Relay Support
-
-Add `consumeRelay('insight')` + auto-select:
-```ts
-useEffect(() => {
-  const relayed = workflow.consumeRelay('insight');
-  if (relayed) {
-    // Find matching note by title match
-    const title = relayed.split('\n')[0];
-    const match = notes.find(n => n.title === title);
-    if (match) setSelectedId(match.id);
-    workflow.setActiveStep('insight');
-  }
-}, [workflow.relay?.timestamp, notes]);
-```
-
-### 7. `MemoryBox.tsx` — Pinned Note Prop
-
-```ts
-interface Props {
-  hoveredNoteId?: string | null;
-  pinnedNoteId?:  string | null;  // from drag-to-pod drop, overrides hover
-}
-// Update buildCards call:
-const effectiveId = pinnedNoteId ?? hoveredNoteId;
-```
-
-In `StarMapLayout.tsx`, pass `pinnedNoteId` to MemoryBox after drag-to-memory drop.
-Use local state `pinnedMemoryNoteId` that gets set in `handleNodeDropToPod` and cleared after 30s.
+### MODIFY `src/components/starmap/KnowledgeStarMap.tsx`
+- Add `workbenchSelectedIds: string[]` state (ordered array for reorder support)
+- Add `workbenchActive: boolean` state
+- Handler `handleWorkbenchSelect(id)`: toggle in/out of selection (max 5)
+- Handler `handleWorkbenchSummon()`: set `workbenchActive = true`
+- Handler `handleWorkbenchClose()`: clear selection + deactivate
+- Handler `handleWorkbenchRemove(id)`: remove from ordered list
+- Handler `handleWorkbenchCombine(ids)`: insert merged note via supabase
+- `highlightedNoteIds` = `workbenchSelectedIds` when workbench active/pending
+- Render `<WorkbenchSummonBar>` when `!workbenchActive && workbenchSelectedIds.length >= 2`
+- Render `<WorkbenchPanel>` when `workbenchActive`
 
 ---
 
-## Visual Interaction Summary
-
-| Phase | What the user sees |
-|---|---|
-| Hold 350ms | Node lifts, drag line appears (existing), dock rises 6px, all 5 buttons subtly brighten |
-| Drag toward dock | As cursor enters bottom 25% of screen, dock glows; nearest button starts expanding |
-| Hover over button | Button scales 1.10×, label → "委托", sublabel → "释放以处理", glow burst |
-| Release on button | Button flash (scale 1.20 → 1.0 in 400ms), pod opens, processing starts immediately |
-| Pod receives | Shows "已接收来自星图的知识粒" banner for 3s (reuse ConnectToast style) |
-
-## Answering the 6 Design Questions
-
-1. **Retrieval**: Note title → auto-fills query → auto-triggers semantic search
-2. **Insight**: Note ID matched → pre-selects note → user clicks analyze (or auto-triggers on relay)
-3. **Action**: Note content → pre-fills ActionBox input → user picks conversion type
-4. **Memory**: Note ID → MemoryBox anchors to that note → shows top 5 related memories
-5. **Highlight/snap feedback**: Dock rises, buttons brighten during drag; target button scales + label changes; drop causes flash burst
-6. **Not a trash can**: Language is "委托" (delegation). The pod immediately shows activity. Drop triggers processing, not just "accepting". The spatial gesture (flying from cosmos into the control console) reinforces the delegation metaphor.
+## Key Reused Mechanisms
+- `highlightedNoteIds` → star node glow (already in CosmosScene)
+- `onFlashNote` → pulse a node (already in CosmosScene)
+- `onDropToPod` → existing relay chain through StarMapLayout → sendRelay → pod opens
+- `supabase.from('notes').insert` → same pattern as GalaxyJoinOverlay's update
+- `onNodeWorkbenchSelect` follows same stale-closure ref pattern as `onNodeConnect` etc.
 
 ---
 
 ## Verification
-
-1. Hold 350ms on any note node → dock should visibly rise + button borders brighten
-2. Move cursor to Retrieval button → button should expand + show "委托" label
-3. Release → Retrieval pod opens, search query pre-filled with note title, auto-search fires
-4. Same for Action → ActionBox input pre-filled with note content
-5. Same for Memory → MemoryBox shows memories related to dragged note
-6. Release NOT on a pod button → existing galaxy/node logic fires (no regression)
+1. Shift+click 2 nodes → bottom bar appears with count
+2. Click "召唤工作台" → panel floats in with animation; clicked nodes glow cyan
+3. Hover card → corresponding star flashes
+4. Click [检索] on card → RetrievalBox opens with that note's title pre-filled
+5. Drag card left/right → cards reorder
+6. Click [融合成新节点] → new note appears in star map
+7. Click [—] → panel collapses to title bar
+8. Press Escape → selection cleared, panel dismissed
+9. Star map remains interactive while workbench is open
