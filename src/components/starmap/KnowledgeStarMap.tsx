@@ -379,17 +379,18 @@ export default function KnowledgeStarMap({
       {galaxyStatus  === 'saved'  && createPortal(<ConnectToast label="已归入星系" color="#b496ff" />, document.body)}
       {galaxyStatus  === 'error'  && createPortal(<ConnectToast label="归类失败，请重试" color="#ff4466" />, document.body)}
 
-      {/* Workbench summon bar — appears when 2-5 nodes shift-selected */}
-      {!workbenchActive && workbenchSelectedIds.length >= 2 && (
+      {/* Workbench summon bar — portaled to escape stacking context */}
+      {!workbenchActive && workbenchSelectedIds.length >= 2 && createPortal(
         <WorkbenchSummonBar
           selectedCount={workbenchSelectedIds.length}
           onSummon={handleWorkbenchSummon}
           onClear={handleWorkbenchClose}
-        />
+        />,
+        document.body
       )}
 
-      {/* Workbench floating panel */}
-      {workbenchActive && workbenchSelectedIds.length > 0 && (
+      {/* Workbench floating panel — portaled to escape stacking context */}
+      {workbenchActive && workbenchSelectedIds.length > 0 && createPortal(
         <WorkbenchPanel
           notes={workbenchSelectedIds.map(id => notesMap.get(id)).filter(Boolean) as CosmosNote[]}
           onRemoveNote={handleWorkbenchRemove}
@@ -398,7 +399,8 @@ export default function KnowledgeStarMap({
           onDropToPod={onNodeDropToPod ?? (() => {})}
           onCombine={handleWorkbenchCombine}
           userId={userId}
-        />
+        />,
+        document.body
       )}
     </div>
   );

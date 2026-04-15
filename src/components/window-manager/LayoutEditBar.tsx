@@ -56,7 +56,7 @@ export function LayoutEditBar() {
         position:       'fixed',
         bottom:         'clamp(14px,1.5vh,22px)',
         right:          'clamp(14px,1.5vw,22px)',
-        zIndex:         45,
+        zIndex:         500,
         display:        'flex',
         flexDirection:  'column',
         alignItems:     'flex-end',
@@ -254,26 +254,33 @@ export function LayoutEditBar() {
           display:        'flex',
           alignItems:     'center',
           gap:            7,
-          padding:        '7px 12px',
+          padding:        '8px 14px',
           fontFamily:     MONO,
-          fontSize:       9,
-          letterSpacing:  '0.08em',
+          fontSize:       10,
+          letterSpacing:  '0.10em',
           color:          accent,
           background:     accentDim,
           border:         `1px solid ${accentBorder}`,
           borderRadius:   8,
           cursor:         'pointer',
-          boxShadow:      `0 0 12px ${accentDim}, 0 4px 16px rgba(0,0,0,0.55)`,
+          boxShadow:      `0 0 18px ${accentDim}, 0 4px 16px rgba(0,0,0,0.55)`,
           transition:     'all 0.18s',
           whiteSpace:     'nowrap',
+          animation:      savedFlash ? 'none' : 'editbar-pulse 3s ease-in-out infinite',
         }}
       >
+        <style>{`
+          @keyframes editbar-pulse {
+            0%,100% { box-shadow: 0 0 18px ${accentDim}, 0 4px 16px rgba(0,0,0,0.55); }
+            50%     { box-shadow: 0 0 28px ${accentBorder}, 0 4px 20px rgba(0,0,0,0.60); }
+          }
+        `}</style>
         {locked
-          ? <><Lock   size={10} /> LOCKED</>
-          : <><Unlock size={10} /> EDIT MODE</>
+          ? <><Lock   size={11} /> 已锁定</>
+          : <><Unlock size={11} /> 编辑模式</>
         }
         <ChevronRight
-          size={9}
+          size={10}
           style={{ transition: 'transform 0.18s', transform: expanded ? 'rotate(-90deg)' : 'rotate(90deg)' }}
         />
       </button>

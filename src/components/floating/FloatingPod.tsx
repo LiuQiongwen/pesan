@@ -171,6 +171,12 @@ export function FloatingPod({
         ['--win-font-scale' as string]: fontScaleVar,
       }}
     >
+      <style>{`
+        @keyframes edit-rim-pulse {
+          0%, 100% { opacity: 0.45; box-shadow: 0 0 0 0 rgba(102,240,255,0); }
+          50%       { opacity: 0.85; box-shadow: 0 0 18px 2px rgba(102,240,255,0.22); }
+        }
+      `}</style>
       {/* Resize handles (only in edit mode and not minimized) */}
       {!locked && !state.minimized && (
         <ResizeHandles
@@ -179,6 +185,18 @@ export function FloatingPod({
           currentSize={{ w: measuredW, h: measuredH }}
           onResize={handleResize}
         />
+      )}
+
+      {/* Edit-mode indicator — visible animated dashed rim */}
+      {!locked && !state.minimized && (
+        <div style={{
+          position: 'absolute', inset: -3,
+          borderRadius: 20,
+          border: '1px dashed rgba(102,240,255,0.45)',
+          pointerEvents: 'none',
+          animation: 'edit-rim-pulse 2.4s ease-in-out infinite',
+          zIndex: 2,
+        }} />
       )}
 
       {/* Outer glow ring */}
