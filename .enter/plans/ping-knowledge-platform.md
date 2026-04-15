@@ -1,225 +1,271 @@
-# Plan: Drag-to-Galaxy Classification Interaction
+# Plan: Drag Node to Pod — "委托给能力舱"
 
 ## Context
-The star map currently groups nodes into cluster galaxies automatically based on `notes.tags[0]` (primary tag). Users want to manually drag nodes into galaxies to override this grouping and organize their knowledge space intentionally. The interaction must feel cosmic — not like filing documents.
 
-## Design Decisions
+The system has 5 ability pods (Capture / Retrieval / Insight / Memory / Action) in the CommandDock.
+Users currently click dock buttons to open pods. This plan adds a spatial drag interaction:
+hold-drag a note from the 3D star map, move toward the dock, and release over a pod button to
+"delegate" that knowledge to that ability for processing.
 
-### Data Persistence: Tag-first, No New Table
-Manual galaxy assignment = **prepend the galaxy tag to `notes.tags` as the new first element**:
-```ts
-newTags = [galaxyTag, ...existingTags.filter(t => t !== galaxyTag)]
-```
-Since `buildCosmosLayout` uses `tags[0]` for cluster assignment, this naturally moves the node into the target galaxy on next notes rerender. No separate table needed. Auto-clustering and manual assignment are the same mechanism — just different intent.
+The existing drag mechanism (350 ms hold) is already implemented in CosmosScene.tsx and feeds
+`onNodeConnect` (node-to-node) and `onNodeDropToGalaxy` (galaxy assignment). This plan adds a
+third destination type: **pod drop**, detected when the cursor is over a dock button on mouseup.
 
-"Create new galaxy" = type any name → it becomes a new cluster tag. Layout auto-creates the cluster.
-
-### Reuse Existing Drag Mechanism
-The 350ms long-press drag from drag-to-connect is **extended**:
-- **Drop on node** → connect nodes (existing behavior, unchanged)
-- **Drop on empty space in a galaxy zone** → join that galaxy (`onNodeDropToGalaxy(noteId, galaxyTag)`)
-- **Drop on empty space outside all galaxies** → show overlay to choose/create galaxy (`onNodeDropToGalaxy(noteId, null)`)
-
-Galaxy zone detection: `cursor3D.distanceTo(cluster.center) < cluster.radius * 1.4`
+The `AgentWorkflowContext.sendRelay(content, from, to)` system already handles cross-pod
+content delivery — Retrieval, Insight, Action, and Memory pods all need to be wired to consume it.
 
 ---
 
-## Files to Change
+## Architecture Decision
 
-### 1. NEW `src/components/starmap/GalaxyJoinOverlay.tsx`
-Two visual modes in one component:
+**Detection method**: On hold-drag start, add global `window.mousemove` + `window.mouseup`
+listeners (in addition to existing canvas-level ones). Global events fire regardless of which
+HTML element the cursor is over, solving the cross-layer detection problem.
 
-**Mode A — "join-existing"** (dropped inside a galaxy):
-- Header: `将「note」加入「galaxy」星系`
-- Single large galaxy chip in the target's color
-- 3s auto-confirm countdown progress bar (same style as ConnectConfirmOverlay)
-- "新建星系" pill (switches to mode B inline)
-- "暂不归类" cancel
+**Dock hit-testing**: Each dock button gets `data-pod-id="xxx"` attribute. On global `mouseup`,
+use `document.querySelectorAll('[data-pod-id]')` + `getBoundingClientRect()` to detect pod drop.
 
-**Mode B — "choose"** (dropped in empty space):
-- Header: `归入哪个星系？`
-- All available galaxy tags as colored pills (scrollable if > 8)
-- `[+ 新建星系]` expands inline text input — pressing Enter confirms with new tag name
-- "暂不归类" to dismiss
-- NO auto-confirm countdown (user must actively choose)
-
-Both modes share the same glassmorphism style as `ConnectConfirmOverlay` (backdrop-blur, border with galaxy color, slide-up animation `cco-in`).
-
-```tsx
-interface GalaxyJoinOverlayProps {
-  noteTitle:          string;
-  targetGalaxy:       { tag: string; color: string } | null;  // null = empty space drop
-  availableGalaxies:  { tag: string; color: string }[];
-  onConfirm:          (galaxyTag: string) => void;
-  onCancel:           () => void;
-}
-```
+**Dock feedback**: Use `window.dispatchEvent(new CustomEvent('cosmos:pod-drag', {...}))` from
+CosmosScene during drag. CommandDock listens to these events (via `useEffect`) and shows
+receiving-mode visuals — no prop drilling needed.
 
 ---
 
-### 2. MODIFY `src/components/starmap/CosmosScene.tsx`
+## Files to Modify
 
-#### A. New refs
-```ts
-// Map cluster tag → halo mesh (for targeted highlight)
-const halosByTagRef = useRef(new Map<string, THREE.Mesh>());
-// Map cluster tag → ring mesh
-const ringsByTagRef = useRef(new Map<string, THREE.Mesh>());
-
-// Extend ConnectState with galaxy tracking
-type ConnectState = {
-  // ...existing fields...
-  potentialGalaxyTag: string | null;  // NEW
-};
-```
-
-#### B. Scene build — populate halosByTag / ringsByTag
-In the `layout.clusters.forEach` loop (already building halos/rings), additionally:
-```ts
-halosByTagRef.current.set(cluster.tag, halo);
-ringsByTagRef.current.set(cluster.tag, ring);
-```
-Clear both in cleanup.
-
-#### C. onDown — activate galaxy-drag mode
-When connect mode activates (after 350ms hold), immediately signal all galaxy halos to "open" by setting a `galaxyDragActiveRef = true`. In useFrame, this brightens all halos to 0.06 opacity (was 0.022) and rings to 0.12.
-
-#### D. onMove — detect potential galaxy
-After existing node hit-test, if no node target, check galaxy zone:
-```ts
-const cursor3D = getPointer3D(e, cs.sourceMesh.position.z);
-let potentialGalaxy: string | null = null;
-for (const cluster of layout.clusters) {
-  if (cluster.tag === '__untagged__') continue;
-  const cx = new THREE.Vector3(...cluster.center);
-  if (cursor3D && cursor3D.distanceTo(cx) < cluster.radius * 1.4) {
-    potentialGalaxy = cluster.tag;
-    break;
-  }
-}
-// Highlight/un-highlight halos
-if (potentialGalaxy !== cs.potentialGalaxyTag) {
-  // un-highlight old
-  if (cs.potentialGalaxyTag) { /* restore halo to normal */ }
-  // highlight new: scale 1.15×, opacity ×3
-  cs.potentialGalaxyTag = potentialGalaxy;
-}
-```
-Change drag line color to match the target galaxy when inside its zone.
-
-#### E. onUp — dispatch galaxy drop
-```ts
-if (connectStateRef.current) {
-  const { sourceId, potentialTargetId, potentialGalaxyTag } = cs;
-  cancelConnect();
-  if (potentialTargetId) {
-    onNodeConnectRef.current?.(sourceId, potentialTargetId); // existing
-  } else {
-    onNodeDropToGalaxyRef.current?.(sourceId, potentialGalaxyTag); // NEW
-  }
-  return;
-}
-```
-
-#### F. New prop
-```ts
-interface CosmosSceneProps { onNodeDropToGalaxy?: (noteId: string, galaxyTag: string | null) => void; }
-interface CoreProps { onNodeDropToGalaxy?: ...; }
-```
-Pass through exported `CosmosScene` → `ImperativeCore`.
-
-#### G. useFrame: galaxy-drag visual animation
-When `galaxyDragActiveRef.current`:
-- All halos: opacity → `clamp(current, 0.04, haloTarget * 3)` (more visible)
-- Potential galaxy halo: `scale.setScalar(1.1 + sin(t*4)*0.04)`, opacity 0.08
-- Potential galaxy ring: opacity 0.20, scale 1.15
-
----
-
-### 3. MODIFY `src/components/starmap/KnowledgeStarMap.tsx`
-
-#### Add state
-```ts
-interface PendingGalaxy {
-  noteId:      string;
-  targetTag:   string | null;  // null = user must choose
-}
-const [pendingGalaxy, setPendingGalaxy] = useState<PendingGalaxy | null>(null);
-```
-
-#### Add handler
-```ts
-const handleNodeDropToGalaxy = useCallback((noteId: string, galaxyTag: string | null) => {
-  setPendingGalaxy({ noteId, targetTag: galaxyTag });
-}, []);
-
-const handleGalaxyJoinConfirm = useCallback(async (galaxyTag: string) => {
-  if (!pendingGalaxy) return;
-  setPendingGalaxy(null);
-  const note = notesMap.get(pendingGalaxy.noteId);
-  if (!note) return;
-  const newTags = [galaxyTag, ...(note.tags ?? []).filter(t => t !== galaxyTag)];
-  await supabase.from('notes').update({ tags: newTags, updated_at: new Date().toISOString() })
-    .eq('id', pendingGalaxy.noteId);
-  // Notes realtime subscription auto-refreshes the layout
-}, [pendingGalaxy, notesMap]);
-
-const handleGalaxyJoinCancel = useCallback(() => setPendingGalaxy(null), []);
-```
-
-#### Compute available galaxies for overlay
-```ts
-const availableGalaxies = useMemo(() =>
-  layout.clusters
-    .filter(c => c.tag !== '__untagged__' && c.noteIds.length >= 1)
-    .map(c => ({ tag: c.tag, color: c.color })),
-  [layout]);
-```
-
-#### Render overlay
-```tsx
-{pendingGalaxy && (
-  <GalaxyJoinOverlay
-    noteTitle={notesMap.get(pendingGalaxy.noteId)?.title ?? ''}
-    targetGalaxy={
-      pendingGalaxy.targetTag
-        ? availableGalaxies.find(g => g.tag === pendingGalaxy.targetTag) ?? null
-        : null
-    }
-    availableGalaxies={availableGalaxies}
-    onConfirm={handleGalaxyJoinConfirm}
-    onCancel={handleGalaxyJoinCancel}
-  />
-)}
-```
-
-Pass `onNodeDropToGalaxy={handleNodeDropToGalaxy}` to `CosmosScene`.
-
----
-
-## Answering All 6 Design Questions
-
-| Question | Answer |
+| File | Change |
 |---|---|
-| 1. 发现星系可以接收 | On hold (connect mode), ALL galaxy halos expand opacity ×2.5 and rings become visible — signals "space is open to receive." No extra UI needed. |
-| 2. 拖入星系时接纳反馈 | Halo scales 1.15×, pulses at 4Hz, drag line color interpolates to galaxy color. Galaxy cluster name label visible at 100% opacity during drag. |
-| 3. 归属变化视觉体现 | Node's emissive color transitions to galaxy's color (after notes refetch, `buildCosmosLayout` repositions node into that cluster). Galaxy emits a brief wave pulse (same as empty-state click wave). |
-| 4. 三个选项 | Mode A (in-galaxy): auto-confirm 3s | "新建星系" | "暂不归类". Mode B (empty space): all galaxy pills | inline new-galaxy input | "暂不归类". |
-| 5. 自动+手动共存 | Manual = tag update. Auto = same tag algorithm. Same mechanism, different intention. No conflict or new table. |
-| 6. 避免复杂管理 | Zero new navigation or panels. Full flow: long-press → drag → release = 3 physical gestures. Overlay auto-confirms for targeted drops. |
+| `src/components/starmap/CosmosScene.tsx` | Global drag listeners + pod-drop detection + CustomEvent dispatch |
+| `src/components/floating/CommandDock.tsx` | `data-pod-id` attrs + receiving-mode visuals |
+| `src/components/starmap/KnowledgeStarMap.tsx` | Pass `onNodeDropToPod` prop to CosmosScene |
+| `src/components/layout/StarMapLayout.tsx` | `handleNodeDropToPod` handler + relay dispatch |
+| `src/components/pods/RetrievalBox.tsx` | Add `consumeRelay('retrieval')` + auto-search |
+| `src/components/pods/InsightBox.tsx` | Add `consumeRelay('insight')` + auto-select note |
+| `src/components/pods/MemoryBox.tsx` | Add `pinnedNoteId?: string` prop |
 
 ---
 
-## No DB Migration Needed
-Galaxy assignment uses the existing `notes.tags` array. `notes` table already has full RLS + `updateNote` via `useNotes`.
+## Implementation Steps
+
+### 1. `CosmosScene.tsx` — Global Listeners + Pod-Drop Detection
+
+**New props** (added to both `CosmosSceneProps` and `CoreProps`):
+```ts
+onNodeDropToPod?: (noteId: string, podId: string) => void;
+```
+
+**Hold timer callback** (when 350ms fires): additionally attach global listeners:
+```ts
+// After setting connectStateRef:
+window.addEventListener('mousemove', onMoveGlobal);
+window.addEventListener('mouseup',   onUpGlobal);
+window.dispatchEvent(new CustomEvent('cosmos:pod-drag', {
+  detail: { active: true, noteId }
+}));
+```
+
+**`cancelConnect` cleanup**: remove global listeners + dispatch deactivate event:
+```ts
+window.removeEventListener('mousemove', onMoveGlobal);
+window.removeEventListener('mouseup',   onUpGlobal);
+window.dispatchEvent(new CustomEvent('cosmos:pod-drag', { detail: { active: false } }));
+```
+
+**`onMoveGlobal`**: Same as canvas `onMove` PLUS dispatch cursor position:
+```ts
+window.dispatchEvent(new CustomEvent('cosmos:pod-drag', {
+  detail: { active: true, noteId: cs.sourceId, x: e.clientX, y: e.clientY }
+}));
+```
+
+**`onUpGlobal`** — pod drop detection runs BEFORE galaxy/node detection:
+```ts
+// Check dock button bounds FIRST
+const podEls = document.querySelectorAll('[data-pod-id]');
+for (const el of podEls) {
+  const r = el.getBoundingClientRect();
+  // Expand hit area slightly (±12px) for easier targeting
+  if (e.clientX >= r.left - 12 && e.clientX <= r.right + 12 &&
+      e.clientY >= r.top  - 12 && e.clientY <= r.bottom + 12) {
+    const podId = el.getAttribute('data-pod-id')!;
+    cancelConnect();
+    onNodeDropToPodRef.current?.(sourceId, podId);
+    return;
+  }
+}
+// Else: fall through to existing galaxy/node logic
+```
+
+### 2. `CommandDock.tsx` — Receiving Mode
+
+Add `data-pod-id={step.id}` to each button element.
+
+Listen to `cosmos:pod-drag` CustomEvent in `useEffect`:
+```ts
+const [receiveMode, setReceiveMode] = useState(false);
+const [receiveHover, setReceiveHover] = useState<PodId | null>(null);
+
+useEffect(() => {
+  const handler = (e: CustomEvent) => {
+    const { active, x, y } = e.detail;
+    setReceiveMode(active);
+    if (!active) { setReceiveHover(null); return; }
+    // Determine which button cursor is nearest / over
+    const podEls = document.querySelectorAll('[data-pod-id]');
+    let closest: PodId | null = null, closestDist = Infinity;
+    for (const el of podEls) {
+      const r = el.getBoundingClientRect();
+      const cx = (r.left + r.right) / 2;
+      const cy = (r.top + r.bottom) / 2;
+      const dist = Math.hypot(x - cx, y - cy);
+      if (dist < closestDist) { closestDist = dist; closest = el.getAttribute('data-pod-id') as PodId; }
+    }
+    // Only highlight if within 120px of a button
+    setReceiveHover(closestDist < 120 ? closest : null);
+  };
+  window.addEventListener('cosmos:pod-drag', handler as EventListener);
+  return () => window.removeEventListener('cosmos:pod-drag', handler as EventListener);
+}, []);
+```
+
+**Visual states during receive mode**:
+- `receiveMode === true`: dock container rises 6px (`translateY(-6px)`), all buttons: 
+  border brightens to `accentAlpha(0.35)`, background: `accentAlpha(0.07)`
+- `receiveHover === step.id`: button scales 1.10×, border full brightness `accentAlpha(0.90)`,
+  background gradient brightens, bottom indicator bar glows, label changes to `"委托"`,
+  sublabel changes to `"释放以处理"`
+- Drop flash: on `cosmos:pod-drop` event, trigger a 400ms scale-flash animation on the dropped button
+
+New CSS animation:
+```css
+@keyframes pod-receive-flash {
+  0%   { transform: scale(1.10); box-shadow: 0 0 40px var(--accent); }
+  60%  { transform: scale(1.20); }
+  100% { transform: scale(1.00); box-shadow: none; }
+}
+```
+
+### 3. `KnowledgeStarMap.tsx`
+
+Add prop to `KnowledgeStarMapProps`:
+```ts
+onNodeDropToPod?: (noteId: string, podId: string) => void;
+```
+
+Pass through to `CosmosScene` in the `createElement(Canvas, ...)` block.
+
+### 4. `StarMapLayout.tsx`
+
+Add handler using existing `notes`, `openPod`, `sendRelay`:
+
+```ts
+const handleNodeDropToPod = useCallback((noteId: string, podId: string) => {
+  const note = notes.find(n => n.id === noteId);
+  if (!note) return;
+
+  // Format note content for relay
+  const content = [
+    note.title,
+    note.summary,
+    note.tags?.join(', '),
+  ].filter(Boolean).join('\n\n');
+
+  openPod(podId as PodId);
+
+  if (podId === 'memory') {
+    // Memory uses hoveredNode — set it directly, no relay needed
+    setHoveredNode({ noteId: note.id, title: note.title, tags: note.tags, summary: note.summary });
+  } else {
+    sendRelay(content, 'capture', podId as PodId);
+  }
+
+  // Dispatch drop-flash event for dock button
+  window.dispatchEvent(new CustomEvent('cosmos:pod-drop', { detail: { podId } }));
+}, [notes, openPod, sendRelay, setHoveredNode]);
+```
+
+Wire into `KnowledgeStarMap`: `onNodeDropToPod={handleNodeDropToPod}`.
+
+Note: `sendRelay` is from `useAgentWorkflow()`. Currently `AgentWorkflowProvider` wraps `StarMapInner` children. We need to call `useAgentWorkflow()` in `StarMapInner` and pass `sendRelay` to the handler.
+
+### 5. `RetrievalBox.tsx` — Relay Support
+
+Add `consumeRelay('retrieval')` with auto-search:
+```ts
+// At top of RetrievalBox component:
+const workflow = useAgentWorkflow();
+
+useEffect(() => {
+  const relayed = workflow.consumeRelay('retrieval');
+  if (relayed) {
+    // Extract first line as query
+    const query = relayed.split('\n')[0]?.slice(0, 120) || '';
+    setQuery(query);
+    workflow.setActiveStep('retrieval');
+    // Auto-search after brief delay
+    setTimeout(() => search(query), 400);
+  }
+}, [workflow.relay?.timestamp]);
+```
+
+### 6. `InsightBox.tsx` — Relay Support
+
+Add `consumeRelay('insight')` + auto-select:
+```ts
+useEffect(() => {
+  const relayed = workflow.consumeRelay('insight');
+  if (relayed) {
+    // Find matching note by title match
+    const title = relayed.split('\n')[0];
+    const match = notes.find(n => n.title === title);
+    if (match) setSelectedId(match.id);
+    workflow.setActiveStep('insight');
+  }
+}, [workflow.relay?.timestamp, notes]);
+```
+
+### 7. `MemoryBox.tsx` — Pinned Note Prop
+
+```ts
+interface Props {
+  hoveredNoteId?: string | null;
+  pinnedNoteId?:  string | null;  // from drag-to-pod drop, overrides hover
+}
+// Update buildCards call:
+const effectiveId = pinnedNoteId ?? hoveredNoteId;
+```
+
+In `StarMapLayout.tsx`, pass `pinnedNoteId` to MemoryBox after drag-to-memory drop.
+Use local state `pinnedMemoryNoteId` that gets set in `handleNodeDropToPod` and cleared after 30s.
+
+---
+
+## Visual Interaction Summary
+
+| Phase | What the user sees |
+|---|---|
+| Hold 350ms | Node lifts, drag line appears (existing), dock rises 6px, all 5 buttons subtly brighten |
+| Drag toward dock | As cursor enters bottom 25% of screen, dock glows; nearest button starts expanding |
+| Hover over button | Button scales 1.10×, label → "委托", sublabel → "释放以处理", glow burst |
+| Release on button | Button flash (scale 1.20 → 1.0 in 400ms), pod opens, processing starts immediately |
+| Pod receives | Shows "已接收来自星图的知识粒" banner for 3s (reuse ConnectToast style) |
+
+## Answering the 6 Design Questions
+
+1. **Retrieval**: Note title → auto-fills query → auto-triggers semantic search
+2. **Insight**: Note ID matched → pre-selects note → user clicks analyze (or auto-triggers on relay)
+3. **Action**: Note content → pre-fills ActionBox input → user picks conversion type
+4. **Memory**: Note ID → MemoryBox anchors to that note → shows top 5 related memories
+5. **Highlight/snap feedback**: Dock rises, buttons brighten during drag; target button scales + label changes; drop causes flash burst
+6. **Not a trash can**: Language is "委托" (delegation). The pod immediately shows activity. Drop triggers processing, not just "accepting". The spatial gesture (flying from cosmos into the control console) reinforces the delegation metaphor.
 
 ---
 
 ## Verification
-1. Long-press a node → hold 350ms → all galaxy halos should brighten
-2. Drag into a named cluster zone → halo pulses, drag line recolors
-3. Release in cluster → GalaxyJoinOverlay shows (Mode A) with auto-confirm
-4. Wait 3s → note's `tags[0]` updated in DB → star map regroups
-5. Release in empty space → Mode B overlay, choose existing galaxy or type new
-6. Type new galaxy name + Enter → note gets new first tag → new cluster appears in star map
-7. ESC at any point → cancel, no changes
+
+1. Hold 350ms on any note node → dock should visibly rise + button borders brighten
+2. Move cursor to Retrieval button → button should expand + show "委托" label
+3. Release → Retrieval pod opens, search query pre-filled with note title, auto-search fires
+4. Same for Action → ActionBox input pre-filled with note content
+5. Same for Memory → MemoryBox shows memories related to dragged note
+6. Release NOT on a pod button → existing galaxy/node logic fires (no regression)
