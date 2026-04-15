@@ -33,9 +33,9 @@ function getTagOverlap(a: string[], b: string[]): number {
   return a.filter(t => b.includes(t)).length;
 }
 
-interface Props { hoveredNoteId?: string | null }
+interface Props { hoveredNoteId?: string | null; pinnedNoteId?: string | null }
 
-export default function MemoryBox({ hoveredNoteId }: Props) {
+export default function MemoryBox({ hoveredNoteId, pinnedNoteId }: Props) {
   const { user }    = useAuth();
   const { notes }   = useNotes(user?.id);
   const navigate    = useNavigate();
@@ -84,6 +84,14 @@ export default function MemoryBox({ hoveredNoteId }: Props) {
       setMode('hover');
     }
   }, [hoveredNoteId, anchor]);
+
+  // Drag-to-pod: pinnedNoteId takes priority over hover
+  useEffect(() => {
+    if (pinnedNoteId && pinnedNoteId !== anchor) {
+      setAnchor(pinnedNoteId);
+      setMode('hover');
+    }
+  }, [pinnedNoteId, anchor]);
 
   useEffect(() => { buildCards(anchor); }, [anchor, buildCards]);
 

@@ -68,6 +68,7 @@ export interface CosmosSceneProps {
   onEmptyStateClick?:  () => void;
   onNodeConnect?:      (sourceId: string, targetId: string) => void;
   onNodeDropToGalaxy?: (noteId: string, galaxyTag: string | null) => void;
+  onNodeDropToPod?:    (noteId: string, podId: string) => void;
 }
 
 // ── ImperativeCore ────────────────────────────────────────────────────────────
@@ -88,13 +89,14 @@ interface CoreProps {
   onEmptyStateClick?: () => void;
   onNodeConnect?:     (sourceId: string, targetId: string) => void;
   onNodeDropToGalaxy?: (noteId: string, galaxyTag: string | null) => void;
+  onNodeDropToPod?:    (noteId: string, podId: string) => void;
 }
 
 function ImperativeCore({
   layout, notes, highlightSet, flashNoteId, openNodes,
   hoveredId, setHoveredId, onNodeToggle, onNodeHover,
   currentPosRef, recenterActiveRef, onLodChange,
-  entranceNoteId, onEmptyStateClick, onNodeConnect, onNodeDropToGalaxy,
+  entranceNoteId, onEmptyStateClick, onNodeConnect, onNodeDropToGalaxy, onNodeDropToPod,
 }: CoreProps) {
   const { scene, camera, gl } = useThree();
 
@@ -120,6 +122,9 @@ function ImperativeCore({
   const ringsByTagRef    = useRef(new Map<string, THREE.Mesh>());
   // Flag: drag-to-galaxy mode is active (hold timer fired)
   const galaxyDragActiveRef = useRef(false);
+  // Global listener refs (attached during active drag so events fire even over dock)
+  const globalMoveRef = useRef<((e: MouseEvent) => void) | null>(null);
+  const globalUpRef   = useRef<((e: MouseEvent) => void) | null>(null);
 
   // Entrance / empty state refs
   const emptyCTAMeshRef  = useRef<THREE.Mesh | null>(null);
@@ -145,8 +150,9 @@ function ImperativeCore({
   };
   const connectStateRef  = useRef<ConnectState | null>(null);
   const holdTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const onNodeConnectRef = useRef(onNodeConnect);
+  const onNodeConnectRef      = useRef(onNodeConnect);
   const onNodeDropToGalaxyRef = useRef(onNodeDropToGalaxy);
+  const onNodeDropToPodRef    = useRef(onNodeDropToPod);
 
   // Auto-rotate management
   const orbitAutoRotate  = useRef(true);
@@ -166,8 +172,9 @@ function ImperativeCore({
   useEffect(() => { onToggleRef.current           = onNodeToggle;      }, [onNodeToggle]);
   useEffect(() => { onHoverRef.current            = onNodeHover;       }, [onNodeHover]);
   useEffect(() => { onEmptyStateClickRef.current  = onEmptyStateClick; }, [onEmptyStateClick]);
-  useEffect(() => { onNodeConnectRef.current      = onNodeConnect;     }, [onNodeConnect]);
+  useEffect(() => { onNodeConnectRef.current      = onNodeConnect;      }, [onNodeConnect]);
   useEffect(() => { onNodeDropToGalaxyRef.current = onNodeDropToGalaxy; }, [onNodeDropToGalaxy]);
+  useEffect(() => { onNodeDropToPodRef.current    = onNodeDropToPod;    }, [onNodeDropToPod]);
 
   // ── Build scene imperatively ───────────────────────────────────────────────
   useEffect(() => {
@@ -422,6 +429,10 @@ function ImperativeCore({
       }
       connectStateRef.current = null;
       galaxyDragActiveRef.current = false;
+      // Remove global listeners and dispatch drag-end event
+      if (globalMoveRef.current) { window.removeEventListener('mousemove', globalMoveRef.current); globalMoveRef.current = null; }
+      if (globalUpRef.current)   { window.removeEventListener('mouseup',   globalUpRef.current);   globalUpRef.current   = null; }
+      window.dispatchEvent(new CustomEvent('cosmos:pod-drag', { detail: { active: false } }));
     };
 
     const onDown = (e: MouseEvent) => {
@@ -477,6 +488,20 @@ function ImperativeCore({
           potentialGalaxyTag: null,
         };
         galaxyDragActiveRef.current = true;
+
+        // Attach global listeners so mouseup fires even when cursor is over the dock
+        const gMove = (ev: MouseEvent) => onMove(ev);
+        const gUp   = (ev: MouseEvent) => onUp(ev);
+        globalMoveRef.current = gMove;
+        globalUpRef.current   = gUp;
+        window.addEventListener('mousemove', gMove);
+        window.addEventListener('mouseup',   gUp);
+
+        // Notify CommandDock to enter receiving mode
+        window.dispatchEvent(new CustomEvent('cosmos:pod-drag', {
+          detail: { active: true, noteId },
+        }));
+
         navigator.vibrate?.(30);
       }, 350);
     };
@@ -490,6 +515,11 @@ function ImperativeCore({
 
       // Cancel hold timer once we're clearly dragging
       if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; cancelConnect(); return; }
+
+      // Broadcast cursor position so dock can compute hover
+      window.dispatchEvent(new CustomEvent('cosmos:pod-drag', {
+        detail: { active: true, noteId: cs.sourceId, x: e.clientX, y: e.clientY },
+      }));
 
       // Update drag line endpoint
       const cursor3D = getPointer3D(e, cs.sourceMesh.position.z);
@@ -572,14 +602,31 @@ function ImperativeCore({
       if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
       autoRotateTimer.current = setTimeout(() => { orbitAutoRotate.current = true; }, 3000);
 
-      // ── Drag-to-connect / drag-to-galaxy release ────────────────────────
+      // ── Drag-to-connect / drag-to-galaxy / drag-to-pod release ─────────
       if (connectStateRef.current) {
         const { sourceId, potentialTargetId, potentialGalaxyTag } = connectStateRef.current;
-        cancelConnect(); // also resets galaxyDragActiveRef
-        if (potentialTargetId && potentialTargetId !== sourceId) {
+
+        // 1. Check if dropped on a dock button (expand hit area ±14px for comfort)
+        const podEls = document.querySelectorAll('[data-pod-id]');
+        let droppedPodId: string | null = null;
+        for (const el of podEls) {
+          const r = el.getBoundingClientRect();
+          if (e.clientX >= r.left - 14 && e.clientX <= r.right  + 14 &&
+              e.clientY >= r.top  - 14 && e.clientY <= r.bottom + 14) {
+            droppedPodId = el.getAttribute('data-pod-id');
+            break;
+          }
+        }
+
+        cancelConnect(); // also cleans up global listeners + dispatches deactivate
+
+        if (droppedPodId) {
+          // Dispatch flash event for dock button animation
+          window.dispatchEvent(new CustomEvent('cosmos:pod-drop', { detail: { podId: droppedPodId } }));
+          onNodeDropToPodRef.current?.(sourceId, droppedPodId);
+        } else if (potentialTargetId && potentialTargetId !== sourceId) {
           onNodeConnectRef.current?.(sourceId, potentialTargetId);
         } else {
-          // Galaxy drop (or empty space drop → galaxyTag null → user picks)
           onNodeDropToGalaxyRef.current?.(sourceId, potentialGalaxyTag);
         }
         return;
@@ -919,7 +966,7 @@ export function CosmosScene({
   layout, notes, highlightedNoteIds = [],
   flashNoteId = null, openNodes, onNodeToggle, onNodeHover,
   recenterActiveRef, onLodChange, onFlashNote, userId,
-  entranceNoteId, onEmptyStateClick, onNodeConnect, onNodeDropToGalaxy,
+  entranceNoteId, onEmptyStateClick, onNodeConnect, onNodeDropToGalaxy, onNodeDropToPod,
 }: CosmosSceneProps) {
   const highlightSet  = useMemo(() => new Set(highlightedNoteIds), [highlightedNoteIds]);
   const navigate      = useNavigate();
@@ -953,6 +1000,7 @@ export function CosmosScene({
         onEmptyStateClick={onEmptyStateClick}
         onNodeConnect={onNodeConnect}
         onNodeDropToGalaxy={onNodeDropToGalaxy}
+        onNodeDropToPod={onNodeDropToPod}
       />
       {lodLevel === 0 && layout.clusters.map(c => <ClusterLabel key={c.tag} cluster={c} />)}
 

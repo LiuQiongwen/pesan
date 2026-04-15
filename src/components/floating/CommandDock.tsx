@@ -1,8 +1,10 @@
 /**
  * CommandDock — Desktop-scale sci-fi control console
  * Fully responsive: clamp(min, vw/vh, max) on all sizing properties.
+ * Supports "drag-to-pod" receiving mode: listens to cosmos:pod-drag CustomEvent
+ * dispatched by CosmosScene when a node is being dragged.
  */
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Feather, Radar, FlaskConical, Layers, Zap, Check } from 'lucide-react';
 import { useToolbox, type PodId } from '@/contexts/ToolboxContext';
 import { useAgentWorkflow } from '@/contexts/AgentWorkflowContext';
@@ -34,7 +36,48 @@ function hexRgb(hex: string) {
 export function CommandDock() {
   const { pods, togglePod } = useToolbox();
   const { activeStep, completedSteps } = useAgentWorkflow();
-  const [hoveredId, setHoveredId] = useState<PodId | null>(null);
+  const [hoveredId,     setHoveredId]     = useState<PodId | null>(null);
+  const [dragActive,    setDragActive]    = useState(false);
+  const [dragHoverId,   setDragHoverId]   = useState<PodId | null>(null);
+  const buttonRefs = useRef<Map<PodId, HTMLButtonElement>>(new Map());
+
+  // Listen to drag CustomEvents dispatched by CosmosScene
+  useEffect(() => {
+    const onDrag = (e: Event) => {
+      const evt = e as CustomEvent<{ active: boolean; x: number; y: number }>;
+      const { active, x, y } = evt.detail;
+      setDragActive(active);
+
+      if (!active) {
+        setDragHoverId(null);
+        return;
+      }
+
+      // Determine which button the cursor is closest to / over
+      let hovered: PodId | null = null;
+      for (const [podId, el] of buttonRefs.current.entries()) {
+        const rect = el.getBoundingClientRect();
+        if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+          hovered = podId;
+          break;
+        }
+      }
+      // If cursor is in the dock zone but not over a button, find the nearest one by X
+      if (!hovered && y > window.innerHeight - 240) {
+        let minDist = Infinity;
+        for (const [podId, el] of buttonRefs.current.entries()) {
+          const rect = el.getBoundingClientRect();
+          const centerX = (rect.left + rect.right) / 2;
+          const dist = Math.abs(x - centerX);
+          if (dist < minDist) { minDist = dist; hovered = podId; }
+        }
+      }
+      setDragHoverId(y > window.innerHeight - 220 ? hovered : null);
+    };
+
+    window.addEventListener('cosmos:pod-drag', onDrag);
+    return () => window.removeEventListener('cosmos:pod-drag', onDrag);
+  }, []);
 
   const lastCompleted = completedSteps[completedSteps.length - 1];
   const lastCompletedIdx = lastCompleted ? STEPS.findIndex(s => s.id === lastCompleted) : -1;
@@ -48,25 +91,51 @@ export function CommandDock() {
         position: 'fixed',
         bottom: 'var(--dock-bottom)',
         left: '50%',
-        transform: 'translateX(-50%)',
+        transform: dragActive ? 'translateX(-50%) translateY(-8px)' : 'translateX(-50%)',
         zIndex: 30,
         display: 'flex',
         alignItems: 'stretch',
         gap: 0,
-        background: 'rgba(3,5,12,0.97)',
+        background: dragActive
+          ? 'rgba(3,8,20,0.99)'
+          : 'rgba(3,5,12,0.97)',
         backdropFilter: 'blur(40px) saturate(2)',
         WebkitBackdropFilter: 'blur(40px) saturate(2)',
-        border: '1px solid rgba(255,255,255,0.10)',
+        border: dragActive
+          ? '1px solid rgba(255,255,255,0.20)'
+          : '1px solid rgba(255,255,255,0.10)',
         borderRadius: 'clamp(14px, 1.6vw, 22px)',
         padding: 'clamp(8px,0.8vh,12px) clamp(12px,1.1vw,18px)',
-        boxShadow: `
-          0 8px 48px rgba(0,0,0,0.90),
-          0 0 0 1px rgba(255,255,255,0.05),
-          inset 0 1px 0 rgba(255,255,255,0.06)
-        `,
+        boxShadow: dragActive
+          ? `0 8px 60px rgba(0,0,0,0.95), 0 0 0 1px rgba(255,255,255,0.10), inset 0 1px 0 rgba(255,255,255,0.08), 0 -2px 40px rgba(255,255,255,0.04)`
+          : `0 8px 48px rgba(0,0,0,0.90), 0 0 0 1px rgba(255,255,255,0.05), inset 0 1px 0 rgba(255,255,255,0.06)`,
         maxWidth: 'calc(100vw - 24px)',
+        transition: 'transform 0.28s cubic-bezier(0.22,1,0.36,1), box-shadow 0.22s ease, border-color 0.22s ease, background 0.22s ease',
       }}
     >
+      {/* Drag-mode hint bar */}
+      {dragActive && (
+        <div style={{
+          position: 'absolute',
+          top: -28,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          fontFamily: MONO,
+          fontSize: 'clamp(7px,0.7vw,9px)',
+          letterSpacing: '0.10em',
+          color: 'rgba(255,255,255,0.50)',
+          background: 'rgba(3,8,20,0.90)',
+          border: '1px solid rgba(255,255,255,0.10)',
+          borderRadius: 6,
+          padding: '3px 10px',
+          whiteSpace: 'nowrap' as const,
+          pointerEvents: 'none',
+          animation: 'dock-hint-in 0.2s ease-out',
+        }}>
+          释放以委托给能力舱
+        </div>
+      )}
+
       {/* Left brand mark */}
       <div style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -101,13 +170,17 @@ export function CommandDock() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(5px, 0.6vw, 10px)' }}>
         {STEPS.map((step, i) => {
           const { r, g, b } = hexRgb(step.accent);
-          const isOpen      = pods[step.id]?.open;
-          const isActive    = activeStep === step.id;
-          const isDone      = completedSteps.includes(step.id);
-          const isRecommend = recommendedNext === step.id && !isOpen;
-          const isHovered   = hoveredId === step.id;
+          const isOpen       = pods[step.id]?.open;
+          const isActive     = activeStep === step.id;
+          const isDone       = completedSteps.includes(step.id);
+          const isRecommend  = recommendedNext === step.id && !isOpen;
+          const isHovered    = hoveredId === step.id;
+          const isDragTarget = dragActive && dragHoverId === step.id;
 
           const accentAlpha = (a: number) => `rgba(${r},${g},${b},${a})`;
+
+          // Label override during drag hover
+          const displayLabel = isDragTarget ? '委托' : step.label;
 
           return (
             <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: 'clamp(5px, 0.6vw, 10px)' }}>
@@ -117,13 +190,18 @@ export function CommandDock() {
                   width: 'clamp(8px, 1.2vw, 20px)', height: 1,
                   background: isDone
                     ? `linear-gradient(90deg, ${accentAlpha(0.40)}, rgba(255,255,255,0.08))`
-                    : 'rgba(255,255,255,0.06)',
+                    : dragActive
+                      ? 'rgba(255,255,255,0.12)'
+                      : 'rgba(255,255,255,0.06)',
                   flexShrink: 0,
+                  transition: 'background 0.2s',
                 }} />
               )}
 
               {/* Step button */}
               <button
+                data-pod-id={step.id}
+                ref={el => { if (el) buttonRefs.current.set(step.id, el); else buttonRefs.current.delete(step.id); }}
                 onClick={() => togglePod(step.id)}
                 onMouseEnter={() => setHoveredId(step.id)}
                 onMouseLeave={() => setHoveredId(null)}
@@ -135,56 +213,104 @@ export function CommandDock() {
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: 'clamp(4px, 0.5vh, 7px)',
-                  width: 'clamp(62px, 6.0vw, 88px)',
-                  height: 'clamp(50px, 5.2vh, 68px)',
+                  width: isDragTarget
+                    ? 'clamp(68px, 6.6vw, 96px)'
+                    : dragActive
+                      ? 'clamp(64px, 6.2vw, 90px)'
+                      : 'clamp(62px, 6.0vw, 88px)',
+                  height: isDragTarget
+                    ? 'clamp(56px, 5.8vh, 74px)'
+                    : dragActive
+                      ? 'clamp(52px, 5.4vh, 70px)'
+                      : 'clamp(50px, 5.2vh, 68px)',
                   borderRadius: 'clamp(10px, 1.1vw, 15px)',
-                  border: isOpen
-                    ? `1.5px solid ${accentAlpha(0.70)}`
-                    : isActive
-                      ? `1.5px solid ${accentAlpha(0.45)}`
-                      : isRecommend
-                        ? `1px solid ${accentAlpha(0.30)}`
-                        : isHovered
-                          ? `1px solid ${accentAlpha(0.35)}`
-                          : '1px solid rgba(255,255,255,0.06)',
-                  background: isOpen
-                    ? `linear-gradient(160deg, ${accentAlpha(0.18)}, ${accentAlpha(0.08)})`
-                    : isActive
-                      ? accentAlpha(0.10)
-                      : isHovered
-                        ? accentAlpha(0.08)
-                        : isRecommend
-                          ? accentAlpha(0.05)
-                          : 'rgba(255,255,255,0.02)',
+                  border: isDragTarget
+                    ? `2px solid ${accentAlpha(0.90)}`
+                    : dragActive
+                      ? `1px solid ${accentAlpha(0.35)}`
+                      : isOpen
+                        ? `1.5px solid ${accentAlpha(0.70)}`
+                        : isActive
+                          ? `1.5px solid ${accentAlpha(0.45)}`
+                          : isRecommend
+                            ? `1px solid ${accentAlpha(0.30)}`
+                            : isHovered
+                              ? `1px solid ${accentAlpha(0.35)}`
+                              : '1px solid rgba(255,255,255,0.06)',
+                  background: isDragTarget
+                    ? `linear-gradient(160deg, ${accentAlpha(0.28)}, ${accentAlpha(0.14)})`
+                    : dragActive
+                      ? accentAlpha(0.08)
+                      : isOpen
+                        ? `linear-gradient(160deg, ${accentAlpha(0.18)}, ${accentAlpha(0.08)})`
+                        : isActive
+                          ? accentAlpha(0.10)
+                          : isHovered
+                            ? accentAlpha(0.08)
+                            : isRecommend
+                              ? accentAlpha(0.05)
+                              : 'rgba(255,255,255,0.02)',
                   cursor: 'pointer',
                   transition: 'all 0.18s cubic-bezier(0.4,0,0.2,1)',
-                  transform: isHovered ? 'translateY(-3px)' : 'translateY(0)',
-                  boxShadow: isOpen
-                    ? `0 0 24px ${accentAlpha(0.35)}, 0 4px 20px rgba(0,0,0,0.60), inset 0 1px 0 ${accentAlpha(0.20)}`
-                    : isActive
-                      ? `0 0 16px ${accentAlpha(0.22)}, 0 4px 16px rgba(0,0,0,0.50)`
+                  transform: isDragTarget
+                    ? 'translateY(-6px) scale(1.05)'
+                    : dragActive
+                      ? 'translateY(-2px)'
                       : isHovered
-                        ? `0 0 14px ${accentAlpha(0.18)}, 0 6px 20px rgba(0,0,0,0.60)`
-                        : '0 2px 8px rgba(0,0,0,0.40)',
-                  animation: isRecommend ? 'dock-pulse 2.4s ease-in-out infinite' : 'none',
+                        ? 'translateY(-3px)'
+                        : 'translateY(0)',
+                  boxShadow: isDragTarget
+                    ? `0 0 36px ${accentAlpha(0.60)}, 0 8px 30px rgba(0,0,0,0.70), inset 0 1px 0 ${accentAlpha(0.30)}`
+                    : dragActive
+                      ? `0 0 16px ${accentAlpha(0.22)}, 0 4px 16px rgba(0,0,0,0.60)`
+                      : isOpen
+                        ? `0 0 24px ${accentAlpha(0.35)}, 0 4px 20px rgba(0,0,0,0.60), inset 0 1px 0 ${accentAlpha(0.20)}`
+                        : isActive
+                          ? `0 0 16px ${accentAlpha(0.22)}, 0 4px 16px rgba(0,0,0,0.50)`
+                          : isHovered
+                            ? `0 0 14px ${accentAlpha(0.18)}, 0 6px 20px rgba(0,0,0,0.60)`
+                            : '0 2px 8px rgba(0,0,0,0.40)',
+                  animation: isDragTarget
+                    ? 'dock-receive 0.8s ease-in-out infinite'
+                    : isRecommend
+                      ? 'dock-pulse 2.4s ease-in-out infinite'
+                      : 'none',
                   flexShrink: 0,
+                  overflow: 'hidden',
                 }}
               >
+                {/* Drag-receiving shimmer overlay */}
+                {isDragTarget && (
+                  <div style={{
+                    position: 'absolute', inset: 0,
+                    background: `linear-gradient(135deg, ${accentAlpha(0.15)} 0%, transparent 50%, ${accentAlpha(0.08)} 100%)`,
+                    borderRadius: 'inherit',
+                    animation: 'dock-shimmer 1.2s ease-in-out infinite',
+                    pointerEvents: 'none',
+                  }} />
+                )}
+
                 {/* Icon with glow container */}
                 <div style={{
                   width: 'clamp(26px, 2.4vw, 34px)',
                   height: 'clamp(26px, 2.4vw, 34px)',
                   borderRadius: 'clamp(7px, 0.7vw, 10px)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: isOpen || isHovered ? accentAlpha(0.15) : 'transparent',
+                  background: isDragTarget || isOpen || isHovered ? accentAlpha(0.15) : 'transparent',
                   transition: 'background 0.16s',
                 }}>
                   <step.icon
                     size={22}
-                    color={isOpen || isActive || isDone || isHovered ? step.accent : 'rgba(80,95,125,0.55)'}
+                    color={isDragTarget || isOpen || isActive || isDone || isHovered || dragActive
+                      ? step.accent
+                      : 'rgba(80,95,125,0.55)'}
                     style={{
                       transition: 'color 0.16s',
-                      filter: isOpen ? `drop-shadow(0 0 6px ${accentAlpha(0.70)})` : 'none',
+                      filter: isDragTarget
+                        ? `drop-shadow(0 0 8px ${accentAlpha(0.90)})`
+                        : isOpen
+                          ? `drop-shadow(0 0 6px ${accentAlpha(0.70)})`
+                          : 'none',
                       width: 'clamp(15px, 1.5vw, 22px)',
                       height: 'clamp(15px, 1.5vw, 22px)',
                     }}
@@ -194,35 +320,41 @@ export function CommandDock() {
                 {/* Labels */}
                 <div style={{ textAlign: 'center', lineHeight: 1 }}>
                   <div style={{
-                    fontFamily: INTER,
-                    fontSize: 'clamp(10px, 0.9vw, 13px)',
+                    fontFamily: isDragTarget ? MONO : INTER,
+                    fontSize: isDragTarget
+                      ? 'clamp(9px, 0.85vw, 12px)'
+                      : 'clamp(10px, 0.9vw, 13px)',
                     fontWeight: 600,
-                    color: isOpen || isActive || isDone
-                      ? accentAlpha(0.95)
-                      : isHovered
-                        ? 'rgba(200,215,240,0.85)'
-                        : 'rgba(120,140,175,0.65)',
+                    color: isDragTarget
+                      ? accentAlpha(1.0)
+                      : isOpen || isActive || isDone
+                        ? accentAlpha(0.95)
+                        : isHovered || dragActive
+                          ? 'rgba(200,215,240,0.85)'
+                          : 'rgba(120,140,175,0.65)',
                     transition: 'color 0.16s',
-                    letterSpacing: '0.01em',
+                    letterSpacing: isDragTarget ? '0.06em' : '0.01em',
                     marginBottom: 1,
                   }}>
-                    {step.label}
+                    {displayLabel}
                   </div>
                   <div style={{
                     fontFamily: MONO,
                     fontSize: 'clamp(7.5px, 0.7vw, 9.5px)',
-                    color: isOpen
-                      ? accentAlpha(0.60)
-                      : 'rgba(70,85,115,0.55)',
+                    color: isDragTarget
+                      ? accentAlpha(0.70)
+                      : isOpen
+                        ? accentAlpha(0.60)
+                        : 'rgba(70,85,115,0.55)',
                     transition: 'color 0.16s',
                     letterSpacing: '0.04em',
                   }}>
-                    {step.sublabel}
+                    {isDragTarget ? '释放委托' : step.sublabel}
                   </div>
                 </div>
 
                 {/* Done checkmark badge */}
-                {isDone && !isActive && (
+                {isDone && !isActive && !isDragTarget && (
                   <div style={{
                     position: 'absolute', top: 5, right: 5,
                     width: 14, height: 14, borderRadius: '50%',
@@ -236,7 +368,7 @@ export function CommandDock() {
                 )}
 
                 {/* Active pulse ring */}
-                {isActive && (
+                {isActive && !isDragTarget && (
                   <div style={{
                     position: 'absolute', inset: -3,
                     borderRadius: 17,
@@ -247,7 +379,7 @@ export function CommandDock() {
                 )}
 
                 {/* Recommended badge */}
-                {isRecommend && (
+                {isRecommend && !dragActive && (
                   <div style={{
                     position: 'absolute', top: -9,
                     fontFamily: MONO, fontSize: 8, letterSpacing: '0.04em',
@@ -263,7 +395,7 @@ export function CommandDock() {
                 )}
 
                 {/* Open indicator bar */}
-                {isOpen && (
+                {isOpen && !isDragTarget && (
                   <div style={{
                     position: 'absolute', bottom: 0, left: '20%', right: '20%',
                     height: 2, borderRadius: '1px 1px 0 0',
@@ -285,6 +417,19 @@ export function CommandDock() {
         @keyframes dock-ring {
           0%   { opacity: 0.70; transform: scale(1); }
           100% { opacity: 0; transform: scale(1.50); }
+        }
+        @keyframes dock-receive {
+          0%,100% { box-shadow: var(--receive-shadow-min); }
+          50%     { box-shadow: var(--receive-shadow-max); }
+        }
+        @keyframes dock-shimmer {
+          0%   { opacity: 0.6; }
+          50%  { opacity: 1.0; }
+          100% { opacity: 0.6; }
+        }
+        @keyframes dock-hint-in {
+          from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+          to   { opacity: 1; transform: translateX(-50%) translateY(0);   }
         }
       `}</style>
     </div>

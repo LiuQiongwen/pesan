@@ -84,16 +84,26 @@ export default function InsightBox() {
   const [result,       setResult]       = useState<InsightResult | null>(null);
   const [relayBanner,  setRelayBanner]  = useState<string | null>(null);
 
-  // Auto-receive relay
+  // Auto-receive relay (supports __noteId__:xxx prefix for direct note selection)
   useEffect(() => {
     const relayed = workflow.consumeRelay('insight');
     if (relayed) {
-      setFreeText(relayed);
-      setInputMode('text');
-      const src = workflow.relay?.sourcePod === 'retrieval' ? '检索舱' : '捕获舱';
-      setRelayBanner(`← 来自${src}`);
-      workflow.setActiveStep('insight');
-      setTimeout(() => setRelayBanner(null), 4000);
+      if (relayed.startsWith('__noteId__:')) {
+        // Drag-to-pod: extract note ID and auto-select it
+        const noteId = relayed.slice('__noteId__:'.length).split('\n')[0].trim();
+        setSelectedId(noteId);
+        setInputMode('note');
+        setRelayBanner('← 来自星图拖拽');
+        workflow.setActiveStep('insight');
+        setTimeout(() => setRelayBanner(null), 4000);
+      } else {
+        setFreeText(relayed);
+        setInputMode('text');
+        const src = workflow.relay?.sourcePod === 'retrieval' ? '检索舱' : '捕获舱';
+        setRelayBanner(`← 来自${src}`);
+        workflow.setActiveStep('insight');
+        setTimeout(() => setRelayBanner(null), 4000);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflow.relay?.timestamp]);

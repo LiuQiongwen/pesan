@@ -84,19 +84,30 @@ export default function RetrievalBox({ onHighlight }: Props) {
   const [answer,    setAnswer]    = useState<string | null>(null);
   const [citations, setCitations] = useState<Citation[]>([]);
   const [showSrc,   setShowSrc]   = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef       = useRef<HTMLInputElement>(null);
+  const autoSearchRef  = useRef(false);
 
-  // Auto-receive from workflow relay
+  // Auto-receive from workflow relay (e.g. drag-to-pod from star map)
   useEffect(() => {
     const relayed = workflow.consumeRelay('retrieval');
     if (relayed) {
       setQuery(relayed.slice(0, 200));
+      autoSearchRef.current = true;  // trigger auto-search on next query change
       workflow.setActiveStep('retrieval');
       inputRef.current?.focus();
     }
   // Only run when relay changes (timestamp-based)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflow.relay?.timestamp]);
+
+  // Auto-search when relay pre-fills the query
+  useEffect(() => {
+    if (autoSearchRef.current && query.trim() && !loading) {
+      autoSearchRef.current = false;
+      handleSearch();  // defined below — safe because useEffect runs after render
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
 
   const handleSearch = async () => {
     if (!query.trim() || loading) return;

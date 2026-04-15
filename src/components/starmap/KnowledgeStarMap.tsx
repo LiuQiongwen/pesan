@@ -37,6 +37,7 @@ interface KnowledgeStarMapProps {
   onFlashNote?:        (id: string) => void;
   userId?:             string;
   onEmptyStateClick?:  () => void;
+  onNodeDropToPod?:    (noteId: string, podId: string) => void;
 }
 
 // ── Loading fallback ──────────────────────────────────────────────────────────
@@ -83,6 +84,7 @@ export default function KnowledgeStarMap({
   onFlashNote,
   userId,
   onEmptyStateClick,
+  onNodeDropToPod,
 }: KnowledgeStarMapProps) {
   const layout            = useMemo(() => buildCosmosLayout(notes), [notes]);
   const [openNodes,       setOpenNodes]        = useState<Set<string>>(new Set());
@@ -289,6 +291,7 @@ export default function KnowledgeStarMap({
               onEmptyStateClick={onEmptyStateClick}
               onNodeConnect={handleNodeConnect}
               onNodeDropToGalaxy={handleNodeDropToGalaxy}
+              onNodeDropToPod={onNodeDropToPod}
             />
           )}
         </Suspense>
