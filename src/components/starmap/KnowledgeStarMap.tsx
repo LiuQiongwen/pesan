@@ -3,6 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import { CosmosScene } from './CosmosScene';
 import { buildCosmosLayout, type CosmosNote } from './cosmos-layout';
 import { ConnectConfirmOverlay } from './ConnectConfirmOverlay';
+import { GalaxyJoinOverlay, type GalaxyOption } from './GalaxyJoinOverlay';
 import { type RelationType } from './connect-types';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -18,6 +19,11 @@ interface PendingConnection {
   sourceId:      string;
   targetId:      string;
   suggestedType: RelationType;
+}
+
+interface PendingGalaxy {
+  noteId:    string;
+  targetTag: string | null; // null → user must choose
 }
 
 interface KnowledgeStarMapProps {
@@ -82,10 +88,19 @@ export default function KnowledgeStarMap({
   const [openNodes,       setOpenNodes]        = useState<Set<string>>(new Set());
   const [pendingConn,     setPendingConn]      = useState<PendingConnection | null>(null);
   const [connectStatus,   setConnectStatus]    = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [pendingGalaxy,   setPendingGalaxy]    = useState<PendingGalaxy | null>(null);
+  const [galaxyStatus,    setGalaxyStatus]     = useState<'idle' | 'saved' | 'error'>('idle');
   const recenterActiveRef = useRef(false);
 
   // Quick lookup map for note objects
   const notesMap = useMemo(() => new Map(notes.map(n => [n.id, n])), [notes]);
+
+  // Galaxy options for the overlay (excluding __untagged__)
+  const availableGalaxies = useMemo<GalaxyOption[]>(() =>
+    layout.clusters
+      .filter(c => c.tag !== '__untagged__')
+      .map(c => ({ tag: c.tag, color: c.color })),
+    [layout]);
 
   // Compute the most recently created note as the "entrance" node
   const entranceNoteId = useMemo(() => {
@@ -146,15 +161,47 @@ export default function KnowledgeStarMap({
     } else {
       setConnectStatus('saved');
     }
-
-    // Clear status badge after 2s
     setTimeout(() => setConnectStatus('idle'), 2000);
   }, [pendingConn, userId]);
 
-  // ── Drag-to-connect: cancel ───────────────────────────────────────────────
-  const handleConnectionCancel = useCallback(() => {
-    setPendingConn(null);
-  }, []);
+  const handleConnectionCancel = useCallback(() => setPendingConn(null), []);
+
+  // ── Drag-to-galaxy: initiate ──────────────────────────────────────────────
+  const handleNodeDropToGalaxy = useCallback((noteId: string, galaxyTag: string | null) => {
+    // If no galaxies exist and user drops on empty space — nothing to join
+    if (!galaxyTag && availableGalaxies.length === 0) return;
+    setPendingGalaxy({ noteId, targetTag: galaxyTag });
+    setGalaxyStatus('idle');
+  }, [availableGalaxies]);
+
+  // ── Drag-to-galaxy: confirm ───────────────────────────────────────────────
+  const handleGalaxyJoinConfirm = useCallback(async (galaxyTag: string) => {
+    if (!pendingGalaxy) return;
+    const { noteId } = pendingGalaxy;
+    setPendingGalaxy(null);
+
+    const note = notesMap.get(noteId);
+    if (!note) return;
+
+    // Prepend galaxy tag as new primary tag, deduplicating
+    const newTags = [galaxyTag, ...(note.tags ?? []).filter(t => t !== galaxyTag)];
+
+    const { error } = await supabase
+      .from('notes')
+      .update({ tags: newTags, updated_at: new Date().toISOString() })
+      .eq('id', noteId);
+
+    if (error) {
+      console.error('[KnowledgeStarMap] galaxy assign error:', error);
+      setGalaxyStatus('error');
+    } else {
+      setGalaxyStatus('saved');
+    }
+    // Layout recomputes automatically when notes array updates via realtime
+    setTimeout(() => setGalaxyStatus('idle'), 2000);
+  }, [pendingGalaxy, notesMap]);
+
+  const handleGalaxyJoinCancel = useCallback(() => setPendingGalaxy(null), []);
 
   // ── Trigger recenter from parent ─────────────────────────────────────────
   useEffect(() => {
@@ -173,6 +220,7 @@ export default function KnowledgeStarMap({
       if (e.code === 'Escape') {
         setOpenNodes(new Set());
         setPendingConn(null);
+        setPendingGalaxy(null);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -187,6 +235,11 @@ export default function KnowledgeStarMap({
 
   const srcNote = pendingConn ? notesMap.get(pendingConn.sourceId) : null;
   const tgtNote = pendingConn ? notesMap.get(pendingConn.targetId) : null;
+
+  const pendingGalaxyNote = pendingGalaxy ? notesMap.get(pendingGalaxy.noteId) : null;
+  const pendingTargetGalaxy = pendingGalaxy?.targetTag
+    ? (availableGalaxies.find(g => g.tag === pendingGalaxy.targetTag) ?? null)
+    : null;
 
   return (
     <div
@@ -235,12 +288,13 @@ export default function KnowledgeStarMap({
               entranceNoteId={entranceNoteId}
               onEmptyStateClick={onEmptyStateClick}
               onNodeConnect={handleNodeConnect}
+              onNodeDropToGalaxy={handleNodeDropToGalaxy}
             />
           )}
         </Suspense>
       )}
 
-      {/* Connection confirm overlay */}
+      {/* Node-to-node connection confirm overlay */}
       {pendingConn && srcNote && tgtNote && (
         <ConnectConfirmOverlay
           sourceTitle={srcNote.title ?? ''}
@@ -251,13 +305,22 @@ export default function KnowledgeStarMap({
         />
       )}
 
-      {/* Connection status toast */}
-      {connectStatus === 'saved' && (
-        <ConnectToast label="✓ 连接已建立" color="#00ff66" />
+      {/* Galaxy join overlay */}
+      {pendingGalaxy && pendingGalaxyNote && (
+        <GalaxyJoinOverlay
+          noteTitle={pendingGalaxyNote.title ?? ''}
+          targetGalaxy={pendingTargetGalaxy}
+          availableGalaxies={availableGalaxies}
+          onConfirm={handleGalaxyJoinConfirm}
+          onCancel={handleGalaxyJoinCancel}
+        />
       )}
-      {connectStatus === 'error' && (
-        <ConnectToast label="✕ 连接失败，请重试" color="#ff4466" />
-      )}
+
+      {/* Status toasts */}
+      {connectStatus === 'saved' && <ConnectToast label="连接已建立" color="#00ff66" />}
+      {connectStatus === 'error'  && <ConnectToast label="连接失败，请重试" color="#ff4466" />}
+      {galaxyStatus  === 'saved'  && <ConnectToast label="已归入星系" color="#b496ff" />}
+      {galaxyStatus  === 'error'  && <ConnectToast label="归类失败，请重试" color="#ff4466" />}
     </div>
   );
 }

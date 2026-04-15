@@ -67,6 +67,7 @@ export interface CosmosSceneProps {
   entranceNoteId?:     string;
   onEmptyStateClick?:  () => void;
   onNodeConnect?:      (sourceId: string, targetId: string) => void;
+  onNodeDropToGalaxy?: (noteId: string, galaxyTag: string | null) => void;
 }
 
 // ── ImperativeCore ────────────────────────────────────────────────────────────
@@ -86,13 +87,14 @@ interface CoreProps {
   entranceNoteId?:    string;
   onEmptyStateClick?: () => void;
   onNodeConnect?:     (sourceId: string, targetId: string) => void;
+  onNodeDropToGalaxy?: (noteId: string, galaxyTag: string | null) => void;
 }
 
 function ImperativeCore({
   layout, notes, highlightSet, flashNoteId, openNodes,
   hoveredId, setHoveredId, onNodeToggle, onNodeHover,
   currentPosRef, recenterActiveRef, onLodChange,
-  entranceNoteId, onEmptyStateClick, onNodeConnect,
+  entranceNoteId, onEmptyStateClick, onNodeConnect, onNodeDropToGalaxy,
 }: CoreProps) {
   const { scene, camera, gl } = useThree();
 
@@ -113,6 +115,11 @@ function ImperativeCore({
   // Halo/ring refs for LOD opacity
   const haloMeshesRef    = useRef<THREE.Mesh[]>([]);
   const ringMeshesRef    = useRef<THREE.Mesh[]>([]);
+  // Galaxy-keyed maps for targeted animation during drag-to-galaxy
+  const halosByTagRef    = useRef(new Map<string, THREE.Mesh>());
+  const ringsByTagRef    = useRef(new Map<string, THREE.Mesh>());
+  // Flag: drag-to-galaxy mode is active (hold timer fired)
+  const galaxyDragActiveRef = useRef(false);
 
   // Entrance / empty state refs
   const emptyCTAMeshRef  = useRef<THREE.Mesh | null>(null);
@@ -128,16 +135,18 @@ function ImperativeCore({
 
   // Drag-to-connect state
   type ConnectState = {
-    sourceId:          string;
-    sourceMesh:        THREE.Mesh;
-    sourceOrigScale:   THREE.Vector3;
-    sourceOrigEmit:    number;
-    line:              THREE.Line | null;
-    potentialTargetId: string | null;
+    sourceId:           string;
+    sourceMesh:         THREE.Mesh;
+    sourceOrigScale:    THREE.Vector3;
+    sourceOrigEmit:     number;
+    line:               THREE.Line | null;
+    potentialTargetId:  string | null;
+    potentialGalaxyTag: string | null;   // galaxy tag under cursor
   };
   const connectStateRef  = useRef<ConnectState | null>(null);
   const holdTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onNodeConnectRef = useRef(onNodeConnect);
+  const onNodeDropToGalaxyRef = useRef(onNodeDropToGalaxy);
 
   // Auto-rotate management
   const orbitAutoRotate  = useRef(true);
@@ -158,6 +167,7 @@ function ImperativeCore({
   useEffect(() => { onHoverRef.current            = onNodeHover;       }, [onNodeHover]);
   useEffect(() => { onEmptyStateClickRef.current  = onEmptyStateClick; }, [onEmptyStateClick]);
   useEffect(() => { onNodeConnectRef.current      = onNodeConnect;     }, [onNodeConnect]);
+  useEffect(() => { onNodeDropToGalaxyRef.current = onNodeDropToGalaxy; }, [onNodeDropToGalaxy]);
 
   // ── Build scene imperatively ───────────────────────────────────────────────
   useEffect(() => {
@@ -172,6 +182,8 @@ function ImperativeCore({
     allEdgeLinesRef.current  = [];
     haloMeshesRef.current    = [];
     ringMeshesRef.current    = [];
+    halosByTagRef.current.clear();
+    ringsByTagRef.current.clear();
     entranceRingsRef.current = [];
     emptyRingsRef.current    = [];
     emptyCTAMeshRef.current  = null;
@@ -224,6 +236,7 @@ function ImperativeCore({
       halo.position.set(...cluster.center);
       group.add(halo);
       haloMeshesRef.current.push(halo);
+      halosByTagRef.current.set(cluster.tag, halo);
 
       const ringGeo = new THREE.RingGeometry(cluster.radius * 0.85, cluster.radius, 32);
       const ringMat = new THREE.MeshBasicMaterial({
@@ -234,6 +247,7 @@ function ImperativeCore({
       ring.position.set(...cluster.center);
       group.add(ring);
       ringMeshesRef.current.push(ring);
+      ringsByTagRef.current.set(cluster.tag, ring);
     });
 
     // ── Connection edges ─────────────────────────────────────────────────────
@@ -384,7 +398,7 @@ function ImperativeCore({
       // Restore source node visuals
       cs.sourceMesh.scale.copy(cs.sourceOrigScale);
       (cs.sourceMesh.material as THREE.MeshStandardMaterial).emissiveIntensity = cs.sourceOrigEmit;
-      // Remove potential target highlight
+      // Remove potential node-target highlight
       if (cs.potentialTargetId) {
         const tm = noteMeshes.current.get(cs.potentialTargetId);
         if (tm) {
@@ -393,6 +407,13 @@ function ImperativeCore({
           tm.scale.setScalar(1.0);
         }
       }
+      // Restore galaxy halo highlight
+      if (cs.potentialGalaxyTag) {
+        const halo = halosByTagRef.current.get(cs.potentialGalaxyTag);
+        const ring = ringsByTagRef.current.get(cs.potentialGalaxyTag);
+        if (halo) halo.scale.setScalar(1.0);
+        if (ring) ring.scale.setScalar(1.0);
+      }
       // Remove drag line
       if (cs.line) {
         scene.remove(cs.line);
@@ -400,6 +421,7 @@ function ImperativeCore({
         (cs.line.material as THREE.LineBasicMaterial).dispose();
       }
       connectStateRef.current = null;
+      galaxyDragActiveRef.current = false;
     };
 
     const onDown = (e: MouseEvent) => {
@@ -446,13 +468,15 @@ function ImperativeCore({
         scene.add(dragLine);
 
         connectStateRef.current = {
-          sourceId:          noteId,
-          sourceMesh:        srcMesh,
-          sourceOrigScale:   origScale,
-          sourceOrigEmit:    origEmit,
-          line:              dragLine,
-          potentialTargetId: null,
+          sourceId:           noteId,
+          sourceMesh:         srcMesh,
+          sourceOrigScale:    origScale,
+          sourceOrigEmit:     origEmit,
+          line:               dragLine,
+          potentialTargetId:  null,
+          potentialGalaxyTag: null,
         };
+        galaxyDragActiveRef.current = true;
         navigator.vibrate?.(30);
       }, 350);
     };
@@ -498,6 +522,48 @@ function ImperativeCore({
         }
         cs.potentialTargetId = newTarget;
       }
+
+      // Galaxy zone detection (only when no note is under cursor)
+      let newGalaxyTag: string | null = null;
+      if (!newTarget && cursor3D) {
+        for (const cluster of layout.clusters) {
+          if (cluster.tag === '__untagged__') continue;
+          const cx = new THREE.Vector3(...cluster.center);
+          if (cursor3D.distanceTo(cx) < cluster.radius * 1.4) {
+            newGalaxyTag = cluster.tag;
+            break;
+          }
+        }
+      }
+
+      if (newGalaxyTag !== cs.potentialGalaxyTag) {
+        // Restore previous galaxy halo
+        if (cs.potentialGalaxyTag) {
+          const ph = halosByTagRef.current.get(cs.potentialGalaxyTag);
+          const pr = ringsByTagRef.current.get(cs.potentialGalaxyTag);
+          if (ph) ph.scale.setScalar(1.0);
+          if (pr) pr.scale.setScalar(1.0);
+        }
+        // Highlight new galaxy halo
+        if (newGalaxyTag) {
+          const nh = halosByTagRef.current.get(newGalaxyTag);
+          const nr = ringsByTagRef.current.get(newGalaxyTag);
+          if (nh) nh.scale.setScalar(1.15);
+          if (nr) nr.scale.setScalar(1.15);
+          // Update drag line color to match galaxy
+          const cluster = layout.clusters.find(c => c.tag === newGalaxyTag);
+          if (cluster && cs.line) {
+            (cs.line.material as THREE.LineBasicMaterial).color.set(new THREE.Color(cluster.color));
+          }
+        } else {
+          // Restore drag line to source node color
+          const np = layout.positions[cs.sourceId];
+          if (np && cs.line) {
+            (cs.line.material as THREE.LineBasicMaterial).color.set(new THREE.Color(np.color));
+          }
+        }
+        cs.potentialGalaxyTag = newGalaxyTag;
+      }
     };
 
     const onUp = (e: MouseEvent) => {
@@ -506,12 +572,15 @@ function ImperativeCore({
       if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
       autoRotateTimer.current = setTimeout(() => { orbitAutoRotate.current = true; }, 3000);
 
-      // ── Drag-to-connect release ──────────────────────────────────────────
+      // ── Drag-to-connect / drag-to-galaxy release ────────────────────────
       if (connectStateRef.current) {
-        const { sourceId, potentialTargetId } = connectStateRef.current;
-        cancelConnect();
+        const { sourceId, potentialTargetId, potentialGalaxyTag } = connectStateRef.current;
+        cancelConnect(); // also resets galaxyDragActiveRef
         if (potentialTargetId && potentialTargetId !== sourceId) {
           onNodeConnectRef.current?.(sourceId, potentialTargetId);
+        } else {
+          // Galaxy drop (or empty space drop → galaxyTag null → user picks)
+          onNodeDropToGalaxyRef.current?.(sourceId, potentialGalaxyTag);
         }
         return;
       }
@@ -590,6 +659,29 @@ function ImperativeCore({
     if (connectStateRef.current?.line) {
       const mat = connectStateRef.current.line.material as THREE.LineBasicMaterial;
       mat.opacity = 0.6 + Math.sin(t * 7) * 0.25;
+    }
+
+    // ── Galaxy-drag mode: all halos brighter, potential galaxy pulses ───────
+    if (galaxyDragActiveRef.current) {
+      const potTag = connectStateRef.current?.potentialGalaxyTag ?? null;
+      haloMeshesRef.current.forEach(h => {
+        const m = h.material as THREE.MeshBasicMaterial;
+        // Raise base opacity so all halos become more visible as "landing zones"
+        const baseOpacity = potTag ? 0.05 : 0.055;
+        m.opacity = THREE.MathUtils.lerp(m.opacity, baseOpacity, 0.08);
+      });
+      ringMeshesRef.current.forEach(r => {
+        const m = r.material as THREE.MeshBasicMaterial;
+        const baseOpacity = potTag ? 0.10 : 0.12;
+        m.opacity = THREE.MathUtils.lerp(m.opacity, baseOpacity, 0.08);
+      });
+      // Potential galaxy: extra bright + pulse scale
+      if (potTag) {
+        const ph = halosByTagRef.current.get(potTag);
+        const pr = ringsByTagRef.current.get(potTag);
+        if (ph) (ph.material as THREE.MeshBasicMaterial).opacity = 0.12 + Math.sin(t * 4) * 0.04;
+        if (pr) (pr.material as THREE.MeshBasicMaterial).opacity = 0.22 + Math.sin(t * 4) * 0.06;
+      }
     }
 
     // ── Camera fly-in tween ─────────────────────────────────────────────────
@@ -827,7 +919,7 @@ export function CosmosScene({
   layout, notes, highlightedNoteIds = [],
   flashNoteId = null, openNodes, onNodeToggle, onNodeHover,
   recenterActiveRef, onLodChange, onFlashNote, userId,
-  entranceNoteId, onEmptyStateClick, onNodeConnect,
+  entranceNoteId, onEmptyStateClick, onNodeConnect, onNodeDropToGalaxy,
 }: CosmosSceneProps) {
   const highlightSet  = useMemo(() => new Set(highlightedNoteIds), [highlightedNoteIds]);
   const navigate      = useNavigate();
@@ -860,6 +952,7 @@ export function CosmosScene({
         entranceNoteId={entranceNoteId}
         onEmptyStateClick={onEmptyStateClick}
         onNodeConnect={onNodeConnect}
+        onNodeDropToGalaxy={onNodeDropToGalaxy}
       />
       {lodLevel === 0 && layout.clusters.map(c => <ClusterLabel key={c.tag} cluster={c} />)}
 
