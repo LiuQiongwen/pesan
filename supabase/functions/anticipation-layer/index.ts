@@ -14,16 +14,17 @@ Output ONLY compact valid JSON:
 Use the first 8 chars of note IDs. Max 2 items per type (6 total). Output JSON only.`;
     const r = await fetch("https://api.enter.pro/code/api/v1/ai/messages", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "Expect": "" },
       body: JSON.stringify({ model: "google/gemini-3.1-flash-lite-preview", system, messages: [{ role: "user", content: `${notes.length} notes:\n${noteList}` }], stream: false, max_tokens: 700 }),
+      signal: AbortSignal.timeout(25000),
     });
-    if (!r.ok) { const txt = await r.text(); let msg = `AI error (${r.status})`; try { msg = JSON.parse(txt).error?.message || msg; } catch(_e){} return new Response(JSON.stringify({ success: false, error: msg }), { status: 200, headers: { ...cors, "Content-Type": "application/json" } }); }
+    if (!r.ok) { const txt = await r.text(); let msg = `AI error (${r.status})`; try { msg = JSON.parse(txt).error?.message || msg; } catch(_e){} return new Response(JSON.stringify({ success: false, error: msg }), { status: 200, headers: { ...cors, "Content-Type": "application/json", "Expect": "" } }); }
     const data = await r.json();
     const text = (data.content?.[0]?.text || "{}").trim();
     let result = { items: [] };
     try { const cleaned = text.replace(/^```(?:json)?\s*/i,"").replace(/\s*```$/i,"").trim(); const m = cleaned.match(/\{[\s\S]*\}/); if (m) result = JSON.parse(m[0]); } catch(_e){}
-    return new Response(JSON.stringify({ success: true, data: result }), { headers: { ...cors, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ success: true, data: result }), { headers: { ...cors, "Content-Type": "application/json", "Expect": "" } });
   } catch(e) {
-    return new Response(JSON.stringify({ success: false, error: e.message }), { status: 200, headers: { ...cors, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ success: false, error: e.message }), { status: 200, headers: { ...cors, "Content-Type": "application/json", "Expect": "" } });
   }
 });

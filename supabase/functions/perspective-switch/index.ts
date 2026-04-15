@@ -22,13 +22,14 @@ Deno.serve(async (req) => {
     const system = `You are ${persona}.\n\nAnalyze the provided content from your specific perspective. Your reframing should:\n1. Apply your lens's specific conceptual vocabulary and frameworks\n2. Surface what your perspective reveals that a neutral reading would miss\n3. Identify the 2-3 most interesting insights your lens generates\n4. Note what your lens considers a strength vs. a limitation of the ideas\n\nFormat as clean markdown:\n## ${lens} Reframing\n[Your analysis — 150-200 words, dense and precise]\n\n## Key Differences from Neutral Reading\n- [difference 1]\n- [difference 2]\n- [difference 3]\n\n## ${lens} Critique\n[One sharp critical observation — 2-3 sentences]`;
     const r = await fetch("https://api.enter.pro/code/api/v1/ai/messages", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "Expect": "" },
       body: JSON.stringify({ model: "google/gemini-3.1-flash-lite-preview", system, messages: [{ role: "user", content: `Reframe this content:\n\n${content.slice(0,2000)}` }], stream: false, max_tokens: 900 }),
+      signal: AbortSignal.timeout(25000),
     });
-    if (!r.ok) { const txt = await r.text(); let msg = `AI error (${r.status})`; try { msg = JSON.parse(txt).error?.message || msg; } catch(_e){} return new Response(JSON.stringify({ success: false, error: msg }), { status: 200, headers: { ...cors, "Content-Type": "application/json" } }); }
+    if (!r.ok) { const txt = await r.text(); let msg = `AI error (${r.status})`; try { msg = JSON.parse(txt).error?.message || msg; } catch(_e){} return new Response(JSON.stringify({ success: false, error: msg }), { status: 200, headers: { ...cors, "Content-Type": "application/json", "Expect": "" } }); }
     const data = await r.json();
-    return new Response(JSON.stringify({ success: true, markdown: data.content?.[0]?.text || "" }), { headers: { ...cors, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ success: true, markdown: data.content?.[0]?.text || "" }), { headers: { ...cors, "Content-Type": "application/json", "Expect": "" } });
   } catch(e) {
-    return new Response(JSON.stringify({ success: false, error: e.message }), { status: 200, headers: { ...cors, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ success: false, error: e.message }), { status: 200, headers: { ...cors, "Content-Type": "application/json", "Expect": "" } });
   }
 });

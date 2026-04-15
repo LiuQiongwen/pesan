@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
 
     if (chunks.length === 0) {
       return new Response(JSON.stringify({ success: true, chunks_created: 0 }), {
-        headers: { ...cors, "Content-Type": "application/json" },
+        headers: { ...cors, "Content-Type": "application/json", "Expect": "" },
       });
     }
 
@@ -91,12 +91,12 @@ Deno.serve(async (req) => {
     if (error) throw new Error("DB insert failed: " + error.message);
 
     return new Response(JSON.stringify({ success: true, chunks_created: chunks.length }), {
-      headers: { ...cors, "Content-Type": "application/json" },
+      headers: { ...cors, "Content-Type": "application/json", "Expect": "" },
     });
   } catch (e) {
     return new Response(JSON.stringify({ success: false, error: e.message }), {
       status: 500,
-      headers: { ...cors, "Content-Type": "application/json" },
+      headers: { ...cors, "Content-Type": "application/json", "Expect": "" },
     });
   }
 });

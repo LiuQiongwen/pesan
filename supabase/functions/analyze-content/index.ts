@@ -50,7 +50,11 @@ Deno.serve(async (req) => {
 
     const response = await fetch("https://api.enter.pro/code/api/v1/ai/messages", {
       method: "POST",
-      headers: { Authorization: `Bearer ${AI_API_TOKEN}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${AI_API_TOKEN}`,
+        "Content-Type": "application/json",
+        "Expect": "",
+      },
       body: JSON.stringify({
         model: "google/gemini-3.1-flash-lite-preview",
         system: systemPrompt,
@@ -58,13 +62,14 @@ Deno.serve(async (req) => {
         stream: false,
         max_tokens: 1500,
       }),
+      signal: AbortSignal.timeout(25000),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
       let errorMessage = `AI service error (${response.status})`;
       try { const errorData = JSON.parse(errorText); errorMessage = errorData.error?.message || errorMessage; } catch (_e) {}
-      return new Response(JSON.stringify({ success: false, error: errorMessage }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ success: false, error: errorMessage }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json", "Expect": "" } });
     }
 
     const data = await response.json();
@@ -81,8 +86,8 @@ Deno.serve(async (req) => {
 
     analysisResult.content_markdown = analysisResult.report_markdown || analysisResult.content_markdown || "";
 
-    return new Response(JSON.stringify({ success: true, data: analysisResult }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ success: true, data: analysisResult }), { headers: { ...corsHeaders, "Content-Type": "application/json", "Expect": "" } });
   } catch (error) {
-    return new Response(JSON.stringify({ success: false, error: error.message }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ success: false, error: error.message }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json", "Expect": "" } });
   }
 });

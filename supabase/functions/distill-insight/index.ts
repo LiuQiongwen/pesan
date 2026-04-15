@@ -32,7 +32,11 @@ Deno.serve(async (req) => {
 
     const response = await fetch("https://api.enter.pro/code/api/v1/ai/messages", {
       method: "POST",
-      headers: { Authorization: `Bearer ${AI_API_TOKEN}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${AI_API_TOKEN}`,
+        "Content-Type": "application/json",
+        "Expect": "",
+      },
       body: JSON.stringify({
         model: "google/gemini-3.1-flash-lite-preview",
         system: systemPrompt,
@@ -40,13 +44,14 @@ Deno.serve(async (req) => {
         stream: false,
         max_tokens: 800,
       }),
+      signal: AbortSignal.timeout(25000),
     });
 
     if (!response.ok) {
       const txt = await response.text();
       let msg = `AI error (${response.status})`;
       try { msg = JSON.parse(txt).error?.message || msg; } catch (_e) {}
-      return new Response(JSON.stringify({ success: false, error: msg }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ success: false, error: msg }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json", "Expect": "" } });
     }
 
     const data = await response.json();
@@ -63,8 +68,8 @@ Deno.serve(async (req) => {
     }
     result.success = true;
 
-    return new Response(JSON.stringify(result), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify(result), { headers: { ...corsHeaders, "Content-Type": "application/json", "Expect": "" } });
   } catch (error) {
-    return new Response(JSON.stringify({ success: false, error: error.message }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ success: false, error: error.message }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json", "Expect": "" } });
   }
 });
