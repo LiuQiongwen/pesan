@@ -1,0 +1,9 @@
+ALTER TABLE public.thought_relationships
+  DROP CONSTRAINT thought_relationships_relationship_type_check;
+
+ALTER TABLE public.thought_relationships
+  ADD CONSTRAINT thought_relationships_relationship_type_check
+  CHECK (relationship_type IN (
+    'semantic', 'insight_of', 'drives_action', 'answers',
+    'supports', 'contradicts', 'depends_on', 'evolves_from', 'applies_to', 'unanswered_by'
+  ));
