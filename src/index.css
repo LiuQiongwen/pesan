@@ -90,6 +90,11 @@ html, body, #root {
   overflow: hidden;
 }
 
+:root {
+  --dock-bottom:  clamp(16px, 2.0vh,  28px);
+  --qbar-bottom:  clamp(100px, 11.5vh, 148px);
+}
+
 /* ── Scrollbar ────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }

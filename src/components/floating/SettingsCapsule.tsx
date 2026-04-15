@@ -38,8 +38,8 @@ export function SettingsCapsule() {
       ref={ref}
       style={{
         position: 'fixed',
-        top: 18,
-        right: 18,
+        top:   'clamp(12px, 1.5vh, 22px)',
+        right: 'clamp(12px, 1.5vw, 22px)',
         zIndex: 40,
       }}
     >
@@ -51,7 +51,7 @@ export function SettingsCapsule() {
           display: 'flex',
           alignItems: 'center',
           gap: 5,
-          padding: '6px 10px',
+          padding: 'clamp(5px,0.5vh,8px) clamp(8px,0.8vw,12px)',
           background: open ? 'rgba(136,143,168,0.14)' : 'rgba(5,7,12,0.72)',
           backdropFilter: 'blur(16px)',
           WebkitBackdropFilter: 'blur(16px)',
@@ -75,7 +75,7 @@ export function SettingsCapsule() {
       >
         <Settings size={12} color={open ? GREY : 'rgba(100,108,130,0.65)'} />
         <span style={{
-          fontFamily: MONO, fontSize: 9, letterSpacing: '0.06em',
+          fontFamily: MONO, fontSize: 'clamp(8px, 0.75vw, 10px)', letterSpacing: '0.06em',
           color: open ? GREY : 'rgba(90,100,125,0.55)',
         }}>
           {username}
@@ -93,7 +93,7 @@ export function SettingsCapsule() {
           position: 'absolute',
           top: 'calc(100% + 6px)',
           right: 0,
-          width: 260,
+          width: 'clamp(220px, 20vw, 280px)',
           background: 'rgba(5,7,12,0.94)',
           backdropFilter: 'blur(24px) saturate(1.5)',
           WebkitBackdropFilter: 'blur(24px) saturate(1.5)',

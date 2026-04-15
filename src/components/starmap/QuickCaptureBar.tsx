@@ -70,7 +70,7 @@ export function QuickCaptureBar({ userId, onFlashNote }: QuickCaptureBarProps) {
     }
   }, [value, saving, userId, onFlashNote]);
 
-  const glowColor = success ? '#00ff66' : focused ? '#66f0ff' : 'transparent';
+  const glowColor   = success ? '#00ff66' : focused ? '#66f0ff' : 'transparent';
   const borderColor = success
     ? 'rgba(0,255,102,0.55)'
     : focused
@@ -79,40 +79,42 @@ export function QuickCaptureBar({ userId, onFlashNote }: QuickCaptureBarProps) {
 
   return (
     <div style={{
-      position: 'fixed',
-      bottom: 130,
-      left: '50%',
+      position:  'fixed',
+      bottom:    'var(--qbar-bottom)',
+      left:      '50%',
       transform: 'translateX(-50%)',
-      zIndex: 25,
-      width: 460,
-      maxWidth: 'calc(100vw - 32px)',
+      zIndex:    25,
+      width:     'clamp(300px, 34vw, 560px)',
+      maxWidth:  'calc(100vw - 32px)',
     }}>
       <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        height: 46,
-        background: 'rgba(2,4,11,0.92)',
-        backdropFilter: 'blur(24px)',
+        display:         'flex',
+        alignItems:      'center',
+        gap:             8,
+        height:          'clamp(40px, 4.5vh, 54px)',
+        background:      'rgba(2,4,11,0.92)',
+        backdropFilter:  'blur(24px)',
         WebkitBackdropFilter: 'blur(24px)',
-        border: `1px solid ${borderColor}`,
-        borderRadius: 10,
-        padding: '0 12px',
-        transition: 'border-color 0.2s, box-shadow 0.2s',
-        boxShadow: focused || success
+        border:          `1px solid ${borderColor}`,
+        borderRadius:    'clamp(8px, 0.9vw, 12px)',
+        padding:         '0 clamp(10px, 1.0vw, 14px)',
+        transition:      'border-color 0.2s, box-shadow 0.2s',
+        boxShadow:       focused || success
           ? `0 0 22px ${glowColor}25, 0 8px 32px rgba(0,0,0,0.55)`
           : '0 4px 24px rgba(0,0,0,0.40)',
       }}>
         {/* Icon */}
         <div style={{
-          width: 26, height: 26, flexShrink: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          borderRadius: 6,
-          background: success ? 'rgba(0,255,102,0.12)' : 'rgba(102,240,255,0.07)',
-          border: `1px solid ${success ? 'rgba(0,255,102,0.25)' : 'rgba(102,240,255,0.14)'}`,
-          transition: 'all 0.2s',
+          width:           'clamp(22px, 2.1vw, 28px)',
+          height:          'clamp(22px, 2.1vw, 28px)',
+          flexShrink:      0,
+          display:         'flex', alignItems: 'center', justifyContent: 'center',
+          borderRadius:    6,
+          background:      success ? 'rgba(0,255,102,0.12)' : 'rgba(102,240,255,0.07)',
+          border:          `1px solid ${success ? 'rgba(0,255,102,0.25)' : 'rgba(102,240,255,0.14)'}`,
+          transition:      'all 0.2s',
         }}>
-          <Plus size={13} color={success ? '#00ff66' : 'rgba(102,240,255,0.65)'} />
+          <Plus size={12} color={success ? '#00ff66' : 'rgba(102,240,255,0.65)'} />
         </div>
 
         {/* Input */}
@@ -128,15 +130,15 @@ export function QuickCaptureBar({ userId, onFlashNote }: QuickCaptureBarProps) {
           }}
           placeholder={success ? '✓ 已落入星图' : '输入一条知识，按 Enter 落入星图…'}
           style={{
-            flex: 1,
-            background: 'none',
-            border: 'none',
-            outline: 'none',
-            fontFamily: MONO,
-            fontSize: 12,
+            flex:          1,
+            background:    'none',
+            border:        'none',
+            outline:       'none',
+            fontFamily:    MONO,
+            fontSize:      'clamp(11px, 0.95vw, 13px)',
             letterSpacing: '0.02em',
-            color: success ? 'rgba(0,255,102,0.85)' : 'rgba(200,215,240,0.88)',
-            transition: 'color 0.2s',
+            color:         success ? 'rgba(0,255,102,0.85)' : 'rgba(200,215,240,0.88)',
+            transition:    'color 0.2s',
           }}
           disabled={saving}
         />
@@ -147,19 +149,21 @@ export function QuickCaptureBar({ userId, onFlashNote }: QuickCaptureBarProps) {
             onClick={handleSubmit}
             disabled={saving}
             style={{
-              width: 30, height: 30, flexShrink: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width:        'clamp(26px, 2.4vw, 32px)',
+              height:       'clamp(26px, 2.4vw, 32px)',
+              flexShrink:   0,
+              display:      'flex', alignItems: 'center', justifyContent: 'center',
               borderRadius: 6,
-              background: 'rgba(0,255,102,0.10)',
-              border: '1px solid rgba(0,255,102,0.28)',
-              cursor: saving ? 'wait' : 'pointer',
-              transition: 'all 0.15s',
-              opacity: saving ? 0.5 : 1,
+              background:   'rgba(0,255,102,0.10)',
+              border:       '1px solid rgba(0,255,102,0.28)',
+              cursor:       saving ? 'wait' : 'pointer',
+              transition:   'all 0.15s',
+              opacity:      saving ? 0.5 : 1,
             }}
             onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,255,102,0.18)'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,255,102,0.10)'; }}
           >
-            <Send size={13} color="rgba(0,255,102,0.80)" />
+            <Send size={12} color="rgba(0,255,102,0.80)" />
           </button>
         )}
 
@@ -170,11 +174,12 @@ export function QuickCaptureBar({ userId, onFlashNote }: QuickCaptureBarProps) {
           }}>
             {['/', 'Q'].map(k => (
               <span key={k} style={{
-                fontFamily: MONO, fontSize: 10,
-                color: 'rgba(70,80,100,0.50)',
-                background: 'rgba(30,36,50,0.60)',
-                border: '1px solid rgba(50,60,80,0.50)',
-                padding: '1px 5px', borderRadius: 4,
+                fontFamily:   MONO,
+                fontSize:     'clamp(8.5px, 0.75vw, 10px)',
+                color:        'rgba(70,80,100,0.50)',
+                background:   'rgba(30,36,50,0.60)',
+                border:       '1px solid rgba(50,60,80,0.50)',
+                padding:      '1px 5px', borderRadius: 4,
               }}>{k}</span>
             ))}
           </div>
@@ -183,13 +188,15 @@ export function QuickCaptureBar({ userId, onFlashNote }: QuickCaptureBarProps) {
 
       {/* Sub-label */}
       <div style={{
-        textAlign: 'center', marginTop: 5,
-        fontFamily: INTER, fontSize: 10,
-        color: 'rgba(50,60,80,0.55)',
+        textAlign:     'center',
+        marginTop:     5,
+        fontFamily:    INTER,
+        fontSize:      'clamp(9px, 0.8vw, 11px)',
+        color:         'rgba(50,60,80,0.55)',
         letterSpacing: '0.04em',
         pointerEvents: 'none',
-        transition: 'opacity 0.2s',
-        opacity: focused ? 0 : 1,
+        transition:    'opacity 0.2s',
+        opacity:       focused ? 0 : 1,
       }}>
         快速捕捉 · CAPTURE NODE
       </div>

@@ -11,7 +11,7 @@ interface FloatingPodProps {
   subtitle?:   string;
   icon:        LucideIcon;
   accentColor: string;
-  /** light: 380px, expanded: 620px — can be overridden */
+  /** @deprecated kept for API compatibility */
   width?:      number;
   /** @deprecated kept for API compatibility */
   mode?:       'primary' | 'secondary';
@@ -20,9 +20,10 @@ interface FloatingPodProps {
 
 type SizeMode = 'light' | 'expanded';
 
-const SIZE: Record<SizeMode, { width: number; bodyMaxH: string }> = {
-  light:    { width: 400,  bodyMaxH: '300px' },
-  expanded: { width: 640,  bodyMaxH: '560px' },
+/** Responsive CSS clamp values — no fixed pixels */
+const SIZE: Record<SizeMode, { width: string; bodyMaxH: string }> = {
+  light:    { width: 'clamp(280px, 28vw, 440px)',  bodyMaxH: 'clamp(200px, 28vh, 340px)' },
+  expanded: { width: 'clamp(320px, 34vw, 660px)',  bodyMaxH: 'clamp(240px, 44vh, 580px)' },
 };
 
 function hexToRgba(hex: string, alpha: number) {
@@ -63,8 +64,11 @@ export function FloatingPod({
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!dragging.current) return;
-      const nx = Math.max(0, Math.min(window.innerWidth  - width - 4,  e.clientX - dragOffset.current.x));
-      const ny = Math.max(0, Math.min(window.innerHeight - 60,         e.clientY - dragOffset.current.y));
+      // Use actual rendered width for boundary so CSS clamp is respected
+      const actualW = panelRef.current?.getBoundingClientRect().width ?? 400;
+      const actualH = panelRef.current?.getBoundingClientRect().height ?? 300;
+      const nx = Math.max(0, Math.min(window.innerWidth  - actualW - 4, e.clientX - dragOffset.current.x));
+      const ny = Math.max(0, Math.min(window.innerHeight - actualH,     e.clientY - dragOffset.current.y));
       setPos(id, { x: nx, y: ny });
     };
     const onUp = () => { dragging.current = false; };
@@ -74,7 +78,7 @@ export function FloatingPod({
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup',   onUp);
     };
-  }, [id, width, setPos]);
+  }, [id, setPos]);
 
   if (!state?.open) return null;
 
@@ -83,13 +87,15 @@ export function FloatingPod({
       ref={panelRef}
       onMouseDown={() => bringToFront(id)}
       style={{
-        position:  'fixed',
-        left:      state.pos.x,
-        top:       state.pos.y,
+        position:   'fixed',
+        left:       state.pos.x,
+        top:        state.pos.y,
         width,
-        zIndex:    state.zIndex,
-        animation: 'pod-in 0.22s cubic-bezier(0.16,1,0.3,1)',
+        zIndex:     state.zIndex,
+        animation:  'pod-in 0.22s cubic-bezier(0.16,1,0.3,1)',
         transition: 'width 0.24s cubic-bezier(0.4,0,0.2,1)',
+        maxWidth:   'calc(100vw - 16px)',
+        maxHeight:  'calc(100vh - 80px)',
       }}
     >
       {/* Outer glow ring */}
@@ -130,7 +136,7 @@ export function FloatingPod({
         >
           {/* Left accent bar with glow */}
           <div style={{
-            width: 5,
+            width: 'clamp(4px, 0.4vw, 5px)',
             alignSelf: 'stretch',
             background: `linear-gradient(180deg, ${accentColor}, ${a(0.60)})`,
             flexShrink: 0,
@@ -139,14 +145,16 @@ export function FloatingPod({
 
           {/* Icon + text */}
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            padding: '13px 16px',
+            display: 'flex', alignItems: 'center',
+            gap: 'clamp(9px, 1.0vw, 13px)',
+            padding: 'clamp(10px,1.1vh,14px) clamp(13px,1.3vw,17px)',
             flex: 1, minWidth: 0,
           }}>
             {/* Icon container */}
             <div style={{
-              width: 40, height: 40,
-              borderRadius: 10,
+              width:  'clamp(32px, 3.0vw, 44px)',
+              height: 'clamp(32px, 3.0vw, 44px)',
+              borderRadius: 'clamp(8px, 0.8vw, 11px)',
               background: a(0.16),
               border: `1.5px solid ${a(0.36)}`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -155,6 +163,8 @@ export function FloatingPod({
             }}>
               <Icon size={20} color={accentColor} style={{
                 filter: `drop-shadow(0 0 6px ${a(0.70)})`,
+                width: 'clamp(14px, 1.4vw, 20px)',
+                height: 'clamp(14px, 1.4vw, 20px)',
               }} />
             </div>
 
@@ -162,7 +172,7 @@ export function FloatingPod({
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{
                 fontFamily: INTER,
-                fontSize: 14,
+                fontSize: 'clamp(12px, 1.1vw, 15px)',
                 fontWeight: 700,
                 color: 'rgba(225,235,255,0.95)',
                 letterSpacing: '0.02em',
@@ -173,7 +183,7 @@ export function FloatingPod({
               {subtitle && !state.minimized && (
                 <div style={{
                   fontFamily: MONO,
-                  fontSize: 10,
+                  fontSize: 'clamp(9px, 0.8vw, 11px)',
                   color: a(0.60),
                   letterSpacing: '0.05em',
                   marginTop: 3,
@@ -190,7 +200,7 @@ export function FloatingPod({
 
           {/* Window controls */}
           <div
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 14px' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0 clamp(10px,1.0vw,15px)' }}
             onMouseDown={e => e.stopPropagation()}
           >
             {/* Size toggle */}
@@ -251,7 +261,7 @@ export function FloatingPod({
         {!state.minimized && (
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '6px 16px 6px 21px',
+            padding: 'clamp(5px,0.5vh,8px) clamp(13px,1.2vw,18px) clamp(5px,0.5vh,8px) clamp(16px,1.5vw,22px)',
             borderTop: `1px solid ${a(0.10)}`,
             background: 'rgba(0,0,0,0.25)',
           }}>
@@ -263,14 +273,16 @@ export function FloatingPod({
                 animation: 'pod-dot 2.4s ease-in-out infinite',
               }} />
               <span style={{
-                fontFamily: MONO, fontSize: 9,
+                fontFamily: MONO,
+                fontSize: 'clamp(8px, 0.75vw, 10px)',
                 color: a(0.50), letterSpacing: '0.06em',
               }}>
                 ACTIVE
               </span>
             </div>
             <span style={{
-              fontFamily: MONO, fontSize: 9,
+              fontFamily: MONO,
+              fontSize: 'clamp(8px, 0.75vw, 10px)',
               color: 'rgba(60,75,105,0.50)',
               letterSpacing: '0.04em',
             }}>
@@ -303,8 +315,8 @@ function mkCtrl(
     display:         'flex',
     alignItems:      'center',
     justifyContent:  'center',
-    width:           28,
-    height:          28,
+    width:           'clamp(24px, 2.2vw, 30px)',
+    height:          'clamp(24px, 2.2vw, 30px)',
     borderRadius:    8,
     background:      bg     ?? 'rgba(255,255,255,0.05)',
     border:          `1px solid ${border ?? 'rgba(255,255,255,0.09)'}`,

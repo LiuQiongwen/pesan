@@ -111,14 +111,14 @@ function StarMapInner() {
         {/* Layer 2 — Top-left HUD */}
         <div style={{
           position: 'fixed', top: 0, left: 0, zIndex: 10,
-          padding: '18px 22px',
+          padding: 'clamp(14px,1.5vh,22px) clamp(16px,1.5vw,22px)',
           pointerEvents: 'none',
           background: 'linear-gradient(135deg, rgba(1,4,13,0.65) 0%, transparent 70%)',
         }}>
-          <div style={{ fontFamily: INTER, fontWeight: 700, fontSize: 13, color: 'rgba(230,238,255,0.75)', marginBottom: 2 }}>
+          <div style={{ fontFamily: INTER, fontWeight: 700, fontSize: 'clamp(11px,1.0vw,14px)', color: 'rgba(230,238,255,0.75)', marginBottom: 'clamp(1px,0.2vh,3px)' }}>
             {user.email?.split('@')[0]}
           </div>
-          <div style={{ fontFamily: MONO, fontSize: 8, color: 'rgba(60,72,95,0.60)', letterSpacing: '0.08em', marginBottom: 10 }}>
+          <div style={{ fontFamily: MONO, fontSize: 'clamp(7px,0.7vw,9px)', color: 'rgba(60,72,95,0.60)', letterSpacing: '0.08em', marginBottom: 'clamp(7px,0.8vh,12px)' }}>
             {notes.length} nodes · {totalTags} clusters · +{thisWeek} this week
           </div>
           <button
@@ -127,10 +127,11 @@ function StarMapInner() {
             style={{
               pointerEvents: 'auto',
               display: 'flex', alignItems: 'center', gap: 5,
-              fontFamily: MONO, fontSize: 8, letterSpacing: '0.08em',
+              fontFamily: MONO, fontSize: 'clamp(7.5px,0.7vw,9px)', letterSpacing: '0.08em',
               color: 'rgba(102,240,255,0.55)', background: 'rgba(102,240,255,0.06)',
               border: '1px solid rgba(102,240,255,0.14)',
-              borderRadius: 5, padding: '4px 9px', cursor: 'pointer', transition: 'all 0.15s',
+              borderRadius: 5, padding: 'clamp(3px,0.4vh,5px) clamp(7px,0.7vw,11px)',
+              cursor: 'pointer', transition: 'all 0.15s',
             }}
             onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(102,240,255,0.90)'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(102,240,255,0.12)'; }}
             onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(102,240,255,0.55)'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(102,240,255,0.06)'; }}

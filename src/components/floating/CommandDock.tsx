@@ -1,6 +1,6 @@
 /**
  * CommandDock — Desktop-scale sci-fi control console
- * Large buttons (80×62px), 22px icons, 13px labels — designed for real desktop use.
+ * Fully responsive: clamp(min, vw/vh, max) on all sizing properties.
  */
 import { useState } from 'react';
 import { Feather, Radar, FlaskConical, Layers, Zap, Check } from 'lucide-react';
@@ -46,7 +46,7 @@ export function CommandDock() {
     <div
       style={{
         position: 'fixed',
-        bottom: 28,
+        bottom: 'var(--dock-bottom)',
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 30,
@@ -57,37 +57,48 @@ export function CommandDock() {
         backdropFilter: 'blur(40px) saturate(2)',
         WebkitBackdropFilter: 'blur(40px) saturate(2)',
         border: '1px solid rgba(255,255,255,0.10)',
-        borderRadius: 20,
-        padding: '10px 16px',
+        borderRadius: 'clamp(14px, 1.6vw, 22px)',
+        padding: 'clamp(8px,0.8vh,12px) clamp(12px,1.1vw,18px)',
         boxShadow: `
           0 8px 48px rgba(0,0,0,0.90),
           0 0 0 1px rgba(255,255,255,0.05),
           inset 0 1px 0 rgba(255,255,255,0.06)
         `,
+        maxWidth: 'calc(100vw - 24px)',
       }}
     >
       {/* Left brand mark */}
       <div style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        paddingRight: 16,
+        paddingRight: 'clamp(10px, 1.1vw, 18px)',
         borderRight: '1px solid rgba(255,255,255,0.07)',
-        marginRight: 16,
-        gap: 4,
+        marginRight: 'clamp(10px, 1.1vw, 18px)',
+        gap: 3,
       }}>
         <div style={{
-          width: 36, height: 36, borderRadius: 10,
+          width: 'clamp(28px, 2.8vw, 38px)',
+          height: 'clamp(28px, 2.8vw, 38px)',
+          borderRadius: 'clamp(7px, 0.7vw, 11px)',
           background: 'rgba(0,255,102,0.08)',
           border: '1px solid rgba(0,255,102,0.20)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           boxShadow: '0 0 16px rgba(0,255,102,0.12)',
         }}>
-          <span style={{ fontFamily: MONO, fontWeight: 700, fontSize: 10, color: 'rgba(0,255,102,0.80)', letterSpacing: '0.04em' }}>pesan</span>
+          <span style={{
+            fontFamily: MONO, fontWeight: 700,
+            fontSize: 'clamp(8px, 0.7vw, 11px)',
+            color: 'rgba(0,255,102,0.80)', letterSpacing: '0.04em',
+          }}>pesan</span>
         </div>
-        <span style={{ fontFamily: MONO, fontSize: 8, color: 'rgba(60,75,100,0.60)', letterSpacing: '0.06em' }}>COSMOS</span>
+        <span style={{
+          fontFamily: MONO,
+          fontSize: 'clamp(6.5px, 0.6vw, 8.5px)',
+          color: 'rgba(60,75,100,0.60)', letterSpacing: '0.06em',
+        }}>COSMOS</span>
       </div>
 
       {/* Pipeline steps */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(5px, 0.6vw, 10px)' }}>
         {STEPS.map((step, i) => {
           const { r, g, b } = hexRgb(step.accent);
           const isOpen      = pods[step.id]?.open;
@@ -99,11 +110,11 @@ export function CommandDock() {
           const accentAlpha = (a: number) => `rgba(${r},${g},${b},${a})`;
 
           return (
-            <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: 'clamp(5px, 0.6vw, 10px)' }}>
               {/* Connector line */}
               {i > 0 && (
                 <div style={{
-                  width: 20, height: 1,
+                  width: 'clamp(8px, 1.2vw, 20px)', height: 1,
                   background: isDone
                     ? `linear-gradient(90deg, ${accentAlpha(0.40)}, rgba(255,255,255,0.08))`
                     : 'rgba(255,255,255,0.06)',
@@ -123,10 +134,10 @@ export function CommandDock() {
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 6,
-                  width: 80,
-                  height: 62,
-                  borderRadius: 14,
+                  gap: 'clamp(4px, 0.5vh, 7px)',
+                  width: 'clamp(62px, 6.0vw, 88px)',
+                  height: 'clamp(50px, 5.2vh, 68px)',
+                  borderRadius: 'clamp(10px, 1.1vw, 15px)',
                   border: isOpen
                     ? `1.5px solid ${accentAlpha(0.70)}`
                     : isActive
@@ -161,8 +172,9 @@ export function CommandDock() {
               >
                 {/* Icon with glow container */}
                 <div style={{
-                  width: 32, height: 32,
-                  borderRadius: 9,
+                  width: 'clamp(26px, 2.4vw, 34px)',
+                  height: 'clamp(26px, 2.4vw, 34px)',
+                  borderRadius: 'clamp(7px, 0.7vw, 10px)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   background: isOpen || isHovered ? accentAlpha(0.15) : 'transparent',
                   transition: 'background 0.16s',
@@ -173,6 +185,8 @@ export function CommandDock() {
                     style={{
                       transition: 'color 0.16s',
                       filter: isOpen ? `drop-shadow(0 0 6px ${accentAlpha(0.70)})` : 'none',
+                      width: 'clamp(15px, 1.5vw, 22px)',
+                      height: 'clamp(15px, 1.5vw, 22px)',
                     }}
                   />
                 </div>
@@ -181,7 +195,7 @@ export function CommandDock() {
                 <div style={{ textAlign: 'center', lineHeight: 1 }}>
                   <div style={{
                     fontFamily: INTER,
-                    fontSize: 12,
+                    fontSize: 'clamp(10px, 0.9vw, 13px)',
                     fontWeight: 600,
                     color: isOpen || isActive || isDone
                       ? accentAlpha(0.95)
@@ -196,7 +210,7 @@ export function CommandDock() {
                   </div>
                   <div style={{
                     fontFamily: MONO,
-                    fontSize: 9,
+                    fontSize: 'clamp(7.5px, 0.7vw, 9.5px)',
                     color: isOpen
                       ? accentAlpha(0.60)
                       : 'rgba(70,85,115,0.55)',
