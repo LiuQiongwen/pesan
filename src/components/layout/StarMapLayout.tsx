@@ -179,7 +179,7 @@ function StarMapInner() {
         <NodeLightBand node={hoveredNode} />
 
         {/* Layer 6 — Quick Capture Bar */}
-        <QuickCaptureBar userId={user.id} onFlashNote={flashNote} />
+        <QuickCaptureBar userId={user.id} onFlashNote={flashNote} hasNotes={notes.length > 0} />
 
         {/* Layer 7 — Command Dock */}
         <CommandDock />

@@ -116,6 +116,7 @@ function ImperativeCore({
   const emptyCTAMeshRef  = useRef<THREE.Mesh | null>(null);
   const emptyRingsRef    = useRef<THREE.Mesh[]>([]);
   const entranceRingsRef = useRef<THREE.Mesh[]>([]);
+  const waveRingsRef     = useRef<Array<{ mesh: THREE.Mesh; startT: number }>>([]);
 
   // Camera fly-in ref
   const flyTargetRef     = useRef<THREE.Vector3 | null>(null);
@@ -275,10 +276,10 @@ function ImperativeCore({
 
       for (let i = 0; i < 2; i++) {
         const r = 1.4 + i * 0.7;
-        const rGeo = new THREE.RingGeometry(r, r + 0.08, 48);
+        const rGeo = new THREE.RingGeometry(r, r + 0.14, 56);
         const rMat = new THREE.MeshBasicMaterial({
           color: new THREE.Color(color), transparent: true,
-          opacity: 0.5 - i * 0.15, side: THREE.DoubleSide, depthWrite: false,
+          opacity: 0.80 - i * 0.20, side: THREE.DoubleSide, depthWrite: false,
         });
         const rMesh = new THREE.Mesh(rGeo, rMat);
         rMesh.position.copy(basePos);
@@ -378,8 +379,20 @@ function ImperativeCore({
       const hits = rc.intersectObjects(allMeshes);
       if (hits.length) {
         const hitMesh = hits[0].object as THREE.Mesh;
-        // Empty CTA click
+        // Empty CTA click — emit radial wave + fly-in + open pod
         if (hitMesh === emptyCTAMeshRef.current) {
+          // Radial wave effect
+          const waveGeo = new THREE.RingGeometry(1.9, 2.3, 64);
+          const waveMat = new THREE.MeshBasicMaterial({
+            color: new THREE.Color('#00ff66'), transparent: true,
+            opacity: 0.85, side: THREE.DoubleSide, depthWrite: false,
+          });
+          const waveMesh = new THREE.Mesh(waveGeo, waveMat);
+          waveMesh.position.set(0, 0, 0);
+          scene.add(waveMesh);
+          waveRingsRef.current.push({ mesh: waveMesh, startT: performance.now() / 1000 });
+          // Slight camera fly-in toward center
+          flyTargetRef.current = new THREE.Vector3(0, 0, 0);
           onEmptyStateClickRef.current?.();
           return;
         }
@@ -402,6 +415,7 @@ function ImperativeCore({
       canvas.removeEventListener('mouseup',   onUp);
       if (autoRotateTimer.current) clearTimeout(autoRotateTimer.current);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [camera, gl]);
 
   // ── Animation + LOD + hover edges ─────────────────────────────────────────
@@ -488,8 +502,24 @@ function ImperativeCore({
       const mesh = noteMeshes.current.get(noteId);
       if (mesh) ring.position.copy(mesh.position);
       const m = ring.material as THREE.MeshBasicMaterial;
-      m.opacity = 0.35 - i * 0.1 + Math.sin(t * 1.0 + i * Math.PI) * 0.2;
-      ring.rotation.z += 0.004 * (i % 2 === 0 ? 1 : -1);
+      m.opacity = 0.65 - i * 0.15 + Math.sin(t * 1.4 + i * Math.PI) * 0.28;
+      ring.rotation.z += 0.006 * (i % 2 === 0 ? 1 : -1);
+    });
+
+    // ── Radial wave rings (from CTA click) ───────────────────────────────────
+    const now = performance.now() / 1000;
+    waveRingsRef.current = waveRingsRef.current.filter(({ mesh: wm, startT }) => {
+      const elapsed = now - startT;
+      const progress = elapsed / 0.70; // 700ms duration
+      if (progress >= 1) {
+        scene.remove(wm);
+        wm.geometry.dispose();
+        (wm.material as THREE.MeshBasicMaterial).dispose();
+        return false;
+      }
+      wm.scale.setScalar(1 + progress * 9);
+      (wm.material as THREE.MeshBasicMaterial).opacity = 0.85 * (1 - progress);
+      return true;
     });
 
     // ── Note animation ──────────────────────────────────────────────────────
@@ -561,6 +591,10 @@ function ImperativeCore({
       ? (meshToNoteId.current.get(hitMesh) ?? null)
       : null;
 
+    // Cursor feedback: pointer on any clickable element
+    const isCTAHit = hitMesh === emptyCTAMeshRef.current;
+    gl.domElement.style.cursor = (hitId || isCTAHit) ? 'pointer' : '';
+
     if (hitId !== hoveredIdRef.current) {
       hoveredIdRef.current = hitId;
       setHoveredId(hitId);
@@ -613,11 +647,11 @@ function EmptyCtaLabel({ onClick }: { onClick?: () => void }) {
         animation: 'cosmos-pulse 2.2s ease-in-out infinite',
       }}
     >
-      <div style={{ fontSize: 11, letterSpacing: '0.14em', color: 'rgba(0,255,102,0.80)', marginBottom: 5, textTransform: 'uppercase' as const }}>
-        KNOWLEDGE COSMOS
+      <div style={{ fontSize: 13, letterSpacing: '0.18em', color: 'rgba(0,255,102,0.92)', marginBottom: 7, textTransform: 'uppercase' as const, fontWeight: 700 }}>
+        &lt; CLICK TO BEGIN &gt;
       </div>
-      <div style={{ fontSize: 9, color: 'rgba(0,255,102,0.50)', letterSpacing: '0.10em' }}>
-        点击开始第一条知识 →
+      <div style={{ fontSize: 9, color: 'rgba(0,255,102,0.48)', letterSpacing: '0.10em' }}>
+        在宇宙中创造第一条知识
       </div>
     </div>
   );

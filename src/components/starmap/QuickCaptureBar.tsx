@@ -9,9 +9,10 @@ const INTER = "'Inter',system-ui,sans-serif";
 interface QuickCaptureBarProps {
   userId:       string;
   onFlashNote?: (noteId: string) => void;
+  hasNotes?:    boolean;
 }
 
-export function QuickCaptureBar({ userId, onFlashNote }: QuickCaptureBarProps) {
+export function QuickCaptureBar({ userId, onFlashNote, hasNotes = true }: QuickCaptureBarProps) {
   const [value,    setValue]   = useState('');
   const [focused,  setFocused] = useState(false);
   const [saving,   setSaving]  = useState(false);
@@ -31,6 +32,15 @@ export function QuickCaptureBar({ userId, onFlashNote }: QuickCaptureBarProps) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  // Auto-focus after 3s when there are no notes (second path for first action)
+  useEffect(() => {
+    if (hasNotes) return;
+    const timer = setTimeout(() => {
+      inputRef.current?.focus();
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [hasNotes]);
 
   const handleSubmit = useCallback(async () => {
     const text = value.trim();
@@ -77,6 +87,9 @@ export function QuickCaptureBar({ userId, onFlashNote }: QuickCaptureBarProps) {
     ? 'rgba(102,240,255,0.40)'
     : 'rgba(40,48,65,0.70)';
 
+  // When no notes and not focused: add attention animation class
+  const showAttention = !hasNotes && !focused && !success;
+
   return (
     <div style={{
       position:  'fixed',
@@ -102,6 +115,7 @@ export function QuickCaptureBar({ userId, onFlashNote }: QuickCaptureBarProps) {
         boxShadow:       focused || success
           ? `0 0 22px ${glowColor}25, 0 8px 32px rgba(0,0,0,0.55)`
           : '0 4px 24px rgba(0,0,0,0.40)',
+        animation:       showAttention ? 'qbar-attention 3.0s ease-in-out infinite' : 'none',
       }}>
         {/* Icon */}
         <div style={{
@@ -203,6 +217,10 @@ export function QuickCaptureBar({ userId, onFlashNote }: QuickCaptureBarProps) {
 
       <style>{`
         input::placeholder { color: rgba(60,75,100,0.55); }
+        @keyframes qbar-attention {
+          0%,100% { border-color: rgba(0,255,102,0.14); box-shadow: 0 4px 24px rgba(0,0,0,0.40); }
+          50%      { border-color: rgba(0,255,102,0.42); box-shadow: 0 0 20px rgba(0,255,102,0.12), 0 4px 24px rgba(0,0,0,0.40); }
+        }
       `}</style>
     </div>
   );
