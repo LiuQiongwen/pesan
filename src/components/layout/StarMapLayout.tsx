@@ -19,6 +19,8 @@ import { CommandDock }     from '@/components/floating/CommandDock';
 import { FloatingPod }     from '@/components/floating/FloatingPod';
 import { SettingsCapsule } from '@/components/floating/SettingsCapsule';
 import { QuickCaptureBar } from '@/components/starmap/QuickCaptureBar';
+import { LayoutEditBar }   from '@/components/window-manager/LayoutEditBar';
+import { AlignmentGuides } from '@/components/window-manager/AlignmentGuides';
 
 import { Feather, Radar, FlaskConical, Layers, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -246,6 +248,10 @@ function StarMapContents({ user, notes, loading, openPod, pods }: ContentsProps)
 
       {/* Layer 7 — Settings Capsule */}
       <SettingsCapsule />
+
+      {/* Layer 8 — Window Manager Controls */}
+      <AlignmentGuides />
+      <LayoutEditBar />
 
     </div>
   );

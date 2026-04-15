@@ -1,4 +1,5 @@
 import { Suspense, useMemo, useState, useCallback, useRef, useEffect, createElement } from 'react';
+import { createPortal } from 'react-dom';
 import { Canvas } from '@react-three/fiber';
 import { CosmosScene } from './CosmosScene';
 import { buildCosmosLayout, type CosmosNote } from './cosmos-layout';
@@ -348,33 +349,35 @@ export default function KnowledgeStarMap({
         </Suspense>
       )}
 
-      {/* Node-to-node connection confirm overlay */}
-      {pendingConn && srcNote && tgtNote && (
+      {/* Node-to-node connection confirm overlay — portal to escape stacking context */}
+      {pendingConn && srcNote && tgtNote && createPortal(
         <ConnectConfirmOverlay
           sourceTitle={srcNote.title ?? ''}
           targetTitle={tgtNote.title ?? ''}
           suggestedType={pendingConn.suggestedType}
           onConfirm={handleConnectionConfirm}
           onCancel={handleConnectionCancel}
-        />
+        />,
+        document.body
       )}
 
-      {/* Galaxy join overlay */}
-      {pendingGalaxy && pendingGalaxyNote && (
+      {/* Galaxy join overlay — portal to escape stacking context */}
+      {pendingGalaxy && pendingGalaxyNote && createPortal(
         <GalaxyJoinOverlay
           noteTitle={pendingGalaxyNote.title ?? ''}
           targetGalaxy={pendingTargetGalaxy}
           availableGalaxies={availableGalaxies}
           onConfirm={handleGalaxyJoinConfirm}
           onCancel={handleGalaxyJoinCancel}
-        />
+        />,
+        document.body
       )}
 
-      {/* Status toasts */}
-      {connectStatus === 'saved' && <ConnectToast label="连接已建立" color="#00ff66" />}
-      {connectStatus === 'error'  && <ConnectToast label="连接失败，请重试" color="#ff4466" />}
-      {galaxyStatus  === 'saved'  && <ConnectToast label="已归入星系" color="#b496ff" />}
-      {galaxyStatus  === 'error'  && <ConnectToast label="归类失败，请重试" color="#ff4466" />}
+      {/* Status toasts — also portaled for consistent z-ordering */}
+      {connectStatus === 'saved' && createPortal(<ConnectToast label="连接已建立" color="#00ff66" />, document.body)}
+      {connectStatus === 'error'  && createPortal(<ConnectToast label="连接失败，请重试" color="#ff4466" />, document.body)}
+      {galaxyStatus  === 'saved'  && createPortal(<ConnectToast label="已归入星系" color="#b496ff" />, document.body)}
+      {galaxyStatus  === 'error'  && createPortal(<ConnectToast label="归类失败，请重试" color="#ff4466" />, document.body)}
 
       {/* Workbench summon bar — appears when 2-5 nodes shift-selected */}
       {!workbenchActive && workbenchSelectedIds.length >= 2 && (
