@@ -66,6 +66,7 @@ export interface CosmosSceneProps {
   userId?:             string;
   entranceNoteId?:     string;
   onEmptyStateClick?:  () => void;
+  onNodeConnect?:      (sourceId: string, targetId: string) => void;
 }
 
 // ── ImperativeCore ────────────────────────────────────────────────────────────
@@ -84,13 +85,14 @@ interface CoreProps {
   onLodChange?:       (level: 0 | 1 | 2) => void;
   entranceNoteId?:    string;
   onEmptyStateClick?: () => void;
+  onNodeConnect?:     (sourceId: string, targetId: string) => void;
 }
 
 function ImperativeCore({
   layout, notes, highlightSet, flashNoteId, openNodes,
   hoveredId, setHoveredId, onNodeToggle, onNodeHover,
   currentPosRef, recenterActiveRef, onLodChange,
-  entranceNoteId, onEmptyStateClick,
+  entranceNoteId, onEmptyStateClick, onNodeConnect,
 }: CoreProps) {
   const { scene, camera, gl } = useThree();
 
@@ -124,6 +126,19 @@ function ImperativeCore({
   // Drag feedback ref
   const isDraggingRef    = useRef(false);
 
+  // Drag-to-connect state
+  type ConnectState = {
+    sourceId:          string;
+    sourceMesh:        THREE.Mesh;
+    sourceOrigScale:   THREE.Vector3;
+    sourceOrigEmit:    number;
+    line:              THREE.Line | null;
+    potentialTargetId: string | null;
+  };
+  const connectStateRef  = useRef<ConnectState | null>(null);
+  const holdTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onNodeConnectRef = useRef(onNodeConnect);
+
   // Auto-rotate management
   const orbitAutoRotate  = useRef(true);
   const autoRotateTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -142,6 +157,7 @@ function ImperativeCore({
   useEffect(() => { onToggleRef.current           = onNodeToggle;      }, [onNodeToggle]);
   useEffect(() => { onHoverRef.current            = onNodeHover;       }, [onNodeHover]);
   useEffect(() => { onEmptyStateClickRef.current  = onEmptyStateClick; }, [onEmptyStateClick]);
+  useEffect(() => { onNodeConnectRef.current      = onNodeConnect;     }, [onNodeConnect]);
 
   // ── Build scene imperatively ───────────────────────────────────────────────
   useEffect(() => {
@@ -338,7 +354,7 @@ function ImperativeCore({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notes, layout, scene]);
 
-  // ── Click / hover via canvas events ───────────────────────────────────────
+  // ── Click / drag-to-connect / hover via canvas events ────────────────────
   useEffect(() => {
     const canvas = gl.domElement;
     let downX = 0, downY = 0;
@@ -351,37 +367,168 @@ function ImperativeCore({
       );
     };
 
+    /** Project screen mouse → 3-D point on the plane z = planeZ */
+    const getPointer3D = (e: MouseEvent, planeZ: number): THREE.Vector3 | null => {
+      const ptr = getPointer(e);
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(ptr, camera);
+      const plane  = new THREE.Plane(new THREE.Vector3(0, 0, 1), -planeZ);
+      const target = new THREE.Vector3();
+      return ray.ray.intersectPlane(plane, target) ? target : null;
+    };
+
+    /** Clean up a drag-to-connect session without triggering a connection */
+    const cancelConnect = () => {
+      const cs = connectStateRef.current;
+      if (!cs) return;
+      // Restore source node visuals
+      cs.sourceMesh.scale.copy(cs.sourceOrigScale);
+      (cs.sourceMesh.material as THREE.MeshStandardMaterial).emissiveIntensity = cs.sourceOrigEmit;
+      // Remove potential target highlight
+      if (cs.potentialTargetId) {
+        const tm = noteMeshes.current.get(cs.potentialTargetId);
+        if (tm) {
+          const np = layout.positions[cs.potentialTargetId];
+          (tm.material as THREE.MeshStandardMaterial).emissiveIntensity = np?.emissiveIntensity ?? 1.2;
+          tm.scale.setScalar(1.0);
+        }
+      }
+      // Remove drag line
+      if (cs.line) {
+        scene.remove(cs.line);
+        cs.line.geometry.dispose();
+        (cs.line.material as THREE.LineBasicMaterial).dispose();
+      }
+      connectStateRef.current = null;
+    };
+
     const onDown = (e: MouseEvent) => {
       downX = e.clientX; downY = e.clientY;
-      isDraggingRef.current = false;
+      isDraggingRef.current   = false;
       orbitAutoRotate.current = false;
       if (autoRotateTimer.current) clearTimeout(autoRotateTimer.current);
+      if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
+
+      // Hit-test for a note mesh
+      const rc = new THREE.Raycaster();
+      rc.setFromCamera(getPointer(e), camera);
+      const meshes = Array.from(meshToNoteId.current.keys());
+      const hits   = rc.intersectObjects(meshes);
+      if (!hits.length) return;
+      const hitMesh = hits[0].object as THREE.Mesh;
+      const noteId  = meshToNoteId.current.get(hitMesh);
+      if (!noteId) return;
+
+      // Start 350 ms hold timer → enter drag-to-connect mode
+      holdTimerRef.current = setTimeout(() => {
+        holdTimerRef.current = null;
+        const srcMesh = noteMeshes.current.get(noteId);
+        if (!srcMesh) return;
+        const mat = srcMesh.material as THREE.MeshStandardMaterial;
+        const origEmit = mat.emissiveIntensity;
+        const origScale = srcMesh.scale.clone();
+
+        // Visual: lift source node
+        mat.emissiveIntensity = 4.5;
+        srcMesh.scale.setScalar(1.65);
+
+        // Create dashed drag line (two-point BufferGeometry)
+        const lineGeo = new THREE.BufferGeometry();
+        const pts = new Float32Array(6);
+        lineGeo.setAttribute('position', new THREE.BufferAttribute(pts, 3));
+        const np = layout.positions[noteId];
+        const lineMat = new THREE.LineBasicMaterial({
+          color: new THREE.Color(np?.color ?? '#00ff66'),
+          transparent: true, opacity: 0, linewidth: 2,
+        });
+        const dragLine = new THREE.Line(lineGeo, lineMat);
+        dragLine.name = '__drag_connect_line__';
+        scene.add(dragLine);
+
+        connectStateRef.current = {
+          sourceId:          noteId,
+          sourceMesh:        srcMesh,
+          sourceOrigScale:   origScale,
+          sourceOrigEmit:    origEmit,
+          line:              dragLine,
+          potentialTargetId: null,
+        };
+        navigator.vibrate?.(30);
+      }, 350);
     };
 
     const onMove = (e: MouseEvent) => {
       const dx = e.clientX - downX, dy = e.clientY - downY;
       if (Math.sqrt(dx * dx + dy * dy) > 6) isDraggingRef.current = true;
+
+      const cs = connectStateRef.current;
+      if (!cs || !cs.line) return;
+
+      // Cancel hold timer once we're clearly dragging
+      if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; cancelConnect(); return; }
+
+      // Update drag line endpoint
+      const cursor3D = getPointer3D(e, cs.sourceMesh.position.z);
+      if (!cursor3D) return;
+      const pos = cs.line.geometry.getAttribute('position') as THREE.BufferAttribute;
+      const src = cs.sourceMesh.position;
+      pos.setXYZ(0, src.x, src.y, src.z);
+      pos.setXYZ(1, cursor3D.x, cursor3D.y, cursor3D.z);
+      pos.needsUpdate = true;
+      (cs.line.material as THREE.LineBasicMaterial).opacity = 0.85;
+
+      // Detect potential target (nearest note mesh under cursor, excl. source)
+      const rc = new THREE.Raycaster();
+      rc.setFromCamera(getPointer(e), camera);
+      const candidates = Array.from(meshToNoteId.current.keys())
+        .filter(m => meshToNoteId.current.get(m) !== cs.sourceId);
+      const hits = rc.intersectObjects(candidates);
+      const newTarget = hits.length ? (meshToNoteId.current.get(hits[0].object as THREE.Mesh) ?? null) : null;
+
+      if (newTarget !== cs.potentialTargetId) {
+        // Un-highlight previous target
+        if (cs.potentialTargetId) {
+          const pm = noteMeshes.current.get(cs.potentialTargetId);
+          if (pm) { (pm.material as THREE.MeshStandardMaterial).emissiveIntensity = layout.positions[cs.potentialTargetId]?.emissiveIntensity ?? 1.2; pm.scale.setScalar(1.0); }
+        }
+        // Highlight new target
+        if (newTarget) {
+          const tm = noteMeshes.current.get(newTarget);
+          if (tm) { (tm.material as THREE.MeshStandardMaterial).emissiveIntensity = 5.0; tm.scale.setScalar(1.55); }
+        }
+        cs.potentialTargetId = newTarget;
+      }
     };
 
     const onUp = (e: MouseEvent) => {
       const dx = e.clientX - downX, dy = e.clientY - downY;
       isDraggingRef.current = false;
+      if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
       autoRotateTimer.current = setTimeout(() => { orbitAutoRotate.current = true; }, 3000);
+
+      // ── Drag-to-connect release ──────────────────────────────────────────
+      if (connectStateRef.current) {
+        const { sourceId, potentialTargetId } = connectStateRef.current;
+        cancelConnect();
+        if (potentialTargetId && potentialTargetId !== sourceId) {
+          onNodeConnectRef.current?.(sourceId, potentialTargetId);
+        }
+        return;
+      }
+
+      // ── Normal click (no drag) ───────────────────────────────────────────
       if (Math.sqrt(dx*dx + dy*dy) > 6) return;
 
       const rc = new THREE.Raycaster();
       rc.setFromCamera(getPointer(e), camera);
 
-      // Include empty CTA mesh in raycasting
       const allMeshes: THREE.Mesh[] = Array.from(meshToNoteId.current.keys());
       if (emptyCTAMeshRef.current) allMeshes.push(emptyCTAMeshRef.current);
 
       const hits = rc.intersectObjects(allMeshes);
       if (hits.length) {
         const hitMesh = hits[0].object as THREE.Mesh;
-        // Empty CTA click — emit radial wave + fly-in + open pod
         if (hitMesh === emptyCTAMeshRef.current) {
-          // Radial wave effect
           const waveGeo = new THREE.RingGeometry(1.9, 2.3, 64);
           const waveMat = new THREE.MeshBasicMaterial({
             color: new THREE.Color('#00ff66'), transparent: true,
@@ -391,14 +538,12 @@ function ImperativeCore({
           waveMesh.position.set(0, 0, 0);
           scene.add(waveMesh);
           waveRingsRef.current.push({ mesh: waveMesh, startT: performance.now() / 1000 });
-          // Slight camera fly-in toward center
           flyTargetRef.current = new THREE.Vector3(0, 0, 0);
           onEmptyStateClickRef.current?.();
           return;
         }
         const id = meshToNoteId.current.get(hitMesh);
         if (id) {
-          // Trigger camera fly-in toward the clicked node
           const worldPos = noteMeshes.current.get(id)?.position.clone();
           if (worldPos) flyTargetRef.current = worldPos.clone();
           onToggleRef.current(id);
@@ -406,13 +551,20 @@ function ImperativeCore({
       }
     };
 
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') cancelConnect();
+    };
+
     canvas.addEventListener('mousedown', onDown);
     canvas.addEventListener('mousemove', onMove);
     canvas.addEventListener('mouseup',   onUp);
+    window.addEventListener('keydown',   onKeyDown);
     return () => {
       canvas.removeEventListener('mousedown', onDown);
       canvas.removeEventListener('mousemove', onMove);
       canvas.removeEventListener('mouseup',   onUp);
+      window.removeEventListener('keydown',   onKeyDown);
+      if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
       if (autoRotateTimer.current) clearTimeout(autoRotateTimer.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -426,6 +578,19 @@ function ImperativeCore({
     const dist = camera.position.length();
 
     frameCountRef.current++;
+
+    // ── OrbitControls: disable during drag-to-connect ───────────────────────
+    if (controls) {
+      const ctrl = controls as unknown as { enabled: boolean; autoRotate: boolean };
+      ctrl.enabled     = !connectStateRef.current;
+      ctrl.autoRotate  = orbitAutoRotate.current && !connectStateRef.current;
+    }
+
+    // ── Drag line pulse animation ───────────────────────────────────────────
+    if (connectStateRef.current?.line) {
+      const mat = connectStateRef.current.line.material as THREE.LineBasicMaterial;
+      mat.opacity = 0.6 + Math.sin(t * 7) * 0.25;
+    }
 
     // ── Camera fly-in tween ─────────────────────────────────────────────────
     if (flyTargetRef.current) {
@@ -662,7 +827,7 @@ export function CosmosScene({
   layout, notes, highlightedNoteIds = [],
   flashNoteId = null, openNodes, onNodeToggle, onNodeHover,
   recenterActiveRef, onLodChange, onFlashNote, userId,
-  entranceNoteId, onEmptyStateClick,
+  entranceNoteId, onEmptyStateClick, onNodeConnect,
 }: CosmosSceneProps) {
   const highlightSet  = useMemo(() => new Set(highlightedNoteIds), [highlightedNoteIds]);
   const navigate      = useNavigate();
@@ -694,9 +859,8 @@ export function CosmosScene({
         onLodChange={handleLodChange}
         entranceNoteId={entranceNoteId}
         onEmptyStateClick={onEmptyStateClick}
+        onNodeConnect={onNodeConnect}
       />
-
-      {/* Cluster labels */}
       {lodLevel === 0 && layout.clusters.map(c => <ClusterLabel key={c.tag} cluster={c} />)}
 
       {/* Empty state CTA */}
