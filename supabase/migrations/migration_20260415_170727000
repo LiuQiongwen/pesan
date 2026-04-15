@@ -1,0 +1,46 @@
+
+-- user_credits: stores each user's AI credit balance
+CREATE TABLE IF NOT EXISTS public.user_credits (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    uuid NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
+  balance    integer NOT NULL DEFAULT 0,
+  updated_at timestamptz DEFAULT now()
+);
+ALTER TABLE public.user_credits ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users own credits" ON public.user_credits FOR ALL
+  USING (auth.uid() = user_id);
+
+-- subscriptions: current plan per user
+CREATE TABLE IF NOT EXISTS public.subscriptions (
+  id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id              uuid NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
+  plan                 text NOT NULL DEFAULT 'free',
+  status               text NOT NULL DEFAULT 'active',
+  current_period_start timestamptz,
+  current_period_end   timestamptz,
+  created_at           timestamptz DEFAULT now(),
+  updated_at           timestamptz DEFAULT now()
+);
+ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users own subscriptions" ON public.subscriptions FOR ALL
+  USING (auth.uid() = user_id);
+
+-- payment_orders: records every payment attempt
+CREATE TABLE IF NOT EXISTS public.payment_orders (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_no        text NOT NULL UNIQUE,
+  user_id         uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  type            text NOT NULL CHECK (type IN ('subscription','credits')),
+  item_id         text NOT NULL,
+  item_name       text NOT NULL,
+  amount_fen      integer NOT NULL,
+  status          text NOT NULL DEFAULT 'pending'
+                  CHECK (status IN ('pending','paid','failed','cancelled')),
+  alipay_trade_no text,
+  created_at      timestamptz DEFAULT now(),
+  updated_at      timestamptz DEFAULT now()
+);
+ALTER TABLE public.payment_orders ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users view own orders"   ON public.payment_orders FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "users insert own orders" ON public.payment_orders FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "users update own orders" ON public.payment_orders FOR UPDATE USING (auth.uid() = user_id);
