@@ -69,6 +69,7 @@ export interface CosmosSceneProps {
   onNodeConnect?:      (sourceId: string, targetId: string) => void;
   onNodeDropToGalaxy?: (noteId: string, galaxyTag: string | null) => void;
   onNodeDropToPod?:    (noteId: string, podId: string) => void;
+  onNodeWorkbenchSelect?: (noteId: string) => void;
 }
 
 // ── ImperativeCore ────────────────────────────────────────────────────────────
@@ -90,6 +91,7 @@ interface CoreProps {
   onNodeConnect?:     (sourceId: string, targetId: string) => void;
   onNodeDropToGalaxy?: (noteId: string, galaxyTag: string | null) => void;
   onNodeDropToPod?:    (noteId: string, podId: string) => void;
+  onNodeWorkbenchSelect?: (noteId: string) => void;
 }
 
 function ImperativeCore({
@@ -97,6 +99,7 @@ function ImperativeCore({
   hoveredId, setHoveredId, onNodeToggle, onNodeHover,
   currentPosRef, recenterActiveRef, onLodChange,
   entranceNoteId, onEmptyStateClick, onNodeConnect, onNodeDropToGalaxy, onNodeDropToPod,
+  onNodeWorkbenchSelect,
 }: CoreProps) {
   const { scene, camera, gl } = useThree();
 
@@ -153,6 +156,7 @@ function ImperativeCore({
   const onNodeConnectRef      = useRef(onNodeConnect);
   const onNodeDropToGalaxyRef = useRef(onNodeDropToGalaxy);
   const onNodeDropToPodRef    = useRef(onNodeDropToPod);
+  const onNodeWorkbenchSelectRef = useRef(onNodeWorkbenchSelect);
 
   // Auto-rotate management
   const orbitAutoRotate  = useRef(true);
@@ -175,6 +179,7 @@ function ImperativeCore({
   useEffect(() => { onNodeConnectRef.current      = onNodeConnect;      }, [onNodeConnect]);
   useEffect(() => { onNodeDropToGalaxyRef.current = onNodeDropToGalaxy; }, [onNodeDropToGalaxy]);
   useEffect(() => { onNodeDropToPodRef.current    = onNodeDropToPod;    }, [onNodeDropToPod]);
+  useEffect(() => { onNodeWorkbenchSelectRef.current = onNodeWorkbenchSelect; }, [onNodeWorkbenchSelect]);
 
   // ── Build scene imperatively ───────────────────────────────────────────────
   useEffect(() => {
@@ -378,7 +383,7 @@ function ImperativeCore({
   // ── Click / drag-to-connect / hover via canvas events ────────────────────
   useEffect(() => {
     const canvas = gl.domElement;
-    let downX = 0, downY = 0;
+    let downX = 0, downY = 0, downShift = false;
 
     const getPointer = (e: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
@@ -437,6 +442,7 @@ function ImperativeCore({
 
     const onDown = (e: MouseEvent) => {
       downX = e.clientX; downY = e.clientY;
+      downShift = e.shiftKey;
       isDraggingRef.current   = false;
       orbitAutoRotate.current = false;
       if (autoRotateTimer.current) clearTimeout(autoRotateTimer.current);
@@ -451,6 +457,9 @@ function ImperativeCore({
       const hitMesh = hits[0].object as THREE.Mesh;
       const noteId  = meshToNoteId.current.get(hitMesh);
       if (!noteId) return;
+
+      // Shift+click → workbench selection, skip hold-drag timer
+      if (e.shiftKey) return;
 
       // Start 350 ms hold timer → enter drag-to-connect mode
       holdTimerRef.current = setTimeout(() => {
@@ -660,9 +669,14 @@ function ImperativeCore({
         }
         const id = meshToNoteId.current.get(hitMesh);
         if (id) {
-          const worldPos = noteMeshes.current.get(id)?.position.clone();
-          if (worldPos) flyTargetRef.current = worldPos.clone();
-          onToggleRef.current(id);
+          if (downShift) {
+            // Shift+click → workbench multi-select
+            onNodeWorkbenchSelectRef.current?.(id);
+          } else {
+            const worldPos = noteMeshes.current.get(id)?.position.clone();
+            if (worldPos) flyTargetRef.current = worldPos.clone();
+            onToggleRef.current(id);
+          }
         }
       }
     };
@@ -967,6 +981,7 @@ export function CosmosScene({
   flashNoteId = null, openNodes, onNodeToggle, onNodeHover,
   recenterActiveRef, onLodChange, onFlashNote, userId,
   entranceNoteId, onEmptyStateClick, onNodeConnect, onNodeDropToGalaxy, onNodeDropToPod,
+  onNodeWorkbenchSelect,
 }: CosmosSceneProps) {
   const highlightSet  = useMemo(() => new Set(highlightedNoteIds), [highlightedNoteIds]);
   const navigate      = useNavigate();
@@ -1001,6 +1016,7 @@ export function CosmosScene({
         onNodeConnect={onNodeConnect}
         onNodeDropToGalaxy={onNodeDropToGalaxy}
         onNodeDropToPod={onNodeDropToPod}
+        onNodeWorkbenchSelect={onNodeWorkbenchSelect}
       />
       {lodLevel === 0 && layout.clusters.map(c => <ClusterLabel key={c.tag} cluster={c} />)}
 

@@ -4,6 +4,8 @@ import { CosmosScene } from './CosmosScene';
 import { buildCosmosLayout, type CosmosNote } from './cosmos-layout';
 import { ConnectConfirmOverlay } from './ConnectConfirmOverlay';
 import { GalaxyJoinOverlay, type GalaxyOption } from './GalaxyJoinOverlay';
+import { WorkbenchSummonBar } from './WorkbenchSummonBar';
+import { WorkbenchPanel } from './WorkbenchPanel';
 import { type RelationType } from './connect-types';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -93,6 +95,10 @@ export default function KnowledgeStarMap({
   const [pendingGalaxy,   setPendingGalaxy]    = useState<PendingGalaxy | null>(null);
   const [galaxyStatus,    setGalaxyStatus]     = useState<'idle' | 'saved' | 'error'>('idle');
   const recenterActiveRef = useRef(false);
+
+  // ── Workbench multi-select state ─────────────────────────────────────────
+  const [workbenchSelectedIds, setWorkbenchSelectedIds] = useState<string[]>([]);
+  const [workbenchActive,      setWorkbenchActive]      = useState(false);
 
   // Quick lookup map for note objects
   const notesMap = useMemo(() => new Map(notes.map(n => [n.id, n])), [notes]);
@@ -205,7 +211,49 @@ export default function KnowledgeStarMap({
 
   const handleGalaxyJoinCancel = useCallback(() => setPendingGalaxy(null), []);
 
-  // ── Trigger recenter from parent ─────────────────────────────────────────
+  // ── Workbench: multi-select via Shift+click ───────────────────────────────
+  const handleWorkbenchSelect = useCallback((noteId: string) => {
+    setWorkbenchSelectedIds(prev => {
+      if (prev.includes(noteId)) return prev.filter(id => id !== noteId);
+      if (prev.length >= 5) return prev; // max 5
+      return [...prev, noteId];
+    });
+  }, []);
+
+  const handleWorkbenchSummon = useCallback(() => setWorkbenchActive(true), []);
+
+  const handleWorkbenchClose = useCallback(() => {
+    setWorkbenchActive(false);
+    setWorkbenchSelectedIds([]);
+  }, []);
+
+  const handleWorkbenchRemove = useCallback((noteId: string) => {
+    setWorkbenchSelectedIds(prev => {
+      const next = prev.filter(id => id !== noteId);
+      if (next.length === 0) setWorkbenchActive(false);
+      return next;
+    });
+  }, []);
+
+  const handleWorkbenchCombine = useCallback(async (noteIds: string[]) => {
+    const combinedNotes = noteIds.map(id => notesMap.get(id)).filter(Boolean) as typeof notes;
+    if (combinedNotes.length < 2) return;
+
+    const title    = `工作台合并 · ${new Date().toLocaleDateString('zh-CN')}`;
+    const content  = combinedNotes.map(n =>
+      `## ${n.title ?? '(未命名)'}\n\n${n.summary ?? ''}\n\n${(n.tags ?? []).join(', ')}`
+    ).join('\n\n---\n\n');
+    const allTags  = [...new Set(combinedNotes.flatMap(n => n.tags ?? []))];
+
+    const { error } = await supabase.from('notes').insert({
+      title, content_markdown: content, summary: `合并自：${combinedNotes.map(n => n.title).join('、')}`,
+      tags: allTags, node_type: 'insight',
+      ...(userId ? { user_id: userId } : {}),
+    });
+    if (error) console.error('[Workbench] combine error:', error);
+  }, [notesMap, userId]);
+
+  // Keyboard shortcut: Escape clears workbench selection too
   useEffect(() => {
     if (recenterTrigger > 0) recenterActiveRef.current = true;
   }, [recenterTrigger]);
@@ -223,6 +271,8 @@ export default function KnowledgeStarMap({
         setOpenNodes(new Set());
         setPendingConn(null);
         setPendingGalaxy(null);
+        setWorkbenchActive(false);
+        setWorkbenchSelectedIds([]);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -279,7 +329,7 @@ export default function KnowledgeStarMap({
             <CosmosScene
               layout={layout}
               notes={notes}
-              highlightedNoteIds={highlightedNoteIds}
+              highlightedNoteIds={[...highlightedNoteIds, ...workbenchSelectedIds]}
               flashNoteId={flashNoteId}
               openNodes={openNodes}
               onNodeToggle={toggleNode}
@@ -292,6 +342,7 @@ export default function KnowledgeStarMap({
               onNodeConnect={handleNodeConnect}
               onNodeDropToGalaxy={handleNodeDropToGalaxy}
               onNodeDropToPod={onNodeDropToPod}
+              onNodeWorkbenchSelect={handleWorkbenchSelect}
             />
           )}
         </Suspense>
@@ -324,6 +375,28 @@ export default function KnowledgeStarMap({
       {connectStatus === 'error'  && <ConnectToast label="连接失败，请重试" color="#ff4466" />}
       {galaxyStatus  === 'saved'  && <ConnectToast label="已归入星系" color="#b496ff" />}
       {galaxyStatus  === 'error'  && <ConnectToast label="归类失败，请重试" color="#ff4466" />}
+
+      {/* Workbench summon bar — appears when 2-5 nodes shift-selected */}
+      {!workbenchActive && workbenchSelectedIds.length >= 2 && (
+        <WorkbenchSummonBar
+          selectedCount={workbenchSelectedIds.length}
+          onSummon={handleWorkbenchSummon}
+          onClear={handleWorkbenchClose}
+        />
+      )}
+
+      {/* Workbench floating panel */}
+      {workbenchActive && workbenchSelectedIds.length > 0 && (
+        <WorkbenchPanel
+          notes={workbenchSelectedIds.map(id => notesMap.get(id)).filter(Boolean) as CosmosNote[]}
+          onRemoveNote={handleWorkbenchRemove}
+          onClose={handleWorkbenchClose}
+          onFlashNote={id => { onFlashNote?.(id); }}
+          onDropToPod={onNodeDropToPod ?? (() => {})}
+          onCombine={handleWorkbenchCombine}
+          userId={userId}
+        />
+      )}
     </div>
   );
 }
