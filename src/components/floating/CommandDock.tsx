@@ -32,7 +32,7 @@ function hexRgb(hex: string) {
 }
 
 export function CommandDock() {
-  const { pods, togglePod, primaryPod } = useToolbox();
+  const { pods, togglePod } = useToolbox();
   const { activeStep, completedSteps }  = useAgentWorkflow();
 
   // Determine the "recommended next" step
@@ -65,7 +65,6 @@ export function CommandDock() {
       {STEPS.map((step, i) => {
         const { r, g, b } = hexRgb(step.accent);
         const isOpen      = pods[step.id]?.open;
-        const isPrimary   = primaryPod === step.id;
         const isActive    = activeStep === step.id;
         const isDone      = completedSteps.includes(step.id);
         const isRecommend = recommendedNext === step.id && !isOpen;
@@ -98,16 +97,14 @@ export function CommandDock() {
                 width: 56,
                 height: 50,
                 borderRadius: 12,
-                border: isPrimary
+                border: isOpen
                   ? `1px solid rgba(${r},${g},${b},0.55)`
                   : isActive
                     ? `1px solid rgba(${r},${g},${b},0.35)`
                     : isRecommend
                       ? `1px solid rgba(${r},${g},${b},0.22)`
-                      : isOpen
-                        ? `1px solid rgba(${r},${g},${b},0.22)`
-                        : '1px solid transparent',
-                background: isPrimary
+                      : '1px solid transparent',
+                background: isOpen
                   ? `rgba(${r},${g},${b},0.14)`
                   : isActive
                     ? `rgba(${r},${g},${b},0.08)`
@@ -116,7 +113,7 @@ export function CommandDock() {
                       : 'transparent',
                 cursor: 'pointer',
                 transition: 'all 0.18s',
-                boxShadow: isPrimary
+                boxShadow: isOpen
                   ? `0 0 16px rgba(${r},${g},${b},0.25), inset 0 0 0 1px rgba(${r},${g},${b},0.08)`
                   : isActive
                     ? `0 0 10px rgba(${r},${g},${b},0.15)`
@@ -124,13 +121,13 @@ export function CommandDock() {
                 animation: isRecommend ? 'dock-pulse 2.2s ease-in-out infinite' : 'none',
               }}
               onMouseEnter={e => {
-                if (!isPrimary) {
+                if (!isOpen) {
                   (e.currentTarget as HTMLButtonElement).style.background = `rgba(${r},${g},${b},0.09)`;
                   (e.currentTarget as HTMLButtonElement).style.border = `1px solid rgba(${r},${g},${b},0.30)`;
                 }
               }}
               onMouseLeave={e => {
-                if (!isPrimary) {
+                if (!isOpen) {
                   (e.currentTarget as HTMLButtonElement).style.background = isActive
                     ? `rgba(${r},${g},${b},0.08)` : 'transparent';
                   (e.currentTarget as HTMLButtonElement).style.border = isOpen

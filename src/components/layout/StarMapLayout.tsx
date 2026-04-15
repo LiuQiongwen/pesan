@@ -10,7 +10,6 @@ import { NodeLightBand }    from '@/components/layout/NodeLightBand';
 import { AgentTrail }       from '@/components/layout/AgentTrail';
 import { CommandDock }      from '@/components/floating/CommandDock';
 import { FloatingPod }      from '@/components/floating/FloatingPod';
-import { FloatingCapsule }  from '@/components/floating/FloatingCapsule';
 import { SettingsCapsule }  from '@/components/floating/SettingsCapsule';
 
 import { Feather, Radar, FlaskConical, Layers, Zap } from 'lucide-react';
@@ -26,20 +25,20 @@ const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
 
 interface PodDef {
-  id:     PodId;
-  title:  string;
+  id:       PodId;
+  title:    string;
   subtitle: string;
-  icon:   LucideIcon;
-  accent: string;
-  width:  number;
+  icon:     LucideIcon;
+  accent:   string;
+  width:    number;
 }
 
 const POD_DEFS: PodDef[] = [
-  { id: 'capture',   title: 'Capture Pod',   subtitle: '捕捉舱 · 知识入口',   icon: Feather,      accent: '#00ff66', width: 360 },
-  { id: 'retrieval', title: 'Retrieval Pod', subtitle: '检索舱 · 语义召回',   icon: Radar,        accent: '#66f0ff', width: 420 },
-  { id: 'insight',   title: 'Insight Pod',   subtitle: '洞察舱 · 知识精炼',   icon: FlaskConical, accent: '#b496ff', width: 400 },
-  { id: 'memory',    title: 'Memory Pod',    subtitle: '记忆舱 · 上下文唤醒', icon: Layers,       accent: '#ffa040', width: 360 },
-  { id: 'action',    title: 'Action Pod',    subtitle: '行动舱 · 知识转执行', icon: Zap,          accent: '#ff4466', width: 360 },
+  { id: 'capture',   title: 'Capture Pod',   subtitle: '捕捉舱 · 知识入口',   icon: Feather,      accent: '#00ff66', width: 460 },
+  { id: 'retrieval', title: 'Retrieval Pod', subtitle: '检索舱 · 语义召回',   icon: Radar,        accent: '#66f0ff', width: 500 },
+  { id: 'insight',   title: 'Insight Pod',   subtitle: '洞察舱 · 知识精炼',   icon: FlaskConical, accent: '#b496ff', width: 480 },
+  { id: 'memory',    title: 'Memory Pod',    subtitle: '记忆舱 · 上下文唤醒', icon: Layers,       accent: '#ffa040', width: 460 },
+  { id: 'action',    title: 'Action Pod',    subtitle: '行动舱 · 知识转执行', icon: Zap,          accent: '#ff4466', width: 460 },
 ];
 
 // ── Inner layout (has access to ToolboxContext) ─────────────────────────────
@@ -47,7 +46,7 @@ function StarMapInner() {
   const { user, loading } = useAuth();
   const navigate          = useNavigate();
   const { notes }         = useNotes(user?.id);
-  const { podViewMode, openPod } = useToolbox();
+  const { pods }          = useToolbox();
 
   const [hoveredNode,     setHoveredNode]     = useState<HoveredNodeInfo | null>(null);
   const [highlightedIds,  setHighlightedIds]  = useState<string[]>([]);
@@ -88,11 +87,8 @@ function StarMapInner() {
   const totalTags = Array.from(new Set(notes.flatMap(n => n.tags || []))).length;
   const thisWeek  = notes.filter(n => n.created_at && Date.now() - new Date(n.created_at).getTime() < 7*86400000).length;
 
-  // Collect capsule pods (open but not primary/secondary)
-  const capsulePods = POD_DEFS.filter(p => podViewMode(p.id) === 'capsule');
-
   return (
-    <AgentWorkflowProvider onOpenPod={(id) => openPod(id)}>
+    <AgentWorkflowProvider onOpenPod={(id) => {}}>
       <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', background: '#040508' }}>
 
         {/* Layer 0 — Star Map */}
@@ -107,7 +103,7 @@ function StarMapInner() {
           userId={user?.id}
         />
 
-        {/* Layer 1 — Agent Trail (top-center, workflow breadcrumb) */}
+        {/* Layer 1 — Agent Trail */}
         <AgentTrail />
 
         {/* Layer 2 — Top-left HUD */}
@@ -125,7 +121,7 @@ function StarMapInner() {
           </div>
           <button
             onClick={() => setRecenterTrigger(t => t + 1)}
-            title="回到中心 (Space)"
+            title="回到中心"
             style={{
               pointerEvents: 'auto',
               display: 'flex', alignItems: 'center', gap: 5,
@@ -147,70 +143,42 @@ function StarMapInner() {
           )}
         </div>
 
-        {/* Layer 3 — Floating Pods (primary + secondary) */}
+        {/* Layer 3 — All Floating Pods (free, independent) */}
         <div style={{ position: 'fixed', inset: 0, zIndex: 20, pointerEvents: 'none' }}>
           <div style={{ pointerEvents: 'auto' }}>
-
-            {/* Capture */}
-            {(podViewMode('capture') === 'primary' || podViewMode('capture') === 'secondary') && (
-              <FloatingPod id="capture" title="Capture Pod" subtitle="捕捉舱 · 知识入口" icon={Feather} accentColor="#00ff66" width={360} mode={podViewMode('capture') as 'primary'|'secondary'}>
-                <CaptureBox onFlashNote={flashNote} onAgentStart={() => setAgentActive(true)} onAgentEnd={() => setAgentActive(false)} />
-              </FloatingPod>
-            )}
-
-            {/* Retrieval */}
-            {(podViewMode('retrieval') === 'primary' || podViewMode('retrieval') === 'secondary') && (
-              <FloatingPod id="retrieval" title="Retrieval Pod" subtitle="检索舱 · 语义召回" icon={Radar} accentColor="#66f0ff" width={420} mode={podViewMode('retrieval') as 'primary'|'secondary'}>
-                <RetrievalBox onHighlight={highlightNotes} />
-              </FloatingPod>
-            )}
-
-            {/* Insight */}
-            {(podViewMode('insight') === 'primary' || podViewMode('insight') === 'secondary') && (
-              <FloatingPod id="insight" title="Insight Pod" subtitle="洞察舱 · 知识精炼" icon={FlaskConical} accentColor="#b496ff" width={400} mode={podViewMode('insight') as 'primary'|'secondary'}>
-                <InsightBox />
-              </FloatingPod>
-            )}
-
-            {/* Memory */}
-            {(podViewMode('memory') === 'primary' || podViewMode('memory') === 'secondary') && (
-              <FloatingPod id="memory" title="Memory Pod" subtitle="记忆舱 · 上下文唤醒" icon={Layers} accentColor="#ffa040" width={360} mode={podViewMode('memory') as 'primary'|'secondary'}>
-                <MemoryBox hoveredNoteId={hoveredNode?.noteId} />
-              </FloatingPod>
-            )}
-
-            {/* Action */}
-            {(podViewMode('action') === 'primary' || podViewMode('action') === 'secondary') && (
-              <FloatingPod id="action" title="Action Pod" subtitle="行动舱 · 知识转执行" icon={Zap} accentColor="#ff4466" width={360} mode={podViewMode('action') as 'primary'|'secondary'}>
-                <ActionBox />
-              </FloatingPod>
-            )}
-
+            {POD_DEFS.map(pod => {
+              if (!pods[pod.id]?.open) return null;
+              return (
+                <FloatingPod
+                  key={pod.id}
+                  id={pod.id}
+                  title={pod.title}
+                  subtitle={pod.subtitle}
+                  icon={pod.icon}
+                  accentColor={pod.accent}
+                  width={pod.width}
+                >
+                  {pod.id === 'capture'   && <CaptureBox onFlashNote={flashNote} onAgentStart={() => setAgentActive(true)} onAgentEnd={() => setAgentActive(false)} />}
+                  {pod.id === 'retrieval' && <RetrievalBox onHighlight={highlightNotes} />}
+                  {pod.id === 'insight'   && <InsightBox />}
+                  {pod.id === 'memory'    && <MemoryBox hoveredNoteId={hoveredNode?.noteId} />}
+                  {pod.id === 'action'    && <ActionBox />}
+                </FloatingPod>
+              );
+            })}
           </div>
         </div>
 
-        {/* Layer 4 — Capsule pills (stacked right edge) */}
-        {capsulePods.map((pod, i) => (
-          <FloatingCapsule
-            key={pod.id}
-            id={pod.id}
-            icon={pod.icon}
-            label={pod.title.split(' ')[0]}
-            accentColor={pod.accent}
-            stackIndex={i}
-          />
-        ))}
-
-        {/* Layer 5 — Route overlay */}
+        {/* Layer 4 — Route overlay */}
         <Outlet />
 
-        {/* Layer 6 — Node hover light band */}
+        {/* Layer 5 — Node hover light band */}
         <NodeLightBand node={hoveredNode} />
 
-        {/* Layer 7 — Command Dock (workflow guide) */}
+        {/* Layer 6 — Command Dock */}
         <CommandDock />
 
-        {/* Layer 8 — Settings Capsule */}
+        {/* Layer 7 — Settings Capsule */}
         <SettingsCapsule />
 
       </div>

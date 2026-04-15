@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 
 export type PodId = 'capture' | 'retrieval' | 'insight' | 'memory' | 'action' | 'settings';
-export type PodViewMode = 'primary' | 'secondary' | 'capsule' | 'closed';
+export type PodViewMode = 'open' | 'closed';
 
 export interface PodState {
   open: boolean;
@@ -12,21 +12,19 @@ export interface PodState {
 
 type PodMap = Record<PodId, PodState>;
 
-const STORAGE_KEY = 'cosmos_pods_v3';
+const STORAGE_KEY = 'cosmos_pods_v4';
 const BASE_Z = 100;
 
 function defaultPositions(): PodMap {
-  const W = typeof window !== 'undefined' ? window.innerWidth : 1400;
+  const W = typeof window !== 'undefined' ? window.innerWidth : 1440;
   const H = typeof window !== 'undefined' ? window.innerHeight : 900;
-  const cx = W / 2;
-  const cy = H / 2;
   return {
-    capture:   { open: false, minimized: false, pos: { x: cx - 200, y: cy - 240 }, zIndex: BASE_Z },
-    retrieval: { open: false, minimized: false, pos: { x: cx + 60,  y: cy - 220 }, zIndex: BASE_Z },
-    insight:   { open: false, minimized: false, pos: { x: cx - 210, y: cy + 30  }, zIndex: BASE_Z },
-    memory:    { open: false, minimized: false, pos: { x: cx + 70,  y: cy + 50  }, zIndex: BASE_Z },
-    action:    { open: false, minimized: false, pos: { x: cx - 190, y: cy + 200 }, zIndex: BASE_Z },
-    settings:  { open: false, minimized: false, pos: { x: W - 340,  y: 60       }, zIndex: BASE_Z },
+    capture:   { open: false, minimized: false, pos: { x: 24,        y: 80        }, zIndex: BASE_Z },
+    retrieval: { open: false, minimized: false, pos: { x: W - 524,   y: 80        }, zIndex: BASE_Z },
+    insight:   { open: false, minimized: false, pos: { x: 24,        y: H - 520   }, zIndex: BASE_Z },
+    memory:    { open: false, minimized: false, pos: { x: W - 484,   y: H - 500   }, zIndex: BASE_Z },
+    action:    { open: false, minimized: false, pos: { x: W / 2 - 240, y: H - 480 }, zIndex: BASE_Z },
+    settings:  { open: false, minimized: false, pos: { x: W - 380,   y: 60        }, zIndex: BASE_Z },
   };
 }
 
@@ -56,8 +54,8 @@ function savePositions(state: PodMap) {
 
 interface ToolboxContextValue {
   pods:         PodMap;
-  primaryPod:   PodId | null;
-  secondaryPod: PodId | null;
+  primaryPod:   PodId | null;   // kept for backward compat (last opened)
+  secondaryPod: PodId | null;   // kept for backward compat (always null now)
   openPod:      (id: PodId) => void;
   closePod:     (id: PodId) => void;
   togglePod:    (id: PodId) => void;
@@ -77,53 +75,34 @@ interface ToolboxContextValue {
 const ToolboxContext = createContext<ToolboxContextValue | null>(null);
 
 export function ToolboxProvider({ children }: { children: React.ReactNode }) {
-  const [pods,         setPods]         = useState<PodMap>(loadPositions);
-  const [topZ,         setTopZ]         = useState(BASE_Z);
-  // Track which pod occupies primary and secondary "slots"
-  const [primaryPod,   setPrimaryPod]   = useState<PodId | null>(null);
-  const [secondaryPod, setSecondaryPod] = useState<PodId | null>(null);
+  const [pods, setPods] = useState<PodMap>(loadPositions);
+  const [topZ, setTopZ] = useState(BASE_Z);
+  const [lastOpened, setLastOpened] = useState<PodId | null>(null);
 
   useEffect(() => { savePositions(pods); }, [pods]);
 
-  // ── Open: new pod → primary, previous primary → secondary.
-  //    Settings is always independent (no slot cascade).
   const openPod = useCallback((id: PodId) => {
     setTopZ(z => {
       setPods(prev => ({ ...prev, [id]: { ...prev[id], open: true, minimized: false, zIndex: z + 1 } }));
       return z + 1;
     });
-    if (id === 'settings') return;
-
-    setPrimaryPod(currPrimary => {
-      if (currPrimary === id) return id; // already primary, no cascade
-      // currPrimary → secondary slot
-      setSecondaryPod(currPrimary);
-      return id;
-    });
+    setLastOpened(id);
   }, []);
 
   const closePod = useCallback((id: PodId) => {
     setPods(prev => ({ ...prev, [id]: { ...prev[id], open: false, minimized: false } }));
-    setPrimaryPod(p   => (p   === id ? null : p));
-    setSecondaryPod(s => (s   === id ? null : s));
+    setLastOpened(prev => prev === id ? null : prev);
   }, []);
 
   const togglePod = useCallback((id: PodId) => {
     setPods(prev => {
       const cur = prev[id];
       if (cur.open) {
-        // Close it
-        setPrimaryPod(p   => p   === id ? null : p);
-        setSecondaryPod(s => s   === id ? null : s);
+        setLastOpened(p => p === id ? null : p);
         return { ...prev, [id]: { ...cur, open: false } };
       }
-      // Open it — cascade
       setTopZ(z => z + 1);
-      setPrimaryPod(currPrimary => {
-        if (currPrimary === id) return id;
-        setSecondaryPod(currPrimary);
-        return id;
-      });
+      setLastOpened(id);
       return { ...prev, [id]: { ...cur, open: true, minimized: false } };
     });
   }, []);
@@ -143,16 +122,15 @@ export function ToolboxProvider({ children }: { children: React.ReactNode }) {
     setPods(prev => ({ ...prev, [id]: { ...prev[id], pos } }));
   }, []);
 
+  // All open pods are just 'open' — no primary/secondary/capsule distinction
   const podViewMode = useCallback((id: PodId): PodViewMode => {
-    if (!pods[id]?.open) return 'closed';
-    if (id === 'settings')  return 'primary'; // settings always primary
-    if (id === primaryPod)  return 'primary';
-    if (id === secondaryPod) return 'secondary';
-    return 'capsule';
-  }, [pods, primaryPod, secondaryPod]);
+    return pods[id]?.open ? 'open' : 'closed';
+  }, [pods]);
 
   const value: ToolboxContextValue = {
-    pods, primaryPod, secondaryPod,
+    pods,
+    primaryPod: lastOpened,
+    secondaryPod: null,
     openPod, closePod, togglePod, minimizePod, bringToFront, setPos, podViewMode, topZ,
     toolboxes: pods,
     openToolbox:     openPod,
