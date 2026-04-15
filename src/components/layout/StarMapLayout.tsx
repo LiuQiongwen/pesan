@@ -11,6 +11,7 @@ import { AgentTrail }       from '@/components/layout/AgentTrail';
 import { CommandDock }      from '@/components/floating/CommandDock';
 import { FloatingPod }      from '@/components/floating/FloatingPod';
 import { SettingsCapsule }  from '@/components/floating/SettingsCapsule';
+import { QuickCaptureBar }  from '@/components/starmap/QuickCaptureBar';
 
 import { Feather, Radar, FlaskConical, Layers, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -46,7 +47,7 @@ function StarMapInner() {
   const { user, loading } = useAuth();
   const navigate          = useNavigate();
   const { notes }         = useNotes(user?.id);
-  const { pods }          = useToolbox();
+  const { pods, openPod } = useToolbox();
 
   const [hoveredNode,     setHoveredNode]     = useState<HoveredNodeInfo | null>(null);
   const [highlightedIds,  setHighlightedIds]  = useState<string[]>([]);
@@ -101,6 +102,7 @@ function StarMapInner() {
           recenterTrigger={recenterTrigger}
           onFlashNote={flashNote}
           userId={user?.id}
+          onEmptyStateClick={() => openPod('capture')}
         />
 
         {/* Layer 1 — Agent Trail */}
@@ -175,7 +177,10 @@ function StarMapInner() {
         {/* Layer 5 — Node hover light band */}
         <NodeLightBand node={hoveredNode} />
 
-        {/* Layer 6 — Command Dock */}
+        {/* Layer 6 — Quick Capture Bar */}
+        <QuickCaptureBar userId={user.id} onFlashNote={flashNote} />
+
+        {/* Layer 7 — Command Dock */}
         <CommandDock />
 
         {/* Layer 7 — Settings Capsule */}

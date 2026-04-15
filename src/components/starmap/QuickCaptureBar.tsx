@@ -1,0 +1,202 @@
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Plus, Send } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+
+const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
+const INTER = "'Inter',system-ui,sans-serif";
+
+interface QuickCaptureBarProps {
+  userId:       string;
+  onFlashNote?: (noteId: string) => void;
+}
+
+export function QuickCaptureBar({ userId, onFlashNote }: QuickCaptureBarProps) {
+  const [value,    setValue]   = useState('');
+  const [focused,  setFocused] = useState(false);
+  const [saving,   setSaving]  = useState(false);
+  const [success,  setSuccess] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Keyboard shortcut: press '/' or 'Q' to focus the bar
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (e.key === '/' || e.key === 'q' || e.key === 'Q') {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const handleSubmit = useCallback(async () => {
+    const text = value.trim();
+    if (!text || saving) return;
+
+    setSaving(true);
+    try {
+      const { data, error } = await supabase.from('notes').insert({
+        user_id:           userId,
+        node_type:         'capture',
+        title:             text.slice(0, 80),
+        summary:           text.length > 80 ? text : null,
+        tags:              [],
+        key_points:        [],
+        analysis_content:  {},
+        mindmap_data:      {},
+        content_markdown:  null,
+        summary_markdown:  null,
+        analysis_markdown: null,
+        mindmap_markdown:  null,
+        analysis_id:       null,
+        is_edited:         false,
+      }).select().maybeSingle();
+
+      if (error) throw error;
+
+      if (data?.id) {
+        onFlashNote?.(data.id);
+        setValue('');
+        setSuccess(true);
+        setTimeout(() => setSuccess(false), 1800);
+      }
+    } catch {
+      toast.error('创建节点失败');
+    } finally {
+      setSaving(false);
+    }
+  }, [value, saving, userId, onFlashNote]);
+
+  const glowColor = success ? '#00ff66' : focused ? '#66f0ff' : 'transparent';
+  const borderColor = success
+    ? 'rgba(0,255,102,0.55)'
+    : focused
+    ? 'rgba(102,240,255,0.40)'
+    : 'rgba(40,48,65,0.70)';
+
+  return (
+    <div style={{
+      position: 'fixed',
+      bottom: 130,
+      left: '50%',
+      transform: 'translateX(-50%)',
+      zIndex: 25,
+      width: 460,
+      maxWidth: 'calc(100vw - 32px)',
+    }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        height: 46,
+        background: 'rgba(2,4,11,0.92)',
+        backdropFilter: 'blur(24px)',
+        WebkitBackdropFilter: 'blur(24px)',
+        border: `1px solid ${borderColor}`,
+        borderRadius: 10,
+        padding: '0 12px',
+        transition: 'border-color 0.2s, box-shadow 0.2s',
+        boxShadow: focused || success
+          ? `0 0 22px ${glowColor}25, 0 8px 32px rgba(0,0,0,0.55)`
+          : '0 4px 24px rgba(0,0,0,0.40)',
+      }}>
+        {/* Icon */}
+        <div style={{
+          width: 26, height: 26, flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          borderRadius: 6,
+          background: success ? 'rgba(0,255,102,0.12)' : 'rgba(102,240,255,0.07)',
+          border: `1px solid ${success ? 'rgba(0,255,102,0.25)' : 'rgba(102,240,255,0.14)'}`,
+          transition: 'all 0.2s',
+        }}>
+          <Plus size={13} color={success ? '#00ff66' : 'rgba(102,240,255,0.65)'} />
+        </div>
+
+        {/* Input */}
+        <input
+          ref={inputRef}
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') handleSubmit();
+            if (e.key === 'Escape') { inputRef.current?.blur(); setValue(''); }
+          }}
+          placeholder={success ? '✓ 已落入星图' : '输入一条知识，按 Enter 落入星图…'}
+          style={{
+            flex: 1,
+            background: 'none',
+            border: 'none',
+            outline: 'none',
+            fontFamily: MONO,
+            fontSize: 12,
+            letterSpacing: '0.02em',
+            color: success ? 'rgba(0,255,102,0.85)' : 'rgba(200,215,240,0.88)',
+            transition: 'color 0.2s',
+          }}
+          disabled={saving}
+        />
+
+        {/* Submit button — shows only when there's content */}
+        {value.trim() && (
+          <button
+            onClick={handleSubmit}
+            disabled={saving}
+            style={{
+              width: 30, height: 30, flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              borderRadius: 6,
+              background: 'rgba(0,255,102,0.10)',
+              border: '1px solid rgba(0,255,102,0.28)',
+              cursor: saving ? 'wait' : 'pointer',
+              transition: 'all 0.15s',
+              opacity: saving ? 0.5 : 1,
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,255,102,0.18)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,255,102,0.10)'; }}
+          >
+            <Send size={13} color="rgba(0,255,102,0.80)" />
+          </button>
+        )}
+
+        {/* Keyboard hint */}
+        {!value && !focused && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0,
+          }}>
+            {['/', 'Q'].map(k => (
+              <span key={k} style={{
+                fontFamily: MONO, fontSize: 10,
+                color: 'rgba(70,80,100,0.50)',
+                background: 'rgba(30,36,50,0.60)',
+                border: '1px solid rgba(50,60,80,0.50)',
+                padding: '1px 5px', borderRadius: 4,
+              }}>{k}</span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Sub-label */}
+      <div style={{
+        textAlign: 'center', marginTop: 5,
+        fontFamily: INTER, fontSize: 10,
+        color: 'rgba(50,60,80,0.55)',
+        letterSpacing: '0.04em',
+        pointerEvents: 'none',
+        transition: 'opacity 0.2s',
+        opacity: focused ? 0 : 1,
+      }}>
+        快速捕捉 · CAPTURE NODE
+      </div>
+
+      <style>{`
+        input::placeholder { color: rgba(60,75,100,0.55); }
+      `}</style>
+    </div>
+  );
+}

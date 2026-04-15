@@ -8,16 +8,6 @@
  * Even <Html> from drei must be called as createElement(Html, ...) because drei's
  * Html returns React.createElement("group", _extends({}, props, {ref})) — spreading
  * babel-injected props onto a THREE.Group.
- *
- * OPTIMIZATIONS IMPLEMENTED:
- * - LOD: cluster labels hidden at dist > 70, halos/rings fade at dist 70–130
- * - Hover-only edges: all edges hidden by default, hover shows note's connections
- * - Camera recenter: smooth lerp tween on Space / double-click / "↺" button
- * - Auto-rotate: pauses on interaction, resumes after 3 s of inactivity
- * - Raycasting throttle: every 3rd frame
- * - Shared materials: one MeshStandardMaterial per unique cluster color
- * - New-node flash: white emissive pulse with time-based fade
- * - Damped orbit: dampingFactor 0.08
  */
 
 import { useRef, useMemo, useState, useCallback, useEffect, createElement } from 'react';
@@ -26,13 +16,25 @@ import { OrbitControls, Html }  from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import { useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
+import { formatDistanceToNow } from 'date-fns';
+import { zhCN } from 'date-fns/locale';
 
 import { type CosmosLayout, type CosmosNote } from './cosmos-layout';
 import { NodeWindow }  from './NodeWindow';
 import type { HoveredNodeInfo } from './KnowledgeStarMap';
 import type { NodeType } from '@/types';
 
-const MONO = "'IBM Plex Mono','Roboto Mono',monospace";
+const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
+const INTER = "'Inter',system-ui,sans-serif";
+
+const NODE_TYPE_CFG: Record<string, { label: string; color: string }> = {
+  capture:  { label: 'CAPTURE',  color: '#00ff66' },
+  summary:  { label: 'SUMMARY',  color: '#66f0ff' },
+  insight:  { label: 'INSIGHT',  color: '#b496ff' },
+  action:   { label: 'ACTION',   color: '#ff4466' },
+  question: { label: 'QUESTION', color: '#ffa040' },
+  relation: { label: 'RELATION', color: '#c0c8d8' },
+};
 
 /** Pick Three.js geometry based on knowledge node type */
 function makeNodeGeometry(nodeType: NodeType | undefined, size: number): THREE.BufferGeometry {
@@ -60,8 +62,10 @@ export interface CosmosSceneProps {
   onNodeHover?:        (info: HoveredNodeInfo | null) => void;
   recenterActiveRef:   React.MutableRefObject<boolean>;
   onLodChange?:        (level: 0 | 1 | 2) => void;
-  onFlashNote?:        (id: string) => void;  // for NodeWindow derived-node flash
+  onFlashNote?:        (id: string) => void;
   userId?:             string;
+  entranceNoteId?:     string;
+  onEmptyStateClick?:  () => void;
 }
 
 // ── ImperativeCore ────────────────────────────────────────────────────────────
@@ -78,12 +82,15 @@ interface CoreProps {
   currentPosRef:      React.MutableRefObject<Map<string, THREE.Vector3>>;
   recenterActiveRef:  React.MutableRefObject<boolean>;
   onLodChange?:       (level: 0 | 1 | 2) => void;
+  entranceNoteId?:    string;
+  onEmptyStateClick?: () => void;
 }
 
 function ImperativeCore({
   layout, notes, highlightSet, flashNoteId, openNodes,
   hoveredId, setHoveredId, onNodeToggle, onNodeHover,
   currentPosRef, recenterActiveRef, onLodChange,
+  entranceNoteId, onEmptyStateClick,
 }: CoreProps) {
   const { scene, camera, gl } = useThree();
 
@@ -92,18 +99,29 @@ function ImperativeCore({
   const noteMeshes       = useRef(new Map<string, THREE.Mesh>());
   const animPhases       = useRef(new Map<string, number>());
   const notesMapRef      = useRef(new Map<string, CosmosNote>());
-  const flashTimesRef    = useRef(new Map<string, number>()); // noteId → start time
+  const flashTimesRef    = useRef(new Map<string, number>());
 
-  // Shared materials per cluster color (reduces material count from N → ≤8)
+  // Shared materials per cluster color
   const sharedMatsRef    = useRef(new Map<string, THREE.MeshStandardMaterial>());
 
-  // Edge refs for hover-only display
+  // Edge refs
   const edgesByNoteIdRef = useRef(new Map<string, THREE.Line[]>());
   const allEdgeLinesRef  = useRef<THREE.Line[]>([]);
 
   // Halo/ring refs for LOD opacity
   const haloMeshesRef    = useRef<THREE.Mesh[]>([]);
   const ringMeshesRef    = useRef<THREE.Mesh[]>([]);
+
+  // Entrance / empty state refs
+  const emptyCTAMeshRef  = useRef<THREE.Mesh | null>(null);
+  const emptyRingsRef    = useRef<THREE.Mesh[]>([]);
+  const entranceRingsRef = useRef<THREE.Mesh[]>([]);
+
+  // Camera fly-in ref
+  const flyTargetRef     = useRef<THREE.Vector3 | null>(null);
+
+  // Drag feedback ref
+  const isDraggingRef    = useRef(false);
 
   // Auto-rotate management
   const orbitAutoRotate  = useRef(true);
@@ -114,33 +132,36 @@ function ImperativeCore({
   const lastHoveredRef   = useRef<string | null>(null);
   const frameCountRef    = useRef(0);
 
-  // Stale-closure-safe refs for callbacks
-  const hoveredIdRef  = useRef<string | null>(null);
-  const onToggleRef   = useRef(onNodeToggle);
-  const onHoverRef    = useRef(onNodeHover);
-  useEffect(() => { hoveredIdRef.current = hoveredId; }, [hoveredId]);
-  useEffect(() => { onToggleRef.current  = onNodeToggle; }, [onNodeToggle]);
-  useEffect(() => { onHoverRef.current   = onNodeHover;  }, [onNodeHover]);
+  // Stale-closure-safe refs
+  const hoveredIdRef          = useRef<string | null>(null);
+  const onToggleRef           = useRef(onNodeToggle);
+  const onHoverRef            = useRef(onNodeHover);
+  const onEmptyStateClickRef  = useRef(onEmptyStateClick);
+  useEffect(() => { hoveredIdRef.current          = hoveredId;         }, [hoveredId]);
+  useEffect(() => { onToggleRef.current           = onNodeToggle;      }, [onNodeToggle]);
+  useEffect(() => { onHoverRef.current            = onNodeHover;       }, [onNodeHover]);
+  useEffect(() => { onEmptyStateClickRef.current  = onEmptyStateClick; }, [onEmptyStateClick]);
 
   // ── Build scene imperatively ───────────────────────────────────────────────
   useEffect(() => {
     const group = new THREE.Group();
     group.name  = 'cosmos-core';
 
-    // Clear lookup maps before rebuild
     meshToNoteId.current.clear();
     noteMeshes.current.clear();
     animPhases.current.clear();
     notesMapRef.current.clear();
     edgesByNoteIdRef.current.clear();
-    allEdgeLinesRef.current = [];
-    haloMeshesRef.current   = [];
-    ringMeshesRef.current   = [];
+    allEdgeLinesRef.current  = [];
+    haloMeshesRef.current    = [];
+    ringMeshesRef.current    = [];
+    entranceRingsRef.current = [];
+    emptyRingsRef.current    = [];
+    emptyCTAMeshRef.current  = null;
 
-    // Dispose and rebuild shared materials
     sharedMatsRef.current.forEach(m => m.dispose());
     sharedMatsRef.current.clear();
-    const sharedMats = sharedMatsRef.current; // capture for cleanup
+    const sharedMats = sharedMatsRef.current;
 
     // ── Lights ──────────────────────────────────────────────────────────────
     const ambient = new THREE.AmbientLight(0x000000, 0.04);
@@ -177,28 +198,20 @@ function ImperativeCore({
     // ── Galaxy cluster halos ─────────────────────────────────────────────────
     layout.clusters.forEach(cluster => {
       if (cluster.tag === '__untagged__' || cluster.noteIds.length < 2) return;
-
       const haloGeo = new THREE.SphereGeometry(cluster.radius, 20, 20);
       const haloMat = new THREE.MeshBasicMaterial({
-        color: new THREE.Color(cluster.color),
-        transparent: true,
-        opacity: 0.022,
-        side: THREE.BackSide,
-        depthWrite: false,
+        color: new THREE.Color(cluster.color), transparent: true,
+        opacity: 0.022, side: THREE.BackSide, depthWrite: false,
       });
       const halo = new THREE.Mesh(haloGeo, haloMat);
       halo.position.set(...cluster.center);
-      halo.name = `halo-${cluster.tag}`;
       group.add(halo);
       haloMeshesRef.current.push(halo);
 
       const ringGeo = new THREE.RingGeometry(cluster.radius * 0.85, cluster.radius, 32);
       const ringMat = new THREE.MeshBasicMaterial({
-        color: new THREE.Color(cluster.color),
-        transparent: true,
-        opacity: 0.055,
-        side: THREE.DoubleSide,
-        depthWrite: false,
+        color: new THREE.Color(cluster.color), transparent: true,
+        opacity: 0.055, side: THREE.DoubleSide, depthWrite: false,
       });
       const ring = new THREE.Mesh(ringGeo, ringMat);
       ring.position.set(...cluster.center);
@@ -206,88 +219,105 @@ function ImperativeCore({
       ringMeshesRef.current.push(ring);
     });
 
-    // ── Connection edges (hidden by default — shown only on hover) ───────────
+    // ── Connection edges ─────────────────────────────────────────────────────
     layout.edges.forEach(edge => {
       const geo = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(...edge.from),
         new THREE.Vector3(...edge.to),
       ]);
       const mat = new THREE.LineBasicMaterial({
-        color:       new THREE.Color(edge.color),
-        transparent: true,
-        opacity:     0,   // ← hidden by default; revealed on hover
-        depthWrite:  false,
+        color: new THREE.Color(edge.color), transparent: true,
+        opacity: 0, depthWrite: false,
       });
       const line = new THREE.Line(geo, mat);
       group.add(line);
       allEdgeLinesRef.current.push(line);
-
-      // Map edge to both connected note IDs
       for (const id of [edge.fromNoteId, edge.toNoteId]) {
         if (!edgesByNoteIdRef.current.has(id)) edgesByNoteIdRef.current.set(id, []);
         edgesByNoteIdRef.current.get(id)!.push(line);
       }
     });
 
-    // ── Note nodes (shared material per color) ───────────────────────────────
+    // ── Note nodes ───────────────────────────────────────────────────────────
     notes.forEach(note => {
       notesMapRef.current.set(note.id, note);
-
       const np = layout.positions[note.id];
       if (!np) return;
-
-      // Seeded animation phase
       let h = 0;
       for (let i = 0; i < note.id.length; i++) h = (h * 31 + note.id.charCodeAt(i)) | 0;
       animPhases.current.set(note.id, (h >>> 0) / 0xffffffff * Math.PI * 2);
-
-      // Shared material per cluster color
       if (!sharedMatsRef.current.has(np.color)) {
         sharedMatsRef.current.set(np.color, new THREE.MeshStandardMaterial({
-          color:             new THREE.Color('black'),
-          emissive:          new THREE.Color(np.color),
-          emissiveIntensity: 0.7,
-          roughness:         0.1,
-          metalness:         0.1,
+          color: new THREE.Color('black'),
+          emissive: new THREE.Color(np.color),
+          emissiveIntensity: 0.7, roughness: 0.1, metalness: 0.1,
         }));
       }
-      const mat = sharedMatsRef.current.get(np.color)!.clone(); // clone for per-node intensity
-
+      const mat  = sharedMatsRef.current.get(np.color)!.clone();
       const size = 0.50 + (note.tags?.length ?? 0) * 0.06;
-      const geo  = makeNodeGeometry(note.node_type, size);
+      const geo  = makeNodeGeometry(note.node_type as NodeType, size);
       const mesh = new THREE.Mesh(geo, mat);
       mesh.position.set(...np.pos);
       mesh.name     = `note-${note.id}`;
       mesh.userData = { noteId: note.id };
       group.add(mesh);
-
       meshToNoteId.current.set(mesh, note.id);
       noteMeshes.current.set(note.id, mesh);
       currentPosRef.current.set(note.id, mesh.position.clone());
     });
 
-    // ── Empty state ghost ────────────────────────────────────────────────────
+    // ── Entrance note rings (most recent note) ───────────────────────────────
+    if (entranceNoteId && noteMeshes.current.has(entranceNoteId)) {
+      const entranceMesh = noteMeshes.current.get(entranceNoteId)!;
+      const basePos = entranceMesh.position.clone();
+      const np = layout.positions[entranceNoteId];
+      const color = np?.color ?? '#00ff66';
+
+      for (let i = 0; i < 2; i++) {
+        const r = 1.4 + i * 0.7;
+        const rGeo = new THREE.RingGeometry(r, r + 0.08, 48);
+        const rMat = new THREE.MeshBasicMaterial({
+          color: new THREE.Color(color), transparent: true,
+          opacity: 0.5 - i * 0.15, side: THREE.DoubleSide, depthWrite: false,
+        });
+        const rMesh = new THREE.Mesh(rGeo, rMat);
+        rMesh.position.copy(basePos);
+        rMesh.userData = { baseRadius: r, ringIdx: i, entranceNoteId };
+        group.add(rMesh);
+        entranceRingsRef.current.push(rMesh);
+      }
+    }
+
+    // ── Empty state: Glowing entrance orb + pulsing rings ───────────────────
     if (notes.length === 0) {
-      const ghostPos: [number,number,number][] = [
-        [0,5,0], [-8,0,3], [8,2,-2], [-4,-5,5], [5,-4,-4], [0,-8,0],
-      ];
-      ghostPos.forEach(pos => {
-        const g = new THREE.Mesh(
-          new THREE.SphereGeometry(0.4, 10, 10),
-          new THREE.MeshBasicMaterial({ color: 0x1e2638, transparent: true, opacity: 0.5 }),
-        );
-        g.position.set(...pos);
-        group.add(g);
+      // Central orb
+      const orbGeo = new THREE.SphereGeometry(1.8, 28, 28);
+      const orbMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color('black'),
+        emissive: new THREE.Color('#00ff66'),
+        emissiveIntensity: 2.2,
+        roughness: 0.0, metalness: 0.0,
       });
-      [[0,1],[0,2],[1,3],[2,4],[3,5],[4,5],[1,2],[3,4]].forEach(([a, b]) => {
-        group.add(new THREE.Line(
-          new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(...ghostPos[a]),
-            new THREE.Vector3(...ghostPos[b]),
-          ]),
-          new THREE.LineBasicMaterial({ color: 0x1e2638, transparent: true, opacity: 0.4 }),
-        ));
-      });
+      const orb = new THREE.Mesh(orbGeo, orbMat);
+      orb.position.set(0, 0, 0);
+      orb.name = '__empty_cta__';
+      group.add(orb);
+      emptyCTAMeshRef.current = orb;
+
+      // Concentric pulsing rings
+      for (let i = 0; i < 3; i++) {
+        const baseR = 3.5 + i * 2.2;
+        const rGeo = new THREE.RingGeometry(baseR, baseR + 0.12, 64);
+        const rMat = new THREE.MeshBasicMaterial({
+          color: new THREE.Color('#00ff66'), transparent: true,
+          opacity: 0.35 - i * 0.08, side: THREE.DoubleSide, depthWrite: false,
+        });
+        const rMesh = new THREE.Mesh(rGeo, rMat);
+        rMesh.position.set(0, 0, 0);
+        rMesh.userData = { ringIdx: i, baseOpacity: 0.35 - i * 0.08 };
+        group.add(rMesh);
+        emptyRingsRef.current.push(rMesh);
+      }
     }
 
     scene.add(group);
@@ -322,33 +352,56 @@ function ImperativeCore({
 
     const onDown = (e: MouseEvent) => {
       downX = e.clientX; downY = e.clientY;
-      // Pause auto-rotate on interaction
+      isDraggingRef.current = false;
       orbitAutoRotate.current = false;
       if (autoRotateTimer.current) clearTimeout(autoRotateTimer.current);
     };
 
+    const onMove = (e: MouseEvent) => {
+      const dx = e.clientX - downX, dy = e.clientY - downY;
+      if (Math.sqrt(dx * dx + dy * dy) > 6) isDraggingRef.current = true;
+    };
+
     const onUp = (e: MouseEvent) => {
       const dx = e.clientX - downX, dy = e.clientY - downY;
-      // Resume auto-rotate after 3 s of inactivity
+      isDraggingRef.current = false;
       autoRotateTimer.current = setTimeout(() => { orbitAutoRotate.current = true; }, 3000);
-      if (Math.sqrt(dx*dx + dy*dy) > 6) return; // drag, not click
+      if (Math.sqrt(dx*dx + dy*dy) > 6) return;
+
       const rc = new THREE.Raycaster();
       rc.setFromCamera(getPointer(e), camera);
-      const hits = rc.intersectObjects(Array.from(meshToNoteId.current.keys()));
+
+      // Include empty CTA mesh in raycasting
+      const allMeshes: THREE.Mesh[] = Array.from(meshToNoteId.current.keys());
+      if (emptyCTAMeshRef.current) allMeshes.push(emptyCTAMeshRef.current);
+
+      const hits = rc.intersectObjects(allMeshes);
       if (hits.length) {
-        const id = meshToNoteId.current.get(hits[0].object as THREE.Mesh);
-        if (id) onToggleRef.current(id);
+        const hitMesh = hits[0].object as THREE.Mesh;
+        // Empty CTA click
+        if (hitMesh === emptyCTAMeshRef.current) {
+          onEmptyStateClickRef.current?.();
+          return;
+        }
+        const id = meshToNoteId.current.get(hitMesh);
+        if (id) {
+          // Trigger camera fly-in toward the clicked node
+          const worldPos = noteMeshes.current.get(id)?.position.clone();
+          if (worldPos) flyTargetRef.current = worldPos.clone();
+          onToggleRef.current(id);
+        }
       }
     };
 
     canvas.addEventListener('mousedown', onDown);
+    canvas.addEventListener('mousemove', onMove);
     canvas.addEventListener('mouseup',   onUp);
     return () => {
       canvas.removeEventListener('mousedown', onDown);
+      canvas.removeEventListener('mousemove', onMove);
       canvas.removeEventListener('mouseup',   onUp);
       if (autoRotateTimer.current) clearTimeout(autoRotateTimer.current);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [camera, gl]);
 
   // ── Animation + LOD + hover edges ─────────────────────────────────────────
@@ -360,22 +413,28 @@ function ImperativeCore({
 
     frameCountRef.current++;
 
+    // ── Camera fly-in tween ─────────────────────────────────────────────────
+    if (flyTargetRef.current) {
+      const dir = camera.position.clone().sub(flyTargetRef.current).normalize().multiplyScalar(20);
+      const targetPos = flyTargetRef.current.clone().add(dir);
+      camera.position.lerp(targetPos, 0.055);
+      (controls as unknown as { target: THREE.Vector3; update: () => void } | null)?.target?.lerp(flyTargetRef.current, 0.055);
+      (controls as unknown as { update: () => void } | null)?.update?.();
+      if (camera.position.distanceTo(targetPos) < 1.5) flyTargetRef.current = null;
+    }
+
     // ── Camera recenter tween ───────────────────────────────────────────────
     if (recenterActiveRef.current) {
       camera.position.lerp(INIT_CAM_POS, 0.065);
       (controls as unknown as { target: THREE.Vector3; update: () => void } | null)?.target?.lerp(INIT_CAM_TGT, 0.065);
       (controls as unknown as { update: () => void } | null)?.update?.();
-      if (camera.position.distanceTo(INIT_CAM_POS) < 0.8) {
-        recenterActiveRef.current = false;
-      }
+      if (camera.position.distanceTo(INIT_CAM_POS) < 0.8) recenterActiveRef.current = false;
     }
 
     // ── Auto-rotate sync ────────────────────────────────────────────────────
     if (controls) {
       const oc = controls as unknown as { autoRotate: boolean };
-      if (oc.autoRotate !== orbitAutoRotate.current) {
-        oc.autoRotate = orbitAutoRotate.current;
-      }
+      if (oc.autoRotate !== orbitAutoRotate.current) oc.autoRotate = orbitAutoRotate.current;
     }
 
     // ── LOD level ───────────────────────────────────────────────────────────
@@ -385,7 +444,7 @@ function ImperativeCore({
       onLodChange?.(newLod);
     }
 
-    // ── Halo / ring LOD opacity (smooth lerp) ───────────────────────────────
+    // ── Halo / ring LOD opacity ──────────────────────────────────────────────
     const haloTarget = dist < 70 ? 0.022 : dist < 130 ? 0.022 * (1 - (dist - 70) / 60) : 0;
     const ringTarget = dist < 70 ? 0.055 : dist < 130 ? 0.055 * (1 - (dist - 70) / 60) : 0;
     haloMeshesRef.current.forEach(h => {
@@ -400,11 +459,7 @@ function ImperativeCore({
     // ── Hover-only edge reveal ───────────────────────────────────────────────
     if (hoveredId !== lastHoveredRef.current) {
       lastHoveredRef.current = hoveredId;
-      // Hide all
-      allEdgeLinesRef.current.forEach(l => {
-        (l.material as THREE.LineBasicMaterial).opacity = 0;
-      });
-      // Show connected edges
+      allEdgeLinesRef.current.forEach(l => { (l.material as THREE.LineBasicMaterial).opacity = 0; });
       if (hoveredId) {
         edgesByNoteIdRef.current.get(hoveredId)?.forEach(l => {
           (l.material as THREE.LineBasicMaterial).opacity = 0.28;
@@ -412,7 +467,34 @@ function ImperativeCore({
       }
     }
 
+    // ── Empty state orb + ring animation ────────────────────────────────────
+    if (emptyCTAMeshRef.current) {
+      const orbMat = emptyCTAMeshRef.current.material as THREE.MeshStandardMaterial;
+      orbMat.emissiveIntensity = 2.0 + Math.sin(t * 1.8) * 0.6;
+      emptyCTAMeshRef.current.scale.setScalar(1 + Math.sin(t * 1.2) * 0.05);
+      emptyRingsRef.current.forEach((ring, i) => {
+        const m = ring.material as THREE.MeshBasicMaterial;
+        const base = ring.userData.baseOpacity as number;
+        m.opacity = base * (0.7 + Math.sin(t * 0.9 + i * Math.PI / 1.5) * 0.5);
+        const s = 1 + Math.sin(t * 0.6 + i * Math.PI / 1.5) * 0.12;
+        ring.scale.setScalar(s);
+        ring.rotation.z += 0.003 * (i % 2 === 0 ? 1 : -1);
+      });
+    }
+
+    // ── Entrance note rings animation ────────────────────────────────────────
+    entranceRingsRef.current.forEach((ring, i) => {
+      const noteId = ring.userData.entranceNoteId as string;
+      const mesh = noteMeshes.current.get(noteId);
+      if (mesh) ring.position.copy(mesh.position);
+      const m = ring.material as THREE.MeshBasicMaterial;
+      m.opacity = 0.35 - i * 0.1 + Math.sin(t * 1.0 + i * Math.PI) * 0.2;
+      ring.rotation.z += 0.004 * (i % 2 === 0 ? 1 : -1);
+    });
+
     // ── Note animation ──────────────────────────────────────────────────────
+    const dragBoost = isDraggingRef.current ? 3.0 : 1.0;
+
     noteMeshes.current.forEach((mesh, noteId) => {
       const np    = layout.positions[noteId];
       if (!np) return;
@@ -423,14 +505,12 @@ function ImperativeCore({
       let scale     = 1.0;
       let intensity = pulse;
       const flashStart = flashTimesRef.current.get(noteId);
+      const isEntrance = noteId === entranceNoteId;
 
       if (flashStart !== undefined) {
-        // White flash pulse: 0–0.4 s = flash in, 0.4–1.2 s = fade out
         const elapsed = t - flashStart;
         if (elapsed < 1.2) {
-          const p = elapsed < 0.4
-            ? elapsed / 0.4
-            : 1 - (elapsed - 0.4) / 0.8;
+          const p = elapsed < 0.4 ? elapsed / 0.4 : 1 - (elapsed - 0.4) / 0.8;
           mat.emissive.setRGB(
             THREE.MathUtils.lerp(new THREE.Color(np.color).r, 1, p),
             THREE.MathUtils.lerp(new THREE.Color(np.color).g, 1, p),
@@ -448,21 +528,24 @@ function ImperativeCore({
         scale = 1.25; intensity = 2.0;
       } else if (openNodes.has(noteId)) {
         scale = 1.1; intensity = 1.6;
+      } else if (isEntrance) {
+        // Entrance note: stronger base glow + pulse
+        scale = 1.3 + Math.sin(t * 1.4) * 0.08;
+        intensity = 1.8 + Math.sin(t * 1.4) * 0.5;
       }
 
       mesh.scale.setScalar(scale);
       mat.emissiveIntensity = intensity;
 
-      // Floating motion
+      // Floating motion (amplified during drag for physics feel)
       mesh.position.set(
-        np.pos[0] + Math.sin(t * 0.3  + phase)       * 0.18,
-        np.pos[1] + Math.cos(t * 0.25 + phase * 0.8) * 0.22,
-        np.pos[2] + Math.sin(t * 0.2  + phase * 1.3) * 0.15,
+        np.pos[0] + Math.sin(t * 0.3  + phase)       * 0.18 * dragBoost,
+        np.pos[1] + Math.cos(t * 0.25 + phase * 0.8) * 0.22 * dragBoost,
+        np.pos[2] + Math.sin(t * 0.2  + phase * 1.3) * 0.15 * dragBoost,
       );
       currentPosRef.current.set(noteId, mesh.position.clone());
     });
 
-    // Trigger flash for new flashNoteId
     if (flashNoteId && !flashTimesRef.current.has(flashNoteId)) {
       flashTimesRef.current.set(flashNoteId, t);
     }
@@ -470,8 +553,13 @@ function ImperativeCore({
     // ── Hover raycasting (throttled: every 3rd frame) ───────────────────────
     if (frameCountRef.current % 3 !== 0) return;
     raycaster.current.setFromCamera(pointer, camera);
-    const hits = raycaster.current.intersectObjects(Array.from(meshToNoteId.current.keys()));
-    const hitId = hits.length ? meshToNoteId.current.get(hits[0].object as THREE.Mesh) ?? null : null;
+    const allMeshes: THREE.Object3D[] = Array.from(meshToNoteId.current.keys());
+    if (emptyCTAMeshRef.current) allMeshes.push(emptyCTAMeshRef.current);
+    const hits = raycaster.current.intersectObjects(allMeshes);
+    const hitMesh = hits.length ? hits[0].object as THREE.Mesh : null;
+    const hitId = hitMesh && hitMesh !== emptyCTAMeshRef.current
+      ? (meshToNoteId.current.get(hitMesh) ?? null)
+      : null;
 
     if (hitId !== hoveredIdRef.current) {
       hoveredIdRef.current = hitId;
@@ -488,7 +576,7 @@ function ImperativeCore({
   return null;
 }
 
-// ── Cluster label (Html — must use createElement, not JSX) ───────────────────
+// ── Cluster label ─────────────────────────────────────────────────────────────
 function ClusterLabel({ cluster }: { cluster: CosmosLayout['clusters'][0] }) {
   if (cluster.tag === '__untagged__' || cluster.noteIds.length < 3) return null;
   return createElement(Html,
@@ -510,16 +598,27 @@ function ClusterLabel({ cluster }: { cluster: CosmosLayout['clusters'][0] }) {
   );
 }
 
-// ── Empty state hint ──────────────────────────────────────────────────────────
-function EmptyHint() {
+// ── Empty state CTA label ─────────────────────────────────────────────────────
+function EmptyCtaLabel({ onClick }: { onClick?: () => void }) {
   return createElement(Html,
-    { position: [0, -13, 0] as [number,number,number], center: true, style: { pointerEvents: 'none' } },
-    <div style={{
-      fontFamily: MONO, fontSize: 9, letterSpacing: '0.08em',
-      color: 'rgba(60,72,95,0.50)', textAlign: 'center' as const, lineHeight: 1.8,
-    }}>
-      KNOWLEDGE COSMOS<br />
-      <span style={{ fontSize: 8, opacity: 0.6 }}>使用 Capture Pod 投入第一条知识</span>
+    {
+      position: [0, -4, 0] as [number,number,number],
+      center: true,
+      style: { pointerEvents: 'auto', cursor: 'pointer' },
+    },
+    <div
+      onClick={onClick}
+      style={{
+        fontFamily: MONO, textAlign: 'center' as const,
+        animation: 'cosmos-pulse 2.2s ease-in-out infinite',
+      }}
+    >
+      <div style={{ fontSize: 11, letterSpacing: '0.14em', color: 'rgba(0,255,102,0.80)', marginBottom: 5, textTransform: 'uppercase' as const }}>
+        KNOWLEDGE COSMOS
+      </div>
+      <div style={{ fontSize: 9, color: 'rgba(0,255,102,0.50)', letterSpacing: '0.10em' }}>
+        点击开始第一条知识 →
+      </div>
     </div>
   );
 }
@@ -529,6 +628,7 @@ export function CosmosScene({
   layout, notes, highlightedNoteIds = [],
   flashNoteId = null, openNodes, onNodeToggle, onNodeHover,
   recenterActiveRef, onLodChange, onFlashNote, userId,
+  entranceNoteId, onEmptyStateClick,
 }: CosmosSceneProps) {
   const highlightSet  = useMemo(() => new Set(highlightedNoteIds), [highlightedNoteIds]);
   const navigate      = useNavigate();
@@ -558,34 +658,108 @@ export function CosmosScene({
         currentPosRef={currentPosRef}
         recenterActiveRef={recenterActiveRef}
         onLodChange={handleLodChange}
+        entranceNoteId={entranceNoteId}
+        onEmptyStateClick={onEmptyStateClick}
       />
 
-      {/* Cluster labels — hidden when LOD level > 0 (camera too far) */}
+      {/* Cluster labels */}
       {lodLevel === 0 && layout.clusters.map(c => <ClusterLabel key={c.tag} cluster={c} />)}
 
-      {/* Empty state */}
-      {notes.length === 0 && <EmptyHint />}
+      {/* Empty state CTA */}
+      {notes.length === 0 && <EmptyCtaLabel onClick={onEmptyStateClick} />}
 
-      {/* Hover label */}
+      {/* Hover label — enhanced with type badge, 12px title, tags, time, CTA */}
       {hoveredId && !openNodes.has(hoveredId) && (() => {
         const pos  = currentPosRef.current.get(hoveredId);
         const note = notesMap.get(hoveredId);
         const np   = layout.positions[hoveredId];
         if (!pos || !note || !np) return null;
+
+        const typeCfg = NODE_TYPE_CFG[note.node_type ?? 'capture'] ?? NODE_TYPE_CFG['capture'];
+        const timeAgo = note.created_at
+          ? formatDistanceToNow(new Date(note.created_at), { locale: zhCN, addSuffix: true })
+          : '';
+        const isEntrance = note.id === entranceNoteId;
+
+        const r = parseInt(np.color.slice(1,3), 16);
+        const g = parseInt(np.color.slice(3,5), 16);
+        const b = parseInt(np.color.slice(5,7), 16);
+
         return createElement(Html,
           {
             key: `label-${hoveredId}`,
-            position: [pos.x, pos.y + 1.2, pos.z] as [number,number,number],
+            position: [pos.x, pos.y + 2.2, pos.z] as [number,number,number],
             center: true,
             style: { pointerEvents: 'none', whiteSpace: 'nowrap' },
           },
           <div style={{
-            fontFamily: MONO, fontSize: 9, letterSpacing: '0.05em',
-            color: np.color, background: 'rgba(1,4,13,0.90)',
-            border: `1px solid ${np.color}44`, borderRadius: 5, padding: '3px 7px',
-            boxShadow: `0 0 10px ${np.color}28`,
+            width: 220,
+            background: 'rgba(1,4,13,0.95)',
+            backdropFilter: 'blur(16px)',
+            border: `1px solid rgba(${r},${g},${b},0.38)`,
+            borderRadius: 8,
+            overflow: 'hidden',
+            boxShadow: `0 0 24px rgba(${r},${g},${b},0.18), 0 12px 40px rgba(0,0,0,0.70)`,
+            animation: 'cosmos-window-in 0.15s cubic-bezier(0.16,1,0.3,1)',
           }}>
-            {(note.title || '未命名').slice(0, 26)}{(note.title || '').length > 26 ? '…' : ''}
+            {/* Accent top bar */}
+            <div style={{ height: 1.5, background: `linear-gradient(90deg, transparent, ${np.color}, transparent)` }} />
+            <div style={{ padding: '8px 10px 8px' }}>
+              {/* Type badge row */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}>
+                <span style={{
+                  fontFamily: MONO, fontSize: 7.5, letterSpacing: '0.10em',
+                  color: typeCfg.color,
+                  background: `${typeCfg.color}15`,
+                  border: `1px solid ${typeCfg.color}35`,
+                  padding: '1px 5px', borderRadius: 3,
+                  textTransform: 'uppercase' as const,
+                }}>{typeCfg.label}</span>
+                {isEntrance && (
+                  <span style={{
+                    fontFamily: MONO, fontSize: 7, color: '#ffa040',
+                    background: 'rgba(255,160,64,0.12)',
+                    border: '1px solid rgba(255,160,64,0.28)',
+                    padding: '1px 5px', borderRadius: 3,
+                  }}>最近活跃</span>
+                )}
+              </div>
+              {/* Title */}
+              <div style={{
+                fontFamily: INTER, fontSize: 12, fontWeight: 600,
+                color: 'rgba(220,230,250,0.95)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                marginBottom: 6,
+              }}>
+                {(note.title || '(未命名)').slice(0, 30)}{(note.title || '').length > 30 ? '…' : ''}
+              </div>
+              {/* Tags + time */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', marginBottom: 7 }}>
+                {note.tags?.slice(0, 2).map(tag => (
+                  <span key={tag} style={{
+                    fontFamily: MONO, fontSize: 8, color: `rgba(${r},${g},${b},0.70)`,
+                    background: `rgba(${r},${g},${b},0.09)`,
+                    border: `1px solid rgba(${r},${g},${b},0.20)`,
+                    padding: '1px 5px', borderRadius: 3,
+                  }}>#{tag}</span>
+                ))}
+                {timeAgo && (
+                  <span style={{
+                    marginLeft: 'auto', fontFamily: MONO, fontSize: 8,
+                    color: 'rgba(80,90,115,0.55)',
+                  }}>{timeAgo}</span>
+                )}
+              </div>
+              {/* CTA hint */}
+              <div style={{
+                fontFamily: MONO, fontSize: 8.5, letterSpacing: '0.05em',
+                color: `rgba(${r},${g},${b},0.55)`,
+                borderTop: `1px solid rgba(${r},${g},${b},0.10)`,
+                paddingTop: 6,
+              }}>
+                ▶ 点击展开
+              </div>
+            </div>
           </div>
         );
       })()}
@@ -615,7 +789,6 @@ export function CosmosScene({
         );
       })}
 
-      {/* OrbitControls — createElement avoids babel data-source-* injection */}
       {createElement(OrbitControls, {
         enablePan: true, enableZoom: true, enableRotate: true,
         autoRotate: true, autoRotateSpeed: 0.10,
@@ -625,7 +798,6 @@ export function CosmosScene({
         makeDefault: true,
       })}
 
-      {/* Bloom — createElement avoids babel data-source-* injection */}
       {createElement(EffectComposer, {},
         createElement(Bloom, {
           luminanceThreshold: 0.20,

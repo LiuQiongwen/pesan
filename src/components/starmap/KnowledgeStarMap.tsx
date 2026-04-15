@@ -15,12 +15,13 @@ interface KnowledgeStarMapProps {
   notes:               CosmosNote[];
   loading?:            boolean;
   onNodeHover?:        (info: HoveredNodeInfo | null) => void;
-  onNodeClick?:        (noteId: string) => void; // kept for compat (unused)
+  onNodeClick?:        (noteId: string) => void;
   highlightedNoteIds?: string[];
   flashNoteId?:        string | null;
-  recenterTrigger?:    number; // increment to trigger smooth camera recenter
-  onFlashNote?:        (id: string) => void;  // for NodeWindow → derived node flash
+  recenterTrigger?:    number;
+  onFlashNote?:        (id: string) => void;
   userId?:             string;
+  onEmptyStateClick?:  () => void;
 }
 
 // ── Loading fallback ──────────────────────────────────────────────────────────
@@ -53,10 +54,19 @@ export default function KnowledgeStarMap({
   recenterTrigger = 0,
   onFlashNote,
   userId,
+  onEmptyStateClick,
 }: KnowledgeStarMapProps) {
   const layout           = useMemo(() => buildCosmosLayout(notes), [notes]);
   const [openNodes,      setOpenNodes]   = useState<Set<string>>(new Set());
   const recenterActiveRef = useRef(false);
+
+  // Compute the most recently created note as the "entrance" node
+  const entranceNoteId = useMemo(() => {
+    if (!notes.length) return undefined;
+    return [...notes].sort((a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )[0].id;
+  }, [notes]);
 
   // ── Max 3 node windows ────────────────────────────────────────────────────
   const toggleNode = useCallback((id: string) => {
@@ -145,6 +155,8 @@ export default function KnowledgeStarMap({
               recenterActiveRef={recenterActiveRef}
               onFlashNote={onFlashNote}
               userId={userId}
+              entranceNoteId={entranceNoteId}
+              onEmptyStateClick={onEmptyStateClick}
             />
           )}
         </Suspense>
