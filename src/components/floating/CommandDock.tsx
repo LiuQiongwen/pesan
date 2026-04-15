@@ -81,7 +81,7 @@ export function CommandDock() {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           boxShadow: '0 0 16px rgba(0,255,102,0.12)',
         }}>
-          <span style={{ fontFamily: MONO, fontWeight: 700, fontSize: 16, color: 'rgba(0,255,102,0.80)' }}>平</span>
+          <span style={{ fontFamily: MONO, fontWeight: 700, fontSize: 10, color: 'rgba(0,255,102,0.80)', letterSpacing: '0.04em' }}>pesan</span>
         </div>
         <span style={{ fontFamily: MONO, fontSize: 8, color: 'rgba(60,75,100,0.60)', letterSpacing: '0.06em' }}>COSMOS</span>
       </div>
