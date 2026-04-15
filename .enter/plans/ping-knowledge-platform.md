@@ -1,143 +1,150 @@
-# Responsive Sci-Fi UI — Desktop Viewport Adaptation
+# First Action Interaction Design — Knowledge Cosmos Homepage
 
 ## Context
-All interactive UI elements use hard-coded `px` values. This causes:
-- CommandDock buttons that overflow on narrow windows
-- FloatingPod windows too small on large screens, clipped on small ones
-- QuickCaptureBar and HUD text illegible at small viewport sizes
-- No minimum click targets enforced on different screen densities
 
-The goal: keep the exact sci-fi aesthetic, replace rigid `px` with `clamp(min, vw/vh, max)` on all key sizing properties. No layout restructure — just fluid scaling.
+The homepage is a 3D star map (Three.js / R3F) not a dashboard. The goal is:
+> **User enters → within 3 seconds produces one natural action → immediately feels the cosmos is operable**
+
+Current state (already implemented):
+- Empty state: large pulsing green orb + 3 concentric rings + Html CTA label
+- Non-empty: entrance note (most recent) gets 2 rings
+- Camera fly-in when any node is clicked (lerp to ~20 units)
+- QuickCaptureBar: floating input above dock, `/`/`Q` shortcut, Enter → creates node + flash
+- Drag feedback: 3× node animation amplitude during drag
+
+This plan strengthens the **signal quality**, **feedback chain**, and **dual path** so the first action feels inevitable and rewarding.
 
 ---
 
-## Strategy: clamp() everywhere
+## Design: 5 Questions
+
+### 1. Primary Entry Object
+
+**Single rule**: at any moment, exactly ONE object in the scene should pulse at maximum luminance. Everything else should be dimmer.
+
+- **Empty state (0 notes)**: Central breathing orb (radius 2.0, #00ff66) with 3 outward-sweeping rings. This is the ONLY bright green element in the scene.
+- **Non-empty (1+ notes)**: Most recently created note gets a pulsing double-ring halo 2× brighter than normal nodes. It is the brightest single point in the galaxy.
+
+Both objects draw the eye because they violate the otherwise uniform visual field — they are obviously "different."
+
+### 2. Best First Action: Click
+
+**Recommended: Click → Camera fly-in + Panel open**
+
+Why not drag? Drag feels like navigation, not creation. It doesn't give a "reward."
+Why not text first? Text requires intent. Click only requires curiosity.
+Why not fly-in alone? Camera movement without a panel opening feels like watching, not doing.
+
+The ideal sequence is **click → two simultaneous outputs: camera moves AND a panel opens**. This combination says: "You just did something. The cosmos responded. Here's where to go next."
+
+### 3. Feedback Chain After First Click
 
 ```
-clamp(MIN, PREFERRED, MAX)
-MIN  → usable floor (accessibility / minimum tap target)
-PREFERRED → viewport-relative (vw, vh, vmin)
-MAX  → ceiling so it doesn't look absurd on 4K
+t=0ms    User clicks the entrance orb/node
+t=0ms    Orb: emits one radial wave mesh (Ring, scales 1→8, opacity 1→0, 600ms)
+t=80ms   Camera: begins smooth lerp toward orb position at dist=20 (1200ms duration)
+t=150ms  Capture Pod: opens with pod-in animation (scale 0.92→1, opacity 0→1, 280ms)
+t=300ms  QuickCaptureBar: input auto-focuses, placeholder cursor blinks
+t=600ms  Orb: rings resume normal breathing animation
 ```
 
+User sees: **space moves, a panel opens, an input blinks at them.** Three sensory confirmations at once. They know exactly what happened and what to do next.
+
+### 4. "No Learning, No Failure, Immediate Feedback" Rules
+
+| Principle | Implementation |
+|-----------|----------------|
+| No learning | Orb is visually unique — no text needed to identify it as clickable |
+| No failure | Every click on the star map does SOMETHING (fly-in + panel or node detail) |
+| Immediate feedback | Three simultaneous outputs within 600ms guarantee perceptible response |
+| Secondary path | QuickCaptureBar is always visible — typing is equally valid as first action |
+| No wrong answer | Clicking wrong node still flies camera there + shows node content |
+
+### 5. First Action Visibility Without Breaking Immersion
+
+Rules to follow:
+- No modals, no onboarding flows, no tooltips on hover
+- No "START HERE →" text labels — use animation amplitude instead
+- The orb's breathing period (2.4s) matches human heartbeat rhythm → subconsciously "alive"
+- The outward ring sweep (every 3.2s) mimics a radar ping → universally understood as "active"
+- On hover: cursor changes to `pointer`, orb brightens 20% → affordance confirmed silently
+- The only text near the orb: `< CLICK TO BEGIN >` in 9px MONO at 55% opacity — readable but not dominating
+
 ---
 
-## Files to Modify
+## Implementation Plan
 
-### 1. `src/components/floating/CommandDock.tsx`
+### Files to Modify
 
-| Property | Before | After |
-|---|---|---|
-| Button width | `80px` | `clamp(64px, 6.0vw, 88px)` |
-| Button height | `62px` | `clamp(50px, 5.2vh, 68px)` |
-| Button gap | `8px` | `clamp(5px, 0.6vw, 10px)` |
-| Icon container | `32×32px` | `clamp(26px, 2.4vw, 34px)` sq |
-| Icon size | `size={22}` | via `style` override: `clamp(16px,1.5vw,22px)` |
-| Label (Inter) | `12px` | `clamp(10px, 0.9vw, 13px)` |
-| Sublabel (Mono) | `9px` | `clamp(7.5px, 0.7vw, 10px)` |
-| Dock padding | `10px 16px` | `clamp(8px,0.8vh,12px) clamp(12px,1.1vw,18px)` |
-| Brand mark box | `36px sq` | `clamp(28px,2.8vw,38px)` |
-| Connector line | `20px` | `clamp(10px,1.4vw,22px)` |
-| Border radius (button) | `14px` | `clamp(10px,1.1vw,15px)` |
-| Dock border-radius | `20px` | `clamp(14px,1.6vw,22px)` |
+#### 1. `src/components/starmap/CosmosScene.tsx`
 
-Lucide icon size prop stays numeric `22` but is overridden via `style={{ width: 'clamp(16px,1.5vw,22px)', height: 'clamp(16px,1.5vw,22px)' }}` — Lucide React honors this override.
+**A. Radial wave on orb/node click**
+- When `emptyCTAMeshRef.current` is clicked → create a temporary `Ring` mesh at the orb position
+- Animate: `scale` from `1` to `10`, `opacity` from `0.8` to `0` over 600ms
+- Done in `useFrame` with a `waveRef` array tracking `{ mesh, t }` entries
 
----
+**B. Cursor feedback on hover**
+- When raycasting in `useFrame` hits the empty CTA mesh: `gl.domElement.style.cursor = 'pointer'`
+- On hover clear: restore `gl.domElement.style.cursor = 'grab'` (or 'default')
 
-### 2. `src/components/floating/FloatingPod.tsx`
+**C. Entrance rings improvement**
+- Increase entrance ring emissiveIntensity from 0.8 to 2.0
+- Add a `MeshBasicMaterial` (unlit) ring at 1.5x node radius, opacity cycling 0.3→0.9
 
-Replace fixed `SIZE` record with CSS `clamp` strings:
+**D. Orb text improvement**
+- Change CTA Html label text from "点击开始第一条知识" to `< CLICK TO BEGIN >`
+- Add second line (sub-label): "在宇宙中创造第一条知识" at 50% opacity
 
-```ts
-const SIZE: Record<SizeMode, { width: string; bodyMaxH: string }> = {
-  light:    { width: 'clamp(280px, 28vw, 440px)',  bodyMaxH: 'clamp(200px, 28vh, 340px)' },
-  expanded: { width: 'clamp(320px, 34vw, 660px)',  bodyMaxH: 'clamp(240px, 44vh, 580px)' },
-};
+#### 2. `src/components/starmap/QuickCaptureBar.tsx`
+
+**A. First-load auto-focus (empty state)**
+- Accept new prop: `hasNotes: boolean`
+- When `hasNotes === false`: after 3000ms delay, auto-focus the input
+- This silently activates the "typing path" if user hasn't clicked the orb yet
+
+**B. Attention animation when idle**
+- When `hasNotes === false` and not focused: add a CSS `attention-pulse` animation to the border
+- Border cycles: `rgba(0,255,102,0.12)` → `rgba(0,255,102,0.38)` → `rgba(0,255,102,0.12)` every 3s
+- When `hasNotes === true` or focused: no extra animation (normal behavior)
+
+#### 3. `src/components/layout/StarMapLayout.tsx`
+
+**A. Pass `hasNotes` to QuickCaptureBar**
+```tsx
+<QuickCaptureBar 
+  userId={user.id} 
+  onFlashNote={flashNote}
+  hasNotes={notes.length > 0}
+/>
 ```
 
-Responsive header and title:
-| Property | Before | After |
-|---|---|---|
-| Icon container | `40×40px` | `clamp(32px, 3.0vw, 44px)` |
-| Icon size | `size={20}` | via `style` override `clamp(15px,1.4vw,20px)` |
-| Title font | `14px` | `clamp(12px, 1.1vw, 15px)` |
-| Subtitle font | `10px` | `clamp(9px, 0.8vw, 11px)` |
-| Header gap | `12px` | `clamp(9px, 1.0vw, 13px)` |
-| Header padding | `13px 16px` | `clamp(10px,1.1vh,14px) clamp(13px,1.3vw,18px)` |
-| Control buttons | `28×28px` | `clamp(24px, 2.2vw, 30px)` |
-| Footer font | `9px` | `clamp(8px, 0.75vw, 10px)` |
-| Left accent bar | `5px` | `clamp(4px, 0.4vw, 5px)` |
+### CSS-Only Changes (inline in component)
 
-**Drag boundary fix**: Replace `window.innerWidth - width - 4` (where `width` was a fixed number) with `window.innerWidth - (panelRef.current?.getBoundingClientRect().width ?? 400) - 4` so the clamp CSS is correctly respected.
-
-Also update `top: y` drag constraint to use `window.innerHeight - (panelRef.current?.getBoundingClientRect().height ?? 300)` instead of hardcoded `- 60`.
-
----
-
-### 3. `src/components/starmap/QuickCaptureBar.tsx`
-
-| Property | Before | After |
-|---|---|---|
-| Width | `460px` | `clamp(300px, 34vw, 560px)` |
-| Height | `46px` | `clamp(40px, 4.5vh, 54px)` |
-| Bottom offset | `130px` | `clamp(105px, 11.5vh, 148px)` |
-| Input font | `12px` | `clamp(11px, 0.95vw, 13px)` |
-| Icon box | `26px` | `clamp(22px, 2.1vw, 28px)` |
-| Submit button | `30px` | `clamp(26px, 2.4vw, 32px)` |
-| Border radius | `10px` | `clamp(8px, 0.9vw, 12px)` |
-| Sub-label font | `10px` | `clamp(9px, 0.8vw, 11px)` |
-
----
-
-### 4. `src/components/layout/StarMapLayout.tsx`
-
-Top-left HUD sizing:
-| Property | Before | After |
-|---|---|---|
-| HUD padding | `18px 22px` | `clamp(14px,1.5vh,22px) clamp(16px,1.5vw,22px)` |
-| Username font | `13px` | `clamp(11px, 1.0vw, 14px)` |
-| Stats font | `8px` | `clamp(7px, 0.7vw, 9px)` |
-| Recenter button font | `8px` | `clamp(7.5px, 0.7vw, 9px)` |
-| Recenter button padding | `4px 9px` | `clamp(3px,0.4vh,5px) clamp(7px,0.7vw,11px)` |
-| HUD margin-bottom (username) | `2px` | `clamp(1px, 0.2vh, 3px)` |
-| Stats margin-bottom | `10px` | `clamp(7px, 0.8vh, 12px)` |
-
----
-
-### 5. `src/components/floating/SettingsCapsule.tsx`
-
-| Property | Before | After |
-|---|---|---|
-| top/right position | `18px` | `clamp(12px, 1.5vh, 22px)` / `clamp(12px, 1.5vw, 22px)` |
-| Trigger padding | `6px 10px` | `clamp(5px,0.5vh,8px) clamp(8px,0.8vw,12px)` |
-| Trigger font | `9px` | `clamp(8px, 0.75vw, 10px)` |
-| Dropdown width | `260px` | `clamp(220px, 20vw, 280px)` |
-
----
-
-## No Changes Needed
-- `CosmosScene.tsx` — Three.js fills 100vw/100vh, nodes scale naturally
-- `KnowledgeStarMap.tsx` — Canvas covers viewport
-- Pod content components (CaptureBox, etc.) — children scroll inside the responsive FloatingPod body
-
----
-
-## Key CSS Rules Added to `index.css`
-Add two CSS custom properties for responsive dock/pod spacing:
 ```css
-:root {
-  --dock-bottom: clamp(20px, 2.2vh, 32px);
-  --qbar-bottom: clamp(105px, 11.5vh, 148px);
+/* QuickCaptureBar idle pulse for empty state */
+@keyframes qbar-attention {
+  0%,100% { border-color: rgba(0,255,102,0.12); box-shadow: none; }
+  50%      { border-color: rgba(0,255,102,0.38); box-shadow: 0 0 18px rgba(0,255,102,0.10); }
 }
 ```
-Then use `var(--dock-bottom)` in CommandDock and `var(--qbar-bottom)` in QuickCaptureBar for consistent vertical spacing between the two.
+
+---
+
+## Implementation Order
+
+1. **CosmosScene.tsx** — radial wave on click + cursor pointer + entrance ring brightness
+2. **QuickCaptureBar.tsx** — `hasNotes` prop + auto-focus + attention pulse
+3. **StarMapLayout.tsx** — pass `hasNotes` to QuickCaptureBar
 
 ---
 
 ## Verification
-- [ ] At 800×600: dock fits without overflow, buttons ≥ 44px height, fonts ≥ 10px
-- [ ] At 1440×900 (standard laptop): dock buttons ~80px, fonts at comfortable size
-- [ ] At 2560×1440 (2K): pods expand to max clamp values, nothing overly large
-- [ ] Pods can be dragged to edges without going off-screen at any viewport size
-- [ ] QuickCaptureBar stays above CommandDock at all viewport heights
+
+| Test scenario | Expected result |
+|---------------|----------------|
+| First visit (0 notes), no action for 3s | Capture bar auto-focuses, cursor blinks |
+| Click empty state orb | Radial wave expands, camera moves forward, Capture Pod opens |
+| Click any node (non-empty state) | Camera flies to that node, node window opens |
+| Type text + Enter in capture bar | New node flashes into star map, bar shows success state |
+| Drag the star map | All nodes increase wobble amplitude (cosmos "stirs") |
+| Hover over entrance node | Cursor changes to pointer |
