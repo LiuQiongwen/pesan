@@ -15,7 +15,7 @@ Rules: dominant_themes max 3. blind_spots max 2. bias_signatures max 2. stagnati
     const r = await fetch("https://api.enter.pro/code/api/v1/ai/messages", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "anthropic/claude-sonnet-4.6", system, messages: [{ role: "user", content: `${notes.length} notes:\n${noteList}` }], stream: false, max_tokens: 700 }),
+      body: JSON.stringify({ model: "google/gemini-3.1-flash-lite-preview", system, messages: [{ role: "user", content: `${notes.length} notes:\n${noteList}` }], stream: false, max_tokens: 700 }),
     });
     if (!r.ok) { const txt = await r.text(); let msg = `AI error (${r.status})`; try { msg = JSON.parse(txt).error?.message || msg; } catch(_e){} return new Response(JSON.stringify({ success: false, error: msg }), { status: 200, headers: { ...cors, "Content-Type": "application/json" } }); }
     const data = await r.json();

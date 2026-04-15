@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
     const r = await fetch("https://api.enter.pro/code/api/v1/ai/messages", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "anthropic/claude-sonnet-4.6", system, messages: [{ role: "user", content: `Reframe this content:\n\n${content.slice(0,2000)}` }], stream: false, max_tokens: 900 }),
+      body: JSON.stringify({ model: "google/gemini-3.1-flash-lite-preview", system, messages: [{ role: "user", content: `Reframe this content:\n\n${content.slice(0,2000)}` }], stream: false, max_tokens: 900 }),
     });
     if (!r.ok) { const txt = await r.text(); let msg = `AI error (${r.status})`; try { msg = JSON.parse(txt).error?.message || msg; } catch(_e){} return new Response(JSON.stringify({ success: false, error: msg }), { status: 200, headers: { ...cors, "Content-Type": "application/json" } }); }
     const data = await r.json();

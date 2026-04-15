@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
       try {
         const urlResponse = await fetch(sourceUrl || content, {
           headers: { "User-Agent": "Mozilla/5.0 (compatible; KnowledgeBot/1.0)" },
-          signal: AbortSignal.timeout(15000),
+          signal: AbortSignal.timeout(10000),
         });
         const html = await urlResponse.text();
         rawContent = html
@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
       method: "POST",
       headers: { Authorization: `Bearer ${AI_API_TOKEN}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "anthropic/claude-sonnet-4.6",
+        model: "google/gemini-3.1-flash-lite-preview",
         system: systemPrompt,
         messages: [{ role: "user", content: `分析以下内容：\n\n${rawContent}` }],
         stream: false,

@@ -24,7 +24,7 @@ Deno.serve(async (req) => {
       method: "POST",
       headers: { Authorization: `Bearer ${AI_API_TOKEN}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "anthropic/claude-sonnet-4.6",
+        model: "google/gemini-3.1-flash-lite-preview",
         messages: [{ role: "user", content: `${prompts[convert_type] || prompts.task}\n\n---\n\n${content.slice(0, 2000)}` }],
         stream: false,
         max_tokens: 600,
