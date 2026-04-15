@@ -1,133 +1,245 @@
-# 局部临时工作台 (Local Workbench) — Design & Implementation Plan
-
-## Context
-用户需要一个"临时思考桌面"机制：从星图中提取 2-5 个节点，在宇宙空间中悬浮出一个可操作的工作区，进行比较、整理和 AI 加工。要求保持漂浮感，不做成传统白板或 Kanban，不新增路由或后台面板。
+# Plan: Universal Window Manager + Connect Overlay Bug Fix
 
 ---
 
-## Design Answers
+## Bug Fix — 建立联系窗口被挡住
 
-### 1. 工作台如何创建
-- **Shift + 点击** 节点 → 节点被选中（星图中发出持续选中光晕）
-- 选中 2-5 个节点后，**底部浮现召唤栏**（WorkbenchSummonBar）显示："已选 N 个节点 · [召唤工作台] [取消选择]"
-- 点击"召唤工作台"→ `WorkbenchPanel` 以缩放动画从屏幕中心浮现
-- 也可单独从一个节点 Shift+点击后再 Shift+点击更多节点，逐步组装
+**Root cause**: `KnowledgeStarMap` root div has `position:fixed, zIndex:0` → creates a CSS stacking context.
+`ConnectConfirmOverlay` (z-index 1200) and `GalaxyJoinOverlay` (z-index 1200) are rendered *inside* this
+stacking context, so they can never paint above elements in higher stacking contexts such as the
+`FloatingPod` wrapper layer at `zIndex:20` in `StarMapLayout`.
 
-### 2. 视觉设计
-- **外观**：极深暗玻璃面板 `rgba(3,7,22,0.94)` + `backdrop-filter: blur(40px)`
-- **边框**：1px 霓虹渐变 rim，颜色从所含节点的星系色插值混合
-- **形态**：圆角矩形，默认位置屏幕中右侧，可拖拽，不遮挡 CommandDock
-- **入场**：`scale(0.85)→1 + opacity 0→1`，200ms cubic-bezier
-- **与星图连接感**：`highlightedNoteIds = workbenchNoteIds` → 被选节点持续发出青色选中光晕；鼠标悬停工作台卡片 → `onFlashNote(id)` 让对应星节点脉冲闪光
-
-### 3. 工作台内布局
-```
-┌─────────────────────────────────────────────┐
-│ ◈ 临时工作台 · 3 nodes        [—] [×]       │ ← 拖拽区
-├──────────────────────────────────────────────┤
-│ [Card A]     [Card B]     [Card C]          │ ← 节点卡片横排
-│  ↕ 类型标·标题·摘要·标签                         │
-│  [检索] [洞见] [行动]                           │
-├──────────────────────────────────────────────┤
-│ [⊕ 融合成新节点]                              │ ← 组合操作区
-└──────────────────────────────────────────────┘
-```
-- 节点卡片**可横向拖拽排序**（mousedown on drag handle）
-- 每张卡有 X 按钮（从工作台移除，不删除节点）
-- 卡片内 [检索][洞见][行动] 按钮 → 调用 `onDropToPod(noteId, podId)` → 走现有 relay 系统打开对应功能舱
-
-### 4. 节点操作
-
-| 操作 | 实现方式 |
-|------|----------|
-| 移除 | 卡片 X → `onRemoveNote(id)` → 从 workbenchNoteIds 中删除 |
-| 重排 | 卡片内 drag handle → mousedown 拖拽横排位置 |
-| 融合 | "融合成新节点" → `supabase.from('notes').insert(merged)` |
-| 收起 | [—] 按钮 → `minimized=true` → panel 收缩为标题栏 |
-| 关闭 | [×] 按钮 → 清空 workbenchNoteIds，隐藏 panel |
-
-**融合逻辑**：
-- title = "工作台合并 · [date]"
-- content_markdown = 各节点 `## [title]\n[summary]\n[key_points]` 拼接
-- tags = 所有节点 tags 并集去重
-
-### 5. 与主星图联系
-- 选中的节点通过 `highlightedNoteIds` 维持**持续的青色光晕**（已有 highlight 系统）
-- hover 工作台卡片 → `onFlashNote(id)` → 对应星节点做 1.2s 脉冲闪光（已有 flash 系统）
-- 工作台打开时，星图仍然完全可交互（pan、zoom、点击其他节点）
-- 工作台关闭/清空时，高亮自动消除
-
-### 6. 轻量存在
-- 纯 React state，位于 `KnowledgeStarMap.tsx`（或 StarMapLayout）
-- 不需要后台 endpoint，不新增 DB 表（仅"融合"功能需要一次 notes insert）
-- 不新增路由
-- Escape 键 → 清空选择并关闭工作台
+**Fix**: Render both overlays via `ReactDOM.createPortal(…, document.body)` in `KnowledgeStarMap.tsx`.
+No changes needed to the overlay components themselves.
 
 ---
 
-## Files to Create / Modify
+## Redesign: Universal Window Manager
 
-### NEW `src/components/starmap/WorkbenchSummonBar.tsx`
-- Props: `selectedCount: number`, `onSummon(): void`, `onClear(): void`
-- Fixed position at bottom center, above CommandDock (`bottom: clamp(110px, 12vh, 150px)`)
-- Appears when `selectedCount >= 2`, hides when 0
-- Animation: slide up from dock
+### 1. Interaction Rules
 
-### NEW `src/components/starmap/WorkbenchPanel.tsx`
-```typescript
-interface WorkbenchPanelProps {
-  notes:          CosmosNote[];
-  onRemoveNote:   (id: string) => void;
-  onClose:        () => void;
-  onFlashNote:    (id: string) => void;
-  onDropToPod:    (noteId: string, podId: string) => void;
-  onCombine:      (noteIds: string[]) => Promise<void>;
-  userId?:        string;
+| Action | Behavior |
+|--------|----------|
+| Drag title bar | Move window (respects lock mode) |
+| Drag resize handle | Resize W+H (edit mode only) |
+| Click minimize | Collapse to title bar only |
+| Click expand | Restore from minimized |
+| Click pin | Freeze position (drag disabled) |
+| Click × | Close window (remove from view) |
+| Shift+drag | Ignore snapping (free placement) |
+| Double-click title | Toggle compact ↔ expanded |
+| Edit mode toggle | Unlocks resize handles + guides |
+| Lock mode | Drag + resize both disabled |
+| Escape | Cancel any active drag/resize |
+
+**Snap rules** (only in edit mode):
+- Grid snap: nearest multiple of `gridSize` (0 = off, options: 8 / 16 / 24 px)
+- Edge snap: within `SNAP_DIST=12px` of another window's edge or screen edge → magnetic lock
+- Alignment guides: thin luminous line drawn when edges align
+- Anti-overlap: highlight overlap with red rim glow (no hard block)
+
+---
+
+### 2. Component Behavior Design
+
+All 11 window types managed uniformly:
+
+| Window ID | Component | Current Shell |
+|-----------|-----------|---------------|
+| `capture` | CaptureBox | FloatingPod |
+| `retrieval` | RetrievalBox | FloatingPod |
+| `insight` | InsightBox | FloatingPod |
+| `memory` | MemoryBox | FloatingPod |
+| `action` | ActionBox | FloatingPod |
+| `settings` | SettingsCapsule | Dropdown → migrate to FloatingWindow |
+| `billing` | BillingPanel | Slide panel → migrate to FloatingWindow |
+| `workbench` | WorkbenchPanel | Custom → migrate to FloatingWindow |
+| `node-detail:${id}` | Node detail | New (future) |
+| `lineage:${id}` | Lineage viewer | New (future) |
+| `connect-overlay` | ConnectConfirmOverlay | Portal (not a window) |
+
+**Minimized state visual**: window collapses to just the title bar (existing FloatingPod behavior).
+In a future iteration, minimized windows can dock as icon-badges at the bottom.
+
+**Resize constraints**:
+- Min size: 200 × 140 px
+- Max size: `window.innerWidth × 0.95` × `window.innerHeight × 0.90`
+- `null` size = auto (CSS clamp / content-driven) — preserved until user resizes
+
+---
+
+### 3. Layout System Design
+
+```
+WindowManagerContext state shape:
+
+{
+  windows: Record<WindowId, WindowState>
+    WindowState {
+      open: boolean
+      minimized: boolean
+      pos: { x, y }
+      size: { w: number|null, h: number|null }  // null = auto
+      zIndex: number
+      pinned: boolean
+      fontScale: number  // 1.0 default
+      sizeMode: 'compact' | 'expanded'
+    }
+
+  layout: {
+    locked: boolean        // false = edit mode
+    gridSize: 0|8|16|24
+    snapToEdge: boolean
+    globalFontScale: number  // 0.75–1.5
+    activePreset: string|null
+  }
+
+  presets: Record<string, LayoutPreset>  // named snapshots
 }
 ```
-- Draggable header (mousedown → move tracking)
-- Default position: `{ x: window.innerWidth * 0.55, y: window.innerHeight * 0.2 }`
-- Node cards in horizontal flex layout, each card draggable to reorder
-- Minimize / close controls
-- Combination button at bottom
 
-### MODIFY `src/components/starmap/CosmosScene.tsx`
-- Add `onNodeWorkbenchSelect?: (noteId: string) => void` to `CosmosSceneProps` and `CoreProps`
-- Add `shiftKeyRef = useRef(false)` inside event handler scope
-- In `onDown`: `shiftKeyRef.current = e.shiftKey`
-- In `onUp` normal-click path: if `shiftKeyRef.current` → fire `onNodeWorkbenchSelectRef.current?.(id)` instead of `onToggleRef.current(id)`
-- Skip hold-timer when `e.shiftKey` (Shift+click should not start drag-to-connect)
+**Snap implementation** (`useWindowSnap` hook):
+```typescript
+// Grid snap
+snappedX = Math.round(rawX / gridSize) * gridSize
 
-### MODIFY `src/components/starmap/KnowledgeStarMap.tsx`
-- Add `workbenchSelectedIds: string[]` state (ordered array for reorder support)
-- Add `workbenchActive: boolean` state
-- Handler `handleWorkbenchSelect(id)`: toggle in/out of selection (max 5)
-- Handler `handleWorkbenchSummon()`: set `workbenchActive = true`
-- Handler `handleWorkbenchClose()`: clear selection + deactivate
-- Handler `handleWorkbenchRemove(id)`: remove from ordered list
-- Handler `handleWorkbenchCombine(ids)`: insert merged note via supabase
-- `highlightedNoteIds` = `workbenchSelectedIds` when workbench active/pending
-- Render `<WorkbenchSummonBar>` when `!workbenchActive && workbenchSelectedIds.length >= 2`
-- Render `<WorkbenchPanel>` when `workbenchActive`
+// Edge snap — check all other open windows
+for each otherWindow:
+  if |rawX - otherWindow.right| < SNAP_DIST → snappedX = otherWindow.right
+  if |rawX + w - otherWindow.left| < SNAP_DIST → snappedX = otherWindow.left - w
+  // same for Y axis
+```
+
+**Alignment guides** (`AlignmentGuides` component):
+- Full-screen SVG overlay, `pointerEvents:none`, `zIndex:9998`
+- Active only during drag/resize
+- Draws luminous lines (color matches dragged window's accent)
+- Fades out 300ms after drag ends
 
 ---
 
-## Key Reused Mechanisms
-- `highlightedNoteIds` → star node glow (already in CosmosScene)
-- `onFlashNote` → pulse a node (already in CosmosScene)
-- `onDropToPod` → existing relay chain through StarMapLayout → sendRelay → pod opens
-- `supabase.from('notes').insert` → same pattern as GalaxyJoinOverlay's update
-- `onNodeWorkbenchSelect` follows same stale-closure ref pattern as `onNodeConnect` etc.
+### 4. Font Customization Design
+
+```
+Global scale:  --global-font-scale (0.75 – 1.5, step 0.05)
+Per-window:    --win-font-scale (0.75 – 1.5, stored in WindowState.fontScale)
+               injected as inline CSS var on each FloatingWindow's root div
+
+Effective font size = base × --global-font-scale × --win-font-scale
+```
+
+Three text categories adjustable per window:
+- **Title** (`fontScale.title`): window header text
+- **Body** (`fontScale.body`): content area text
+- **Label** (`fontScale.label`): mono/metadata labels
+
+Exposed via a compact popover triggered by clicking a `Aa` button in each window's title bar
+(only shown in edit mode or always — TBD).
+
+Global font scale lives in the LayoutEditBar settings panel.
 
 ---
 
-## Verification
-1. Shift+click 2 nodes → bottom bar appears with count
-2. Click "召唤工作台" → panel floats in with animation; clicked nodes glow cyan
-3. Hover card → corresponding star flashes
-4. Click [检索] on card → RetrievalBox opens with that note's title pre-filled
-5. Drag card left/right → cards reorder
-6. Click [融合成新节点] → new note appears in star map
-7. Click [—] → panel collapses to title bar
-8. Press Escape → selection cleared, panel dismissed
-9. Star map remains interactive while workbench is open
+### 5. Persistence Logic
+
+**Storage key**: `cosmos_wm_v1` (new key — avoids conflicts with old `cosmos_pods_v4`)
+
+**What is saved**:
+```json
+{
+  "windows": { ...all WindowStates (pos, size, sizeMode, fontScale, pinned) },
+  "layout": { locked, gridSize, snapToEdge, globalFontScale, activePreset },
+  "presets": { "default": {...}, "focus": {...}, "custom-1": {...} }
+}
+```
+
+**Auto-save**: debounced 800ms after any window state change (positions, sizes).
+
+**Preset operations**:
+- `savePreset(name)` — snapshot current `windows` positions+sizes into `presets[name]`
+- `loadPreset(name)` — restore positions+sizes, keep open/minimized state unchanged
+- `resetToDefault()` — clear stored layout, reload `defaultPositions()`
+- Built-in presets: `"default"` (auto-generated), `"focus"` (center-only), user-named
+
+---
+
+### 6. Technical Implementation Structure
+
+```
+src/
+  contexts/
+    WindowManagerContext.tsx    ← REPLACE / extend ToolboxContext
+                                  Add: size, pinned, fontScale, sizeMode, locked, gridSize, presets
+
+  hooks/
+    useWindowSnap.ts            ← NEW: snap math for drag/resize
+    useWindowResize.ts          ← NEW: resize tracking (8 handles)
+    useLayoutPresets.ts         ← NEW: save/load/reset presets
+
+  components/
+    window-manager/
+      FloatingWindow.tsx        ← REPLACE FloatingPod — universal shell
+                                  Consumes WindowManagerContext
+                                  Integrates snap, resize, font scale, edit mode
+      ResizeHandles.tsx         ← NEW: 8-handle resize system (edit mode only)
+      AlignmentGuides.tsx       ← NEW: SVG guide lines during drag
+      LayoutEditBar.tsx         ← NEW: floating edit/lock toggle + preset controls
+      MinimizedDock.tsx         ← FUTURE: icon badges for minimized windows
+
+    starmap/
+      KnowledgeStarMap.tsx      ← FIX: createPortal for ConnectConfirmOverlay + GalaxyJoinOverlay
+```
+
+**Migration path** (backward-compatible):
+1. `WindowManagerContext` keeps all `ToolboxContext` exports + aliases → no consumer changes
+2. `FloatingWindow` accepts same props as `FloatingPod` → just rename import
+3. `FloatingPod` becomes a re-export of `FloatingWindow` for compat
+
+---
+
+## Implementation Phases
+
+### Phase A — Bug Fix (immediate)
+- `KnowledgeStarMap.tsx`: `createPortal` for ConnectConfirmOverlay + GalaxyJoinOverlay
+
+### Phase B — Core Window Manager
+- Extend `ToolboxContext` → add `size`, `pinned`, `fontScale`, `sizeMode` to state + actions
+- `FloatingPod` → `FloatingWindow`: add resize handles (edit mode), consume new state
+- `LayoutEditBar`: edit/lock toggle, grid size selector
+- Storage key bumped to v5, new shape
+
+### Phase C — Snap & Guides
+- `useWindowSnap` hook
+- `AlignmentGuides` SVG overlay
+- Edge snap detection
+
+### Phase D — Font Customization
+- CSS var injection per window
+- `Aa` button + popover in title bar (edit mode)
+- Global font scale in LayoutEditBar
+
+### Phase E — Layout Presets
+- Named preset save/load in LayoutEditBar
+- `useLayoutPresets` hook
+- Reset to default
+
+---
+
+## Files to Modify
+
+| File | Change |
+|------|--------|
+| `src/contexts/ToolboxContext.tsx` | Add size, fontScale, pinned, sizeMode, locked, grid to state |
+| `src/components/floating/FloatingPod.tsx` | Add resize handles, edit mode, font scale var |
+| `src/components/starmap/KnowledgeStarMap.tsx` | createPortal for ConnectConfirmOverlay + GalaxyJoinOverlay |
+| `src/components/layout/StarMapLayout.tsx` | Add LayoutEditBar render |
+
+## New Files
+
+| File | Purpose |
+|------|---------|
+| `src/hooks/useWindowSnap.ts` | Snap math (grid + edge) |
+| `src/hooks/useWindowResize.ts` | 8-handle resize tracking |
+| `src/components/window-manager/ResizeHandles.tsx` | Resize handle UI |
+| `src/components/window-manager/AlignmentGuides.tsx` | SVG guide line overlay |
+| `src/components/window-manager/LayoutEditBar.tsx` | Edit/lock toggle bar |
