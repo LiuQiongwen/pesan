@@ -3,6 +3,7 @@
  * Returns paginated manual orders for admin review dashboard.
  * POST body: { status?, page?, limit? }
  * OR GET ?status=submitted&page=0&limit=20
+ * Now includes user_email fetched via auth.admin
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -75,7 +76,24 @@ Deno.serve(async (req: Request) => {
     const { data: orders, error, count } = await query;
     if (error) throw error;
 
-    return new Response(JSON.stringify({ orders: orders ?? [], total: count ?? 0, page, limit }), {
+    // Fetch emails for all users in this page via auth.admin
+    const uniqueUserIds = [...new Set((orders ?? []).map((o: { user_id: string }) => o.user_id))];
+    const emailMap: Record<string, string> = {};
+    if (uniqueUserIds.length > 0) {
+      try {
+        const { data: { users } } = await svc.auth.admin.listUsers({ perPage: 1000 });
+        users.forEach(u => { if (u.email) emailMap[u.id] = u.email; });
+      } catch (e) {
+        console.warn('Failed to fetch user emails:', e);
+      }
+    }
+
+    const ordersWithEmail = (orders ?? []).map((o: { user_id: string }) => ({
+      ...o,
+      user_email: emailMap[o.user_id] ?? null,
+    }));
+
+    return new Response(JSON.stringify({ orders: ordersWithEmail, total: count ?? 0, page, limit }), {
       headers: { ...CORS, 'Content-Type': 'application/json' },
     });
 

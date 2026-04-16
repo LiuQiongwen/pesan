@@ -2,7 +2,7 @@
  * ProofSubmitForm — upload proof screenshot + fill payment details.
  */
 import { useState, useRef } from 'react';
-import { ArrowLeft, Upload, ImageIcon, Check, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Upload, Check, AlertCircle, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
@@ -16,12 +16,13 @@ interface Props {
   defaultMethod: 'wechat' | 'alipay';
   onBack: () => void;
   onSubmitted: () => void;
+  onViewOrders?: () => void;
 }
 
 type SubmitState = 'idle' | 'uploading' | 'submitting' | 'done' | 'error';
 
 export function ProofSubmitForm({
-  orderId, orderNo, productName, amountFen, defaultMethod, onBack, onSubmitted,
+  orderId, orderNo, productName, amountFen, defaultMethod, onBack, onSubmitted, onViewOrders,
 }: Props) {
   const [imageFile, setImageFile]           = useState<File | null>(null);
   const [imagePreview, setImagePreview]     = useState<string | null>(null);
@@ -81,7 +82,6 @@ export function ProofSubmitForm({
 
       // 2. Submit proof via edge function
       setState('submitting');
-      const { data: { session } } = await supabase.auth.getSession();
       const res = await supabase.functions.invoke('manual-pay-submit-proof', {
         body: {
           orderId,
@@ -98,7 +98,6 @@ export function ProofSubmitForm({
       if (res.data?.error) throw new Error(res.data.error);
 
       setState('done');
-      setTimeout(() => onSubmitted(), 1800);
 
     } catch (e) {
       console.error(e);
@@ -107,38 +106,98 @@ export function ProofSubmitForm({
     }
   };
 
+  // ── Success screen ──────────────────────────────────────────────────────────
   if (state === 'done') {
     return (
-      <div style={{
-        position: 'fixed', top: '50%', left: '50%',
-        transform: 'translate(-50%, -50%)', zIndex: 201,
-        width: 'clamp(320px, 90vw, 420px)',
-        background: 'rgba(6,9,22,0.98)',
-        border: '1px solid rgba(0,229,200,0.30)',
-        borderRadius: 20, padding: '40px 24px',
-        boxShadow: '0 32px 96px rgba(0,0,0,0.85)',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14,
-      }}>
+      <>
+        {/* Backdrop — click to close */}
+        <div
+          onClick={onSubmitted}
+          style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.70)', backdropFilter: 'blur(6px)' }}
+        />
         <div style={{
-          width: 56, height: 56, borderRadius: 14,
-          background: 'rgba(0,229,200,0.12)',
-          border: '1px solid rgba(0,229,200,0.30)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          position: 'fixed', top: '50%', left: '50%',
+          transform: 'translate(-50%, -50%)', zIndex: 201,
+          width: 'clamp(300px, 88vw, 400px)',
+          background: 'rgba(6,9,22,0.98)',
+          border: '1px solid rgba(0,229,200,0.25)',
+          borderRadius: 20, padding: '32px 24px 24px',
+          boxShadow: '0 32px 96px rgba(0,0,0,0.85)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16,
         }}>
-          <Check size={24} color="#00e5c8" />
-        </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontFamily: INTER, fontSize: 16, fontWeight: 700, color: 'rgba(220,230,250,0.95)', marginBottom: 6 }}>
-            凭证已提交
+          {/* Close button */}
+          <button
+            onClick={onSubmitted}
+            style={{
+              position: 'absolute', top: 14, right: 14,
+              width: 28, height: 28, borderRadius: 7,
+              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer',
+            }}
+          >
+            <X size={12} color="rgba(140,150,175,0.70)" />
+          </button>
+
+          {/* Icon */}
+          <div style={{
+            width: 60, height: 60, borderRadius: 16,
+            background: 'rgba(0,229,200,0.10)',
+            border: '1px solid rgba(0,229,200,0.25)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Check size={26} color="#00e5c8" />
           </div>
-          <div style={{ fontFamily: INTER, fontSize: 12, color: 'rgba(140,150,175,0.65)', lineHeight: 1.6 }}>
-            我们会在 24 小时内完成审核<br />审核通过后权益自动发放
+
+          {/* Copy */}
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontFamily: INTER, fontSize: 16, fontWeight: 700, color: 'rgba(220,230,250,0.95)', marginBottom: 8 }}>
+              凭证已提交
+            </div>
+            <div style={{ fontFamily: INTER, fontSize: 12, color: 'rgba(140,150,175,0.65)', lineHeight: 1.7 }}>
+              我们会在 24 小时内完成审核<br />审核通过后权益自动发放到账户
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div style={{ width: '100%', height: 1, background: 'rgba(255,255,255,0.07)' }} />
+
+          {/* Actions */}
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {onViewOrders && (
+              <button
+                onClick={onViewOrders}
+                style={{
+                  width: '100%', padding: '11px',
+                  fontFamily: INTER, fontSize: 13, fontWeight: 600,
+                  color: '#fff',
+                  background: 'linear-gradient(135deg, rgba(0,229,200,0.85), rgba(0,180,255,0.75))',
+                  border: 'none', borderRadius: 10, cursor: 'pointer',
+                }}
+              >
+                查看订单状态
+              </button>
+            )}
+            <button
+              onClick={onSubmitted}
+              style={{
+                width: '100%', padding: '11px',
+                fontFamily: INTER, fontSize: 13, fontWeight: 600,
+                color: 'rgba(180,190,215,0.80)',
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.10)',
+                borderRadius: 10, cursor: 'pointer',
+              }}
+            >
+              返回应用
+            </button>
           </div>
         </div>
-      </div>
+      </>
     );
   }
 
+  // ── Form ────────────────────────────────────────────────────────────────────
   return (
     <>
       {/* Backdrop */}

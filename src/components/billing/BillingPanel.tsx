@@ -505,6 +505,7 @@ export function BillingPanel({ onClose }: Props) {
           order={activeOrder}
           onClose={() => setActiveOrder(null)}
           onSubmitted={handleOrderSubmitted}
+          onViewOrders={() => { setActiveOrder(null); setTab('orders'); }}
         />
       )}
 

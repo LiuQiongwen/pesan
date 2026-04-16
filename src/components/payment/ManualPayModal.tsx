@@ -27,6 +27,7 @@ interface Props {
   order: OrderCreatedPayload;
   onClose: () => void;
   onSubmitted: () => void;
+  onViewOrders?: () => void;
 }
 
 function useCountdown(expiresAt: string) {
@@ -46,7 +47,7 @@ function useCountdown(expiresAt: string) {
   return { remaining, formatted: `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}` };
 }
 
-export function ManualPayModal({ order, onClose, onSubmitted }: Props) {
+export function ManualPayModal({ order, onClose, onSubmitted, onViewOrders }: Props) {
   const [payMethod, setPayMethod] = useState<'wechat' | 'alipay'>(
     order.wechatQrUrl ? 'wechat' : 'alipay',
   );
@@ -74,6 +75,7 @@ export function ManualPayModal({ order, onClose, onSubmitted }: Props) {
         defaultMethod={payMethod}
         onBack={() => setShowProofForm(false)}
         onSubmitted={onSubmitted}
+        onViewOrders={onViewOrders}
       />
     );
   }
