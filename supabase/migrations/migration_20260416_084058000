@@ -1,0 +1,28 @@
+
+-- Admin settings table for storing configurable values like QR code URLs
+CREATE TABLE IF NOT EXISTS public.admin_settings (
+  key        text PRIMARY KEY,
+  value      text,
+  updated_at timestamptz DEFAULT now(),
+  updated_by uuid REFERENCES auth.users(id)
+);
+ALTER TABLE public.admin_settings ENABLE ROW LEVEL SECURITY;
+
+-- Admins can read and write settings
+CREATE POLICY "admins manage settings"
+  ON public.admin_settings FOR ALL
+  USING (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true));
+
+-- All authenticated users can read settings (needed to show QR codes)
+CREATE POLICY "auth users read settings"
+  ON public.admin_settings FOR SELECT
+  TO authenticated
+  USING (true);
+
+-- Insert default empty values
+INSERT INTO public.admin_settings (key, value) VALUES
+  ('manual_pay_wechat_qr_url',  null),
+  ('manual_pay_alipay_qr_url',  null),
+  ('manual_pay_wechat_payee',   'Pesta'),
+  ('manual_pay_alipay_payee',   'Pesta')
+ON CONFLICT (key) DO NOTHING;

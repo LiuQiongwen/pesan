@@ -1,8 +1,8 @@
 /**
  * manual-pay-create
  * Creates a manual payment order.
- * POST body: { productType: 'subscription'|'credits', productCode: string }
- * Returns: { orderId, orderNo, productName, amountFen, expiresAt, wechatQrUrl, alipayQrUrl }
+ * POST body: { productCode: string }
+ * Returns: { orderId, orderNo, productName, amountFen, expiresAt, wechatQrUrl, alipayQrUrl, wechatPayee, alipayPayee }
  */
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -12,15 +12,22 @@ const CORS = {
 };
 
 const CATALOGUE: Record<string, { name: string; amountFen: number; type: string }> = {
-  // Subscriptions
   pro_monthly:   { name: 'Pro 月度订阅 · Pesta',  amountFen: 2900,  type: 'subscription' },
   pro_yearly:    { name: 'Pro 年度订阅 · Pesta',  amountFen: 28800, type: 'subscription' },
   team_monthly:  { name: 'Team 月度订阅 · Pesta', amountFen: 9900,  type: 'subscription' },
-  // Credits
   credits_100:   { name: '100 AI Credits',  amountFen: 990,   type: 'credits' },
   credits_500:   { name: '500 AI Credits',  amountFen: 3900,  type: 'credits' },
   credits_2000:  { name: '2000 AI Credits', amountFen: 12900, type: 'credits' },
 };
+
+async function getSetting(svc: ReturnType<typeof createClient>, key: string): Promise<string | null> {
+  const { data } = await svc
+    .from('admin_settings')
+    .select('value')
+    .eq('key', key)
+    .maybeSingle();
+  return data?.value ?? null;
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
@@ -44,7 +51,7 @@ Deno.serve(async (req: Request) => {
     const ts     = Date.now();
     const rnd    = Math.floor(Math.random() * 9000) + 1000;
     const orderNo = `MP${ts}${rnd}`;
-    const expiresAt = new Date(ts + 24 * 60 * 60 * 1000).toISOString(); // 24h
+    const expiresAt = new Date(ts + 24 * 60 * 60 * 1000).toISOString();
 
     const svc = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -68,18 +75,21 @@ Deno.serve(async (req: Request) => {
 
     if (insertErr) throw insertErr;
 
-    const wechatQrUrl  = Deno.env.get('MANUAL_PAY_WECHAT_QR_URL')  ?? null;
-    const alipayQrUrl  = Deno.env.get('MANUAL_PAY_ALIPAY_QR_URL')  ?? null;
-    const wechatPayee  = Deno.env.get('MANUAL_PAY_WECHAT_PAYEE')   ?? 'Pesta';
-    const alipayPayee  = Deno.env.get('MANUAL_PAY_ALIPAY_PAYEE')   ?? 'Pesta';
+    // Read QR URLs from admin_settings (DB), fallback to env secrets
+    const [wechatQrUrl, alipayQrUrl, wechatPayee, alipayPayee] = await Promise.all([
+      getSetting(svc, 'manual_pay_wechat_qr_url').then(v => v ?? Deno.env.get('MANUAL_PAY_WECHAT_QR_URL') ?? null),
+      getSetting(svc, 'manual_pay_alipay_qr_url').then(v => v ?? Deno.env.get('MANUAL_PAY_ALIPAY_QR_URL') ?? null),
+      getSetting(svc, 'manual_pay_wechat_payee').then(v => v ?? Deno.env.get('MANUAL_PAY_WECHAT_PAYEE') ?? 'Pesta'),
+      getSetting(svc, 'manual_pay_alipay_payee').then(v => v ?? Deno.env.get('MANUAL_PAY_ALIPAY_PAYEE') ?? 'Pesta'),
+    ]);
 
     return new Response(JSON.stringify({
-      orderId:      order.id,
+      orderId:     order.id,
       orderNo,
-      productName:  item.name,
+      productName: item.name,
       productCode,
-      productType:  item.type,
-      amountFen:    item.amountFen,
+      productType: item.type,
+      amountFen:   item.amountFen,
       expiresAt,
       wechatQrUrl,
       alipayQrUrl,
