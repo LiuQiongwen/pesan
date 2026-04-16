@@ -5,7 +5,7 @@
  * dispatched by CosmosScene when a node is being dragged.
  */
 import { useState, useEffect, useRef } from 'react';
-import { Feather, Radar, FlaskConical, Layers, Zap, Check } from 'lucide-react';
+import { Inbox, Telescope, Sparkles, Library, Rocket, Check } from 'lucide-react';
 import { useToolbox, type PodId } from '@/contexts/ToolboxContext';
 import { useAgentWorkflow } from '@/contexts/AgentWorkflowContext';
 import { type LucideIcon } from 'lucide-react';
@@ -22,11 +22,11 @@ interface PipelineStep {
 }
 
 const STEPS: PipelineStep[] = [
-  { id: 'capture',   icon: Feather,      label: 'Capture',   sublabel: '捕获知识', accent: '#00ff66' },
-  { id: 'retrieval', icon: Radar,        label: 'Retrieval', sublabel: '语义检索', accent: '#66f0ff' },
-  { id: 'insight',   icon: FlaskConical, label: 'Insight',   sublabel: '知识精炼', accent: '#b496ff' },
-  { id: 'memory',    icon: Layers,       label: 'Memory',    sublabel: '记忆唤醒', accent: '#ffa040' },
-  { id: 'action',    icon: Zap,          label: 'Action',    sublabel: '知识执行', accent: '#ff4466' },
+  { id: 'capture',   icon: Inbox,      label: 'Capture',   sublabel: '捕获知识', accent: '#00ff66' },
+  { id: 'retrieval', icon: Telescope,  label: 'Retrieval', sublabel: '语义检索', accent: '#66f0ff' },
+  { id: 'insight',   icon: Sparkles,   label: 'Insight',   sublabel: '知识精炼', accent: '#b496ff' },
+  { id: 'memory',    icon: Library,    label: 'Memory',    sublabel: '记忆唤醒', accent: '#ffa040' },
+  { id: 'action',    icon: Rocket,     label: 'Action',    sublabel: '知识执行', accent: '#ff4466' },
 ];
 
 function hexRgb(hex: string) {
