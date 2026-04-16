@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Eye, EyeOff, ArrowLeft } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 type Mode = 'login' | 'register' | 'forgot';
 
@@ -22,8 +23,17 @@ export default function Auth() {
   const navigate = useNavigate();
   const t = useT();
 
+  // Redirect on login — admin → /admin/payments, regular → /app
   useEffect(() => {
-    if (user) navigate('/app');
+    if (!user) return;
+    supabase
+      .from('profiles')
+      .select('is_admin')
+      .eq('id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        navigate(data?.is_admin ? '/admin/payments' : '/app');
+      });
   }, [user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {

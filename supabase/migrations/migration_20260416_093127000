@@ -1,0 +1,5 @@
+-- Reset password for test@test.com to 'test'
+UPDATE auth.users
+SET encrypted_password = crypt('test', gen_salt('bf')),
+    updated_at = now()
+WHERE email = 'test@test.com';
