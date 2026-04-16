@@ -9,6 +9,7 @@ import { Inbox, Telescope, Sparkles, Library, Rocket, Check } from 'lucide-react
 import { useToolbox, type PodId } from '@/contexts/ToolboxContext';
 import { useAgentWorkflow } from '@/contexts/AgentWorkflowContext';
 import { type LucideIcon } from 'lucide-react';
+import { PestaLogo } from '@/components/brand/PestaLogo';
 
 const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
@@ -144,21 +145,7 @@ export function CommandDock() {
         marginRight: 'clamp(10px, 1.1vw, 18px)',
         gap: 3,
       }}>
-        <div style={{
-          width: 'clamp(28px, 2.8vw, 38px)',
-          height: 'clamp(28px, 2.8vw, 38px)',
-          borderRadius: 'clamp(7px, 0.7vw, 11px)',
-          background: 'rgba(0,255,102,0.08)',
-          border: '1px solid rgba(0,255,102,0.20)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 0 16px rgba(0,255,102,0.12)',
-        }}>
-          <span style={{
-            fontFamily: MONO, fontWeight: 700,
-            fontSize: 'clamp(8px, 0.7vw, 11px)',
-            color: 'rgba(0,255,102,0.80)', letterSpacing: '0.04em',
-          }}>pesan</span>
-        </div>
+        <PestaLogo size={32} iconOnly />
         <span style={{
           fontFamily: MONO,
           fontSize: 'clamp(6.5px, 0.6vw, 8.5px)',

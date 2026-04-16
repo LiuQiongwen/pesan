@@ -16,7 +16,7 @@ const LanguageContext = createContext<LanguageContextValue>({
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>(() => {
     try {
-      const stored = localStorage.getItem('pesan_lang');
+      const stored = localStorage.getItem('pesta_lang') ?? localStorage.getItem('pesan_lang');
       return (stored === 'en' || stored === 'zh') ? stored : 'zh';
     } catch {
       return 'zh';
@@ -25,7 +25,10 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   const setLang = useCallback((l: Lang) => {
     setLangState(l);
-    try { localStorage.setItem('pesan_lang', l); } catch { /* ignore */ }
+    try {
+      localStorage.setItem('pesta_lang', l);
+      localStorage.removeItem('pesan_lang');
+    } catch { /* ignore */ }
   }, []);
 
   const t = useCallback((key: string) => translate(key, lang), [lang]);

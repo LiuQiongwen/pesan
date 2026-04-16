@@ -11,6 +11,7 @@ import { useAuth }  from '@/hooks/useAuth';
 import { useNotes } from '@/hooks/useNotes';
 import { useToolbox, type PodId } from '@/contexts/ToolboxContext';
 import { AgentWorkflowProvider, useAgentWorkflow } from '@/contexts/AgentWorkflowContext';
+import { PestaLogo } from '@/components/brand/PestaLogo';
 
 import KnowledgeStarMap, { type HoveredNodeInfo } from '@/components/starmap/KnowledgeStarMap';
 import { NodeLightBand }   from '@/components/layout/NodeLightBand';
@@ -131,14 +132,7 @@ function StarMapContents({ user, notes, loading, openPod, pods }: ContentsProps)
       width: '100vw', height: '100vh', background: '#040508',
       display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 14,
     }}>
-      <div style={{
-        width: 44, height: 44, borderRadius: 10,
-        border: '1px solid rgba(0,255,102,0.25)', background: 'rgba(0,255,102,0.06)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        animation: 'pulse-glow 2s ease-in-out infinite',
-      }}>
-        <span style={{ fontFamily: MONO, fontWeight: 700, fontSize: 14, color: '#00ff66' }}>pesan</span>
-      </div>
+        <PestaLogo size={44} iconOnly style={{ animation: 'pulse-glow 2s ease-in-out infinite' }} />
       <p style={{ fontFamily: MONO, fontSize: 10, color: 'rgba(80,90,110,0.60)', letterSpacing: '0.08em' }}>LOADING…</p>
     </div>
   );
