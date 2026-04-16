@@ -1,0 +1,30 @@
+
+-- Audit table for direct admin grants
+CREATE TABLE IF NOT EXISTS public.admin_grants (
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  admin_id          uuid NOT NULL REFERENCES auth.users(id),
+  target_user_id    uuid NOT NULL REFERENCES auth.users(id),
+  grant_type        text NOT NULL CHECK (grant_type IN ('credits', 'subscription')),
+  credits_amount    integer,
+  subscription_plan text,
+  subscription_days integer,
+  notes             text,
+  created_at        timestamptz DEFAULT now()
+);
+ALTER TABLE public.admin_grants ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "admins manage grants" ON public.admin_grants FOR ALL
+  USING (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true));
+
+-- Admin read-only policies for user data tables
+CREATE POLICY "admins read all credits" ON public.user_credits FOR SELECT
+  USING (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true));
+
+CREATE POLICY "admins read all subscriptions" ON public.subscriptions FOR SELECT
+  USING (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true));
+
+-- Allow admins to also read all profiles (currently restricted to own row)
+CREATE POLICY "admins read all profiles" ON public.profiles FOR SELECT
+  USING (
+    auth.uid() = id
+    OR EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.is_admin = true)
+  );

@@ -3167,6 +3167,42 @@ export type Database = {
           },
         ]
       }
+      admin_grants: {
+        Row: {
+          admin_id: string
+          created_at: string | null
+          credits_amount: number | null
+          grant_type: string
+          id: string
+          notes: string | null
+          subscription_days: number | null
+          subscription_plan: string | null
+          target_user_id: string
+        }
+        Insert: {
+          admin_id: string
+          created_at?: string | null
+          credits_amount?: number | null
+          grant_type: string
+          id?: string
+          notes?: string | null
+          subscription_days?: number | null
+          subscription_plan?: string | null
+          target_user_id: string
+        }
+        Update: {
+          admin_id?: string
+          created_at?: string | null
+          credits_amount?: number | null
+          grant_type?: string
+          id?: string
+          notes?: string | null
+          subscription_days?: number | null
+          subscription_plan?: string | null
+          target_user_id?: string
+        }
+        Relationships: []
+      }
       admin_settings: {
         Row: {
           key: string
