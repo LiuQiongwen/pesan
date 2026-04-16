@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Settings, User, Languages, LogOut, ChevronDown, Sparkles, Zap } from 'lucide-react';
+import { Settings, User, Languages, LogOut, ChevronDown, Sparkles, Zap, LayoutDashboard } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useLanguage, useT } from '@/contexts/LanguageContext';
 import { useNavigate } from 'react-router-dom';
@@ -13,12 +13,22 @@ const GREY = '#888fa8';
 export function SettingsCapsule() {
   const [open,         setOpen]         = useState(false);
   const [billingOpen,  setBillingOpen]  = useState(false);
+  const [isAdmin,      setIsAdmin]      = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const { user, signOut } = useAuth();
   const { lang, setLang } = useLanguage();
   const navigate = useNavigate();
   const t = useT();
   const billing = useBilling(user?.id);
+
+  // Check admin status once user is loaded
+  useEffect(() => {
+    if (!user) { setIsAdmin(false); return; }
+    import('@/integrations/supabase/client').then(({ supabase }) => {
+      supabase.from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
+        .then(({ data }) => setIsAdmin(!!data?.is_admin));
+    });
+  }, [user?.id]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -204,6 +214,30 @@ export function SettingsCapsule() {
               </button>
 
               <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '3px 0' }} />
+
+              {/* Admin entry — only for admins */}
+              {isAdmin && (
+                <>
+                  <button
+                    onClick={() => { setOpen(false); navigate('/admin'); }}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '8px 10px', borderRadius: 6,
+                      background: 'transparent', border: 'none',
+                      cursor: 'pointer', transition: 'background 0.12s', textAlign: 'left',
+                      marginBottom: 1,
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(102,240,255,0.08)'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+                  >
+                    <LayoutDashboard size={12} color="rgba(102,240,255,0.75)" />
+                    <span style={{ fontFamily: INTER, fontSize: 11, color: 'rgba(102,240,255,0.85)', fontWeight: 600 }}>
+                      管理后台
+                    </span>
+                  </button>
+                  <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '3px 0' }} />
+                </>
+              )}
 
               {/* Language */}
               <div style={rowStyle}>

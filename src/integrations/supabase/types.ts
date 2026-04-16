@@ -3341,6 +3341,39 @@ export type Database = {
         }
         Relationships: []
       }
+      credit_ledger: {
+        Row: {
+          admin_id: string | null
+          balance_after: number
+          created_at: string | null
+          delta: number
+          id: string
+          reason: string
+          ref_id: string | null
+          user_id: string
+        }
+        Insert: {
+          admin_id?: string | null
+          balance_after: number
+          created_at?: string | null
+          delta: number
+          id?: string
+          reason: string
+          ref_id?: string | null
+          user_id: string
+        }
+        Update: {
+          admin_id?: string | null
+          balance_after?: number
+          created_at?: string | null
+          delta?: number
+          id?: string
+          reason?: string
+          ref_id?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       distillations: {
         Row: {
           actions_markdown: string | null
@@ -3749,6 +3782,8 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          ban_reason: string | null
+          banned_at: string | null
           created_at: string | null
           id: string
           is_admin: boolean
@@ -3758,6 +3793,8 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          ban_reason?: string | null
+          banned_at?: string | null
           created_at?: string | null
           id: string
           is_admin?: boolean
@@ -3767,6 +3804,8 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          ban_reason?: string | null
+          banned_at?: string | null
           created_at?: string | null
           id?: string
           is_admin?: boolean
@@ -3836,6 +3875,36 @@ export type Database = {
           status?: string
           updated_at?: string | null
           user_id?: string
+        }
+        Relationships: []
+      }
+      system_events: {
+        Row: {
+          created_at: string | null
+          event_type: string
+          id: string
+          message: string | null
+          payload: Json | null
+          severity: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          event_type: string
+          id?: string
+          message?: string | null
+          payload?: Json | null
+          severity?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          event_type?: string
+          id?: string
+          message?: string | null
+          payload?: Json | null
+          severity?: string
+          user_id?: string | null
         }
         Relationships: []
       }

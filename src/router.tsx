@@ -1,3 +1,4 @@
+import { Navigate } from "react-router-dom";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import NotePage from "./pages/Note";
@@ -8,8 +9,15 @@ import PricingPage from "./pages/PricingPage";
 import TermsPage from "./pages/TermsPage";
 import PrivacyPage from "./pages/PrivacyPage";
 import RefundPage from "./pages/RefundPage";
-import AdminPaymentsPage from "./pages/AdminPaymentsPage";
 import { StarMapLayout } from "./components/layout/StarMapLayout";
+import AdminLayout from "./pages/admin/AdminLayout";
+import OrdersPage   from "./pages/admin/OrdersPage";
+import UsersPage    from "./pages/admin/UsersPage";
+import CreditsPage  from "./pages/admin/CreditsPage";
+import PlansPage    from "./pages/admin/PlansPage";
+import ProjectsPage from "./pages/admin/ProjectsPage";
+import SystemPage   from "./pages/admin/SystemPage";
+import SettingsPage from "./pages/admin/SettingsPage";
 
 export const routers = [
   {
@@ -48,10 +56,26 @@ export const routers = [
       },
     ],
   },
+  /* Admin backend — sidebar layout */
+  {
+    path: "/admin",
+    element: <AdminLayout />,
+    children: [
+      { index: true, element: <Navigate to="/admin/orders" replace /> },
+      { path: "orders",   name: "admin-orders",   element: <OrdersPage /> },
+      { path: "users",    name: "admin-users",    element: <UsersPage /> },
+      { path: "credits",  name: "admin-credits",  element: <CreditsPage /> },
+      { path: "plans",    name: "admin-plans",    element: <PlansPage /> },
+      { path: "projects", name: "admin-projects", element: <ProjectsPage /> },
+      { path: "system",   name: "admin-system",   element: <SystemPage /> },
+      { path: "settings", name: "admin-settings", element: <SettingsPage /> },
+    ],
+  },
+  /* Legacy redirect */
   {
     path: "/admin/payments",
-    name: "admin-payments",
-    element: <AdminPaymentsPage />,
+    name: "admin-payments-legacy",
+    element: <Navigate to="/admin/orders" replace />,
   },
   /* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */
   {

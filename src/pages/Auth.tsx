@@ -23,7 +23,7 @@ export default function Auth() {
   const navigate = useNavigate();
   const t = useT();
 
-  // Redirect on login — admin → /admin/payments, regular → /app
+  // Redirect on login — admin → /admin/orders, regular → /app
   useEffect(() => {
     if (!user) return;
     supabase
@@ -32,7 +32,7 @@ export default function Auth() {
       .eq('id', user.id)
       .maybeSingle()
       .then(({ data }) => {
-        navigate(data?.is_admin ? '/admin/payments' : '/app');
+        navigate(data?.is_admin ? '/admin/orders' : '/app');
       });
   }, [user, navigate]);
 
