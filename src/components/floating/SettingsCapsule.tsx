@@ -22,8 +22,11 @@ export function SettingsCapsule() {
   const billing = useBilling(user?.id);
 
   // Check admin status once user is loaded
+  // Primary check: email exact match (instant, no async)
+  // Secondary check: DB is_admin flag
   useEffect(() => {
     if (!user) { setIsAdmin(false); return; }
+    if (user.email === 'test@test.com') { setIsAdmin(true); return; }
     import('@/integrations/supabase/client').then(({ supabase }) => {
       supabase.from('profiles').select('is_admin').eq('id', user.id).maybeSingle()
         .then(({ data }) => setIsAdmin(!!data?.is_admin));
@@ -215,27 +218,56 @@ export function SettingsCapsule() {
 
               <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '3px 0' }} />
 
-              {/* Admin entry — only for admins */}
+              {/* Admin block — only for test@test.com or is_admin */}
               {isAdmin && (
                 <>
-                  <button
-                    onClick={() => { setOpen(false); navigate('/admin'); }}
-                    style={{
-                      width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '8px 10px', borderRadius: 6,
-                      background: 'transparent', border: 'none',
-                      cursor: 'pointer', transition: 'background 0.12s', textAlign: 'left',
-                      marginBottom: 1,
-                    }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(102,240,255,0.08)'; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
-                  >
-                    <LayoutDashboard size={12} color="rgba(102,240,255,0.75)" />
-                    <span style={{ fontFamily: INTER, fontSize: 11, color: 'rgba(102,240,255,0.85)', fontWeight: 600 }}>
-                      管理后台
-                    </span>
-                  </button>
-                  <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '3px 0' }} />
+                  <div style={{
+                    margin: '4px 4px 2px',
+                    padding: '11px 12px 12px',
+                    borderRadius: 8,
+                    background: 'rgba(102,240,255,0.05)',
+                    border: '1px solid rgba(102,240,255,0.18)',
+                  }}>
+                    {/* Header row */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <LayoutDashboard size={12} color="#66f0ff" />
+                        <span style={{ fontFamily: INTER, fontSize: 11, fontWeight: 700, color: 'rgba(102,240,255,0.95)' }}>
+                          管理员后台
+                        </span>
+                      </div>
+                      <span style={{
+                        fontFamily: MONO, fontSize: 7, letterSpacing: '0.07em', fontWeight: 700,
+                        color: '#66f0ff', background: 'rgba(102,240,255,0.15)',
+                        border: '1px solid rgba(102,240,255,0.30)',
+                        borderRadius: 3, padding: '2px 6px',
+                      }}>
+                        ADMIN ONLY
+                      </span>
+                    </div>
+                    {/* Description */}
+                    <div style={{ fontFamily: INTER, fontSize: 10, color: 'rgba(140,200,215,0.65)', lineHeight: 1.45, marginBottom: 9 }}>
+                      管理订单、用户、credits、套餐与系统状态
+                    </div>
+                    {/* CTA Button */}
+                    <button
+                      onClick={() => { setOpen(false); navigate('/admin'); }}
+                      style={{
+                        width: '100%', padding: '7px 10px',
+                        fontFamily: INTER, fontSize: 11, fontWeight: 700,
+                        color: '#040b10',
+                        background: 'linear-gradient(135deg, rgba(102,240,255,0.90), rgba(180,150,255,0.75))',
+                        border: 'none', borderRadius: 6,
+                        cursor: 'pointer', transition: 'opacity 0.12s',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                      }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '0.85'; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.opacity = '1'; }}
+                    >
+                      进入后台管理区
+                    </button>
+                  </div>
+                  <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '6px 0 3px' }} />
                 </>
               )}
 
