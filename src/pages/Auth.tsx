@@ -221,6 +221,16 @@ export default function Auth() {
               </p>
             ) : null}
           </div>
+
+          {/* Legal links */}
+          <div className="mt-5 text-center">
+            <p className="text-xs text-muted-foreground/50">
+              {mode === 'register' ? '注册即表示您同意' : '使用即表示您同意'}{' '}
+              <a href="/terms" target="_blank" rel="noreferrer" className="underline hover:text-muted-foreground transition-colors">服务条款</a>
+              {' '}与{' '}
+              <a href="/privacy" target="_blank" rel="noreferrer" className="underline hover:text-muted-foreground transition-colors">隐私政策</a>
+            </p>
+          </div>
         </div>
       </div>
     </div>

@@ -4,6 +4,10 @@ import NotePage from "./pages/Note";
 import MindMapPage from "./pages/MindMap";
 import NotFound from "./pages/NotFound";
 import Architecture from "./pages/Architecture";
+import PricingPage from "./pages/PricingPage";
+import TermsPage from "./pages/TermsPage";
+import PrivacyPage from "./pages/PrivacyPage";
+import RefundPage from "./pages/RefundPage";
 import { StarMapLayout } from "./components/layout/StarMapLayout";
 
 export const routers = [
@@ -44,6 +48,26 @@ export const routers = [
     ],
   },
   /* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */
+  {
+    path: "/pricing",
+    name: "pricing",
+    element: <PricingPage />,
+  },
+  {
+    path: "/terms",
+    name: "terms",
+    element: <TermsPage />,
+  },
+  {
+    path: "/privacy",
+    name: "privacy",
+    element: <PrivacyPage />,
+  },
+  {
+    path: "/refund",
+    name: "refund",
+    element: <RefundPage />,
+  },
   {
     path: "/architecture",
     name: "architecture",
