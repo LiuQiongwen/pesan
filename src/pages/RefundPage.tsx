@@ -84,7 +84,7 @@ export default function RefundPage() {
           onClick={() => navigate('/')}
           style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: '#b496ff', background: 'none', border: 'none', cursor: 'pointer' }}
         >
-          PING
+          PESTA
         </button>
       </nav>
 
@@ -212,7 +212,7 @@ export default function RefundPage() {
         display: 'flex', flexWrap: 'wrap', gap: 12,
         alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <span style={{ fontFamily: MONO, fontSize: 12, color: '#555a72' }}>© 2026 PING · 知识宇宙</span>
+        <span style={{ fontFamily: MONO, fontSize: 12, color: '#555a72' }}>© 2026 Pesta</span>
         <div style={{ display: 'flex', gap: 20 }}>
           {[{ label: '定价', path: '/pricing' }, { label: '服务条款', path: '/terms' }, { label: '隐私政策', path: '/privacy' }].map(({ label, path }) => (
             <button

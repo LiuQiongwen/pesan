@@ -77,7 +77,7 @@ export default function TermsPage() {
             color: '#b496ff', background: 'none', border: 'none', cursor: 'pointer',
           }}
         >
-          PING
+          PESTA
         </button>
       </nav>
 
@@ -105,11 +105,11 @@ export default function TermsPage() {
           borderRadius: 10, padding: '14px 18px', marginBottom: 36,
           fontSize: 13, color: '#c0c4d8', lineHeight: 1.7,
         }}>
-          请在使用 PING 知识宇宙平台（以下简称"本平台"）前仔细阅读以下服务条款。注册或使用本平台即表示您同意受本条款约束。
+          请在使用 Pesta 平台（以下简称"本平台"）前仔细阅读以下服务条款。注册或使用本平台即表示您同意受本条款约束。
         </div>
 
         <Section title="1. 服务说明">
-          <P>PING 知识宇宙是一款面向个人及团队的 AI 增强型知识管理平台，提供知识节点管理、RAG 检索、AI 洞见生成、行动规划等功能（以下简称"服务"）。</P>
+          <P>Pesta 是一款面向个人及团队的 AI 增强型知识管理平台，提供知识节点管理、RAG 检索、AI 洞见生成、行动规划等功能（以下简称"服务"）。</P>
           <P>本平台保留随时修改、暂停或终止任何服务功能的权利，并将通过站内通知或电子邮件提前告知用户（紧急情况除外）。</P>
         </Section>
 
@@ -190,7 +190,7 @@ export default function TermsPage() {
         alignItems: 'center', justifyContent: 'space-between',
       }}>
         <span style={{ fontFamily: MONO, fontSize: 12, color: '#555a72' }}>
-          © 2026 PING · 知识宇宙
+          © 2026 Pesta
         </span>
         <div style={{ display: 'flex', gap: 20 }}>
           {[

@@ -36,7 +36,7 @@ const SUBSCRIPTION_PLANS = [
     id:       'pro_monthly',
     planKey:  'pro',
     label:    'Pro',
-    sublabel: '知识宇宙全解锁',
+    sublabel: 'Pesta 全解锁',
     price:    '¥29',
     period:   '/月',
     accent:   '#b496ff',
@@ -211,11 +211,11 @@ export function BillingPanel({ onClose }: Props) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
               <Sparkles size={15} color="#b496ff" />
               <span style={{ fontFamily: INTER, fontSize: 16, fontWeight: 700, color: 'rgba(230,238,255,0.92)' }}>
-                知识宇宙订阅中心
+                Pesta 订阅中心
               </span>
             </div>
             <div style={{ fontFamily: MONO, fontSize: 10, color: 'rgba(80,90,115,0.65)', letterSpacing: '0.06em' }}>
-              COSMOS BILLING · 支付宝安全支付
+              PESTA BILLING · 支付宝安全支付
             </div>
           </div>
           <button

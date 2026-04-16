@@ -251,7 +251,7 @@ export function SettingsCapsule() {
 
             {/* Footer */}
             <div style={{ padding: '5px 14px 8px', fontFamily: MONO, fontSize: 8, color: 'rgba(55,65,88,0.50)', letterSpacing: '0.05em' }}>
-              KNOWLEDGE COSMOS · v2.0
+              PESTA · v2.0
             </div>
           </div>
         )}

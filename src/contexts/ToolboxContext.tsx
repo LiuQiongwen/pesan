@@ -29,9 +29,9 @@ export interface LayoutPreset {
 
 type PodMap = Record<PodId, PodState>;
 
-const STORAGE_KEY  = 'cosmos_wm_v1';
-const LAYOUT_KEY   = 'cosmos_wm_layout_v1';
-const PRESETS_KEY  = 'cosmos_wm_presets_v1';
+const STORAGE_KEY  = 'pesta_wm_v1';
+const LAYOUT_KEY   = 'pesta_wm_layout_v1';
+const PRESETS_KEY  = 'pesta_wm_presets_v1';
 const BASE_Z       = 100;
 
 // ── Defaults ─────────────────────────────────────────────────────────────────
@@ -78,6 +78,27 @@ function loadPods(): PodMap {
             fontScale: saved[id]!.fontScale ?? defs[id].fontScale,
             pinned:    saved[id]!.pinned    ?? defs[id].pinned,
             // Always start closed/unminimized
+            open: false, minimized: false,
+          };
+        }
+      }
+      return merged;
+    }
+    // Try migrating from cosmos_wm_v1 (pre-Pesta branding)
+    const cosmosRaw = localStorage.getItem('cosmos_wm_v1');
+    if (cosmosRaw) {
+      const saved = JSON.parse(cosmosRaw) as Partial<PodMap>;
+      const defs  = defaultPositions();
+      const merged: PodMap = { ...defs };
+      for (const id of Object.keys(defs) as PodId[]) {
+        if (saved[id]) {
+          merged[id] = {
+            ...defs[id],
+            pos:       saved[id]!.pos       ?? defs[id].pos,
+            size:      saved[id]!.size      ?? defs[id].size,
+            sizeMode:  saved[id]!.sizeMode  ?? defs[id].sizeMode,
+            fontScale: saved[id]!.fontScale ?? defs[id].fontScale,
+            pinned:    saved[id]!.pinned    ?? defs[id].pinned,
             open: false, minimized: false,
           };
         }

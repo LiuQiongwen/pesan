@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Search, ArrowRight } from 'lucide-react';
+import { PestaLogo } from '@/components/brand/PestaLogo';
 
 // ── Color palette ─────────────────────────────────────────────────────────
 type ColorType = 'green' | 'cyan' | 'purple' | 'white';
@@ -433,24 +434,8 @@ export default function Index({ preview = false }: { preview?: boolean }) {
         padding: '0 40px', zIndex: 10, pointerEvents: 'none',
       }}>
         {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, pointerEvents: 'auto' }}>
-          <div style={{
-            width: 30, height: 30, borderRadius: 7,
-            border: '1px solid rgba(0,255,102,0.30)',
-            background: 'rgba(0,255,102,0.06)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            position: 'relative',
-          }}>
-            <div style={{
-              width: 14, height: 14, borderRadius: '50%',
-              border: '1.5px solid rgba(0,255,102,0.7)',
-              position: 'absolute',
-            }} />
-            <div style={{ width: 4, height: 4, borderRadius: '50%', background: '#00ff66' }} />
-          </div>
-          <span style={{ fontFamily: INTER, fontWeight: 700, fontSize: 16, color: '#ffffff', letterSpacing: '-0.02em' }}>
-            Pesan
-          </span>
+        <div style={{ pointerEvents: 'auto' }}>
+          <PestaLogo size={30} showName />
         </div>
 
         {/* Right CTAs */}

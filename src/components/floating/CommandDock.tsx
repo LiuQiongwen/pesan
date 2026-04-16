@@ -163,7 +163,7 @@ export function CommandDock() {
           fontFamily: MONO,
           fontSize: 'clamp(6.5px, 0.6vw, 8.5px)',
           color: 'rgba(60,75,100,0.60)', letterSpacing: '0.06em',
-        }}>COSMOS</span>
+        }}>PESTA</span>
       </div>
 
       {/* Pipeline steps */}

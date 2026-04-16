@@ -32,7 +32,7 @@ export const translations: T = {
   // ── Auth ─────────────────────────────────────────────────────────────────
   'auth.title.signIn':     { zh: '欢迎回来', en: 'Welcome back' },
   'auth.title.signUp':     { zh: '创建账号', en: 'Create account' },
-  'auth.subtitle.signIn':  { zh: '登录你的 Pesan 账号', en: 'Sign in to your Pesan account' },
+  'auth.subtitle.signIn':  { zh: '登录你的 Pesta 账号', en: 'Sign in to your Pesta account' },
   'auth.subtitle.signUp':  { zh: '开始构建你的知识星图', en: 'Start building your knowledge universe' },
   'auth.email':            { zh: '邮箱', en: 'Email' },
   'auth.password':         { zh: '密码', en: 'Password' },

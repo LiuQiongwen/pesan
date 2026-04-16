@@ -20,9 +20,9 @@ const CORS = {
 
 // ── Catalogue ─────────────────────────────────────────────────────────────────
 const PLANS: Record<string, { name: string; amountFen: number }> = {
-  pro_monthly:   { name: 'Pro 月度订阅 · 知识宇宙',   amountFen: 2900  },
-  pro_yearly:    { name: 'Pro 年度订阅 · 知识宇宙',   amountFen: 28800 },
-  team_monthly:  { name: 'Team 月度订阅 · 知识宇宙',  amountFen: 9900  },
+  pro_monthly:   { name: 'Pro 月度订阅 · Pesta',   amountFen: 2900  },
+  pro_yearly:    { name: 'Pro 年度订阅 · Pesta',   amountFen: 28800 },
+  team_monthly:  { name: 'Team 月度订阅 · Pesta',  amountFen: 9900  },
 };
 
 const CREDIT_PACKS: Record<string, { name: string; amountFen: number; credits: number }> = {
@@ -86,7 +86,7 @@ Deno.serve(async (req: Request) => {
     // Generate unique order number
     const ts = Date.now();
     const rnd = Math.floor(Math.random() * 9000) + 1000;
-    const orderNo = `COSMOS${ts}${rnd}`;
+    const orderNo = `PESTA${ts}${rnd}`;
 
     // Insert order record
     const serviceClient = createClient(

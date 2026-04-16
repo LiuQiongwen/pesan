@@ -62,7 +62,7 @@ export default function PrivacyPage() {
           onClick={() => navigate('/')}
           style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: '#b496ff', background: 'none', border: 'none', cursor: 'pointer' }}
         >
-          PING
+          PESTA
         </button>
       </nav>
 
@@ -88,7 +88,7 @@ export default function PrivacyPage() {
           borderRadius: 10, padding: '14px 18px', marginBottom: 36,
           fontSize: 13, color: '#c0c4d8', lineHeight: 1.7,
         }}>
-          PING 知识宇宙重视您的隐私。本政策说明我们如何收集、使用和保护您的个人信息。请在使用本平台前仔细阅读。
+          Pesta重视您的隐私。本政策说明我们如何收集、使用和保护您的个人信息。请在使用本平台前仔细阅读。
         </div>
 
         <Section title="1. 我们收集哪些信息">
@@ -178,7 +178,7 @@ export default function PrivacyPage() {
         display: 'flex', flexWrap: 'wrap', gap: 12,
         alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <span style={{ fontFamily: MONO, fontSize: 12, color: '#555a72' }}>© 2026 PING · 知识宇宙</span>
+        <span style={{ fontFamily: MONO, fontSize: 12, color: '#555a72' }}>© 2026 Pesta</span>
         <div style={{ display: 'flex', gap: 20 }}>
           {[{ label: '定价', path: '/pricing' }, { label: '服务条款', path: '/terms' }, { label: '退款政策', path: '/refund' }].map(({ label, path }) => (
             <button

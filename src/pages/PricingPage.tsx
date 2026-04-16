@@ -33,7 +33,7 @@ const PLANS = [
   {
     id:       'pro',
     label:    'Pro',
-    sublabel: '知识宇宙全解锁',
+    sublabel: 'Pesta 全解锁',
     price:    '¥29',
     period:   '/月',
     accent:   '#b496ff',
@@ -203,7 +203,7 @@ export default function PricingPage() {
             letterSpacing: '0.05em',
           }}
         >
-          PING
+          PESTA
         </button>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
@@ -248,7 +248,7 @@ export default function PricingPage() {
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
             margin: '0 0 16px', lineHeight: 1.15, letterSpacing: '-0.02em',
           }}>
-            解锁知识宇宙的全部力量
+            解锁 Pesta 的全部力量
           </h1>
           <p style={{
             fontSize: 16, color: '#888fa8', maxWidth: 480, margin: '0 auto 36px',
@@ -564,7 +564,7 @@ export default function PricingPage() {
           alignItems: 'center', justifyContent: 'space-between',
         }}>
           <span style={{ fontFamily: MONO, fontSize: 12, color: '#555a72' }}>
-            © 2026 PING · 知识宇宙
+            © 2026 Pesta
           </span>
           <div style={{ display: 'flex', gap: 20 }}>
             {[

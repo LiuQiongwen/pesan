@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useT } from '@/contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
+import { PestaLogo } from '@/components/brand/PestaLogo';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
@@ -58,10 +59,7 @@ export default function Auth() {
         <div className="absolute inset-0 bg-gradient-glow" />
         <div className="relative z-10">
           <div className="flex items-center gap-3 mb-12">
-            <div className="w-10 h-10 rounded-xl bg-gradient-primary flex items-center justify-center animate-flow-light">
-              <span className="text-white font-bold text-sm">Pe</span>
-            </div>
-            <span className="text-white font-semibold text-xl">Pesan</span>
+            <PestaLogo size={36} showName />
           </div>
           <h1 className="text-4xl font-bold text-white leading-tight mb-6">
             {t('auth.title.signIn')}<br />
@@ -93,10 +91,7 @@ export default function Auth() {
         <div className="w-full max-w-md animate-fade-up">
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center gap-2 mb-8">
-            <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center">
-              <span className="text-white font-bold text-xs">Pe</span>
-            </div>
-            <span className="font-semibold text-foreground">Pesan</span>
+            <PestaLogo size={28} showName />
           </div>
 
           <div className="mb-8">
