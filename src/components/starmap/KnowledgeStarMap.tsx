@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Canvas } from '@react-three/fiber';
 import { CosmosScene } from './CosmosScene';
 import { buildCosmosLayout, type CosmosNote } from './cosmos-layout';
-import { ConnectConfirmOverlay } from './ConnectConfirmOverlay';
+import { NodeContextMenu } from './NodeContextMenu';
 import { GalaxyJoinOverlay, type GalaxyOption } from './GalaxyJoinOverlay';
 import { WorkbenchSummonBar } from './WorkbenchSummonBar';
 import { WorkbenchPanel } from './WorkbenchPanel';
@@ -100,6 +100,19 @@ export default function KnowledgeStarMap({
   // ── Workbench multi-select state ─────────────────────────────────────────
   const [workbenchSelectedIds, setWorkbenchSelectedIds] = useState<string[]>([]);
   const [workbenchActive,      setWorkbenchActive]      = useState(false);
+
+  // ── Right-click context menu ─────────────────────────────────────────────
+  const [ctxMenu, setCtxMenu] = useState<{ noteId: string; x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    const onCtx = (e: Event) => {
+      const { noteId, x, y } = (e as CustomEvent).detail;
+      setCtxMenu({ noteId, x, y });
+    };
+    window.addEventListener('cosmos-context-menu', onCtx);
+    return () => window.removeEventListener('cosmos-context-menu', onCtx);
+  }, []);
+
 
   // Quick lookup map for note objects
   const notesMap = useMemo(() => new Map(notes.map(n => [n.id, n])), [notes]);
@@ -401,6 +414,20 @@ export default function KnowledgeStarMap({
           userId={userId}
         />,
         document.body
+      )}
+      {/* Right-click context menu */}
+      {ctxMenu && (
+        <NodeContextMenu
+          noteId={ctxMenu.noteId}
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          note={notesMap.get(ctxMenu.noteId)}
+          onClose={() => setCtxMenu(null)}
+          onOpenNote={id => { toggleNode(id); setCtxMenu(null); }}
+          onDistill={id => { onNodeDropToPod?.(id, 'insight'); setCtxMenu(null); }}
+          onSendToPod={(id, podId) => { onNodeDropToPod?.(id, podId); setCtxMenu(null); }}
+          onFlash={id => { onFlashNote?.(id); setCtxMenu(null); }}
+        />
       )}
     </div>
   );

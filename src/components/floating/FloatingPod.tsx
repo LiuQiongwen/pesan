@@ -1,5 +1,5 @@
 import { useRef, useCallback, useEffect, useState, type ReactNode, type LucideIcon } from 'react';
-import { X, Minus, Pin, Maximize2, Minimize2, ALargeSmall } from 'lucide-react';
+import { X, Minus, Pin, Maximize2, Minimize2, ALargeSmall, Expand, Shrink } from 'lucide-react';
 import { useToolbox, type PodId } from '@/contexts/ToolboxContext';
 import { ResizeHandles } from '@/components/window-manager/ResizeHandles';
 import { useWindowSnap } from '@/hooks/useWindowSnap';
@@ -61,6 +61,25 @@ export function FloatingPod({
 
   // Font scale popover
   const [showFontPopover, setShowFontPopover] = useState(false);
+
+  // Fullscreen state
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const prevStateRef = useRef<{ pos: { x: number; y: number }; w: number | null; h: number | null } | null>(null);
+
+  const toggleFullscreen = useCallback(() => {
+    if (!isFullscreen) {
+      prevStateRef.current = { pos: { ...state.pos }, w: state.size.w, h: state.size.h };
+      setPos(id, { x: 0, y: 0 });
+      setSize(id, { w: window.innerWidth, h: window.innerHeight });
+      setIsFullscreen(true);
+    } else {
+      if (prevStateRef.current) {
+        setPos(id, prevStateRef.current.pos);
+        setSize(id, { w: prevStateRef.current.w ?? MIN_W, h: prevStateRef.current.h ?? MIN_H });
+      }
+      setIsFullscreen(false);
+    }
+  }, [isFullscreen, id, state.pos, state.size, setPos, setSize]);
 
   const a = (alpha: number) => hexToRgba(accentColor, alpha);
 
@@ -348,6 +367,19 @@ export function FloatingPod({
               style={mkCtrl(a(0.65), a(0.12), a(0.25))}
             >
               {state.sizeMode === 'compact' ? <Maximize2 size={12} /> : <Minimize2 size={12} />}
+            </button>
+
+            {/* Fullscreen toggle */}
+            <button
+              onClick={toggleFullscreen}
+              title={isFullscreen ? '退出全屏' : '全屏展开'}
+              style={mkCtrl(
+                isFullscreen ? accentColor : 'rgba(190,205,230,0.45)',
+                isFullscreen ? a(0.16) : undefined,
+                isFullscreen ? a(0.30) : undefined,
+              )}
+            >
+              {isFullscreen ? <Shrink size={12} /> : <Expand size={12} />}
             </button>
 
             {/* Pin */}

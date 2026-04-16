@@ -685,15 +685,38 @@ function ImperativeCore({
       if (e.key === 'Escape') cancelConnect();
     };
 
-    canvas.addEventListener('mousedown', onDown);
-    canvas.addEventListener('mousemove', onMove);
-    canvas.addEventListener('mouseup',   onUp);
-    window.addEventListener('keydown',   onKeyDown);
+    // ── Right-click: dispatch cosmos-context-menu CustomEvent ─────────────
+    const onContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+      const rect   = canvas.getBoundingClientRect();
+      const mouse  = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      raycaster.setFromCamera(mouse, camera);
+      const allMeshes = Array.from(meshToNoteId.current.keys()) as THREE.Mesh[];
+      const hits      = raycaster.intersectObjects(allMeshes);
+      if (hits.length) {
+        const hitId = meshToNoteId.current.get(hits[0].object as THREE.Mesh);
+        if (hitId) {
+          window.dispatchEvent(new CustomEvent('cosmos-context-menu', {
+            detail: { noteId: hitId, x: e.clientX, y: e.clientY },
+          }));
+        }
+      }
+    };
+
+    canvas.addEventListener('mousedown',    onDown);
+    canvas.addEventListener('mousemove',    onMove);
+    canvas.addEventListener('mouseup',      onUp);
+    canvas.addEventListener('contextmenu',  onContextMenu);
+    window.addEventListener('keydown',      onKeyDown);
     return () => {
-      canvas.removeEventListener('mousedown', onDown);
-      canvas.removeEventListener('mousemove', onMove);
-      canvas.removeEventListener('mouseup',   onUp);
-      window.removeEventListener('keydown',   onKeyDown);
+      canvas.removeEventListener('mousedown',   onDown);
+      canvas.removeEventListener('mousemove',   onMove);
+      canvas.removeEventListener('mouseup',     onUp);
+      canvas.removeEventListener('contextmenu', onContextMenu);
+      window.removeEventListener('keydown',     onKeyDown);
       if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
       if (autoRotateTimer.current) clearTimeout(autoRotateTimer.current);
     };
@@ -989,6 +1012,19 @@ export function CosmosScene({
   const currentPosRef = useRef(new Map<string, THREE.Vector3>());
   const notesMap      = useMemo(() => new Map(notes.map(n => [n.id, n])), [notes]);
   const [lodLevel,    setLodLevel]   = useState<0|1|2>(0);
+  const [showButtons, setShowButtons] = useState(false);
+  const btnTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Show action buttons 200ms after hover starts
+  useEffect(() => {
+    if (btnTimerRef.current) clearTimeout(btnTimerRef.current);
+    if (hoveredId) {
+      btnTimerRef.current = setTimeout(() => setShowButtons(true), 200);
+    } else {
+      setShowButtons(false);
+    }
+    return () => { if (btnTimerRef.current) clearTimeout(btnTimerRef.current); };
+  }, [hoveredId]);
 
   const handleSetHovered = useCallback((id: string | null) => setHoveredId(id), []);
   const handleLodChange  = useCallback((lv: 0|1|2) => {
@@ -1045,7 +1081,7 @@ export function CosmosScene({
             key: `label-${hoveredId}`,
             position: [pos.x, pos.y + 2.2, pos.z] as [number,number,number],
             center: true,
-            style: { pointerEvents: 'none', whiteSpace: 'nowrap' },
+            style: { pointerEvents: showButtons ? 'auto' : 'none', whiteSpace: 'nowrap' },
           },
           <div style={{
             width: 220,
@@ -1105,15 +1141,41 @@ export function CosmosScene({
                   }}>{timeAgo}</span>
                 )}
               </div>
-              {/* CTA hint */}
-              <div style={{
-                fontFamily: MONO, fontSize: 8.5, letterSpacing: '0.05em',
-                color: `rgba(${r},${g},${b},0.55)`,
-                borderTop: `1px solid rgba(${r},${g},${b},0.10)`,
-                paddingTop: 6,
-              }}>
-                ▶ 点击展开
-              </div>
+              {/* CTA hint / quick action buttons */}
+              {showButtons && hoveredId ? (
+                <div style={{
+                  display: 'flex', gap: 4, paddingTop: 6,
+                  borderTop: `1px solid rgba(${r},${g},${b},0.10)`,
+                }}>
+                  {([
+                    { label: '→ 打开', act: () => onNodeToggle(hoveredId),                        bg: `rgba(${r},${g},${b},0.12)`, border: `rgba(${r},${g},${b},0.28)` },
+                    { label: '◇ 蒸馏', act: () => onNodeDropToPod?.(hoveredId, 'insight'),        bg: 'rgba(180,150,255,0.10)',    border: 'rgba(180,150,255,0.28)' },
+                    { label: '+ 捕获', act: () => onNodeDropToPod?.(hoveredId, 'capture'),        bg: 'rgba(0,255,102,0.08)',      border: 'rgba(0,255,102,0.25)' },
+                  ] as { label: string; act: () => void; bg: string; border: string }[]).map(btn => (
+                    <button
+                      key={btn.label}
+                      onClick={e => { e.stopPropagation(); btn.act(); }}
+                      style={{
+                        flex: 1, padding: '3px 0',
+                        fontFamily: MONO, fontSize: 8, letterSpacing: '0.04em',
+                        color: `rgba(${r},${g},${b},0.85)`,
+                        background: btn.bg,
+                        border: `1px solid ${btn.border}`,
+                        borderRadius: 4, cursor: 'pointer',
+                      }}
+                    >{btn.label}</button>
+                  ))}
+                </div>
+              ) : (
+                <div style={{
+                  fontFamily: MONO, fontSize: 8.5, letterSpacing: '0.05em',
+                  color: `rgba(${r},${g},${b},0.55)`,
+                  borderTop: `1px solid rgba(${r},${g},${b},0.10)`,
+                  paddingTop: 6,
+                }}>
+                  ▶ 点击展开
+                </div>
+              )}
             </div>
           </div>
         );

@@ -69,6 +69,7 @@ function StarMapContents({ user, notes, loading, openPod, pods }: ContentsProps)
   const [hoveredNode,     setHoveredNode]     = useState<HoveredNodeInfo | null>(null);
   const [highlightedIds,  setHighlightedIds]  = useState<string[]>([]);
   const [flashNoteId,     setFlashNoteId]     = useState<string | null>(null);
+  const [tagFilter,       setTagFilter]       = useState<string | null>(null);
   const [recenterTrigger, setRecenterTrigger] = useState(0);
   const [agentActive,     setAgentActive]     = useState(false);
   const [pinnedMemoryId,  setPinnedMemoryId]  = useState<string | null>(null);
@@ -83,6 +84,33 @@ function StarMapContents({ user, notes, loading, openPod, pods }: ContentsProps)
     setFlashNoteId(noteId);
     setTimeout(() => setFlashNoteId(null), 1200);
   }, []);
+
+  // ── Tag filter — click tag in NodeLightBand to highlight all nodes with that tag ─
+  const handleTagClick = useCallback((tag: string) => {
+    if (tagFilter === tag) {
+      setTagFilter(null);
+      setHighlightedIds([]);
+    } else {
+      setTagFilter(tag);
+      setHighlightedIds(notes.filter(n => (n.tags ?? []).includes(tag)).map(n => n.id));
+    }
+  }, [tagFilter, notes]);
+
+  // ── Global keyboard shortcuts ──────────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+      switch (e.key.toUpperCase()) {
+        case 'N': e.preventDefault(); openPod('capture');   break;
+        case 'G': e.preventDefault(); setRecenterTrigger(t => t + 1); break;
+        case 'F': e.preventDefault(); if (hoveredNode?.noteId) flashNote(hoveredNode.noteId); break;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [openPod, hoveredNode, flashNote]);
+
 
   // ── Drag-to-pod handler ───────────────────────────────────────────────────
   const handleNodeDropToPod = useCallback((noteId: string, podId: string) => {
@@ -232,7 +260,7 @@ function StarMapContents({ user, notes, loading, openPod, pods }: ContentsProps)
       <Outlet />
 
       {/* Layer 5 — Node hover light band */}
-      <NodeLightBand node={hoveredNode} />
+      <NodeLightBand node={hoveredNode} onTagClick={handleTagClick} tagFilter={tagFilter} />
 
       {/* Layer 6 — Quick Capture Bar */}
       <QuickCaptureBar userId={user.id} onFlashNote={flashNote} hasNotes={notes.length > 0} />

@@ -11,9 +11,10 @@ const INTER = "'Inter',system-ui,sans-serif";
 
 interface NodeLightBandProps {
   node: HoveredNodeInfo | null;
+  onTagClick?: (tag: string) => void;
 }
 
-export function NodeLightBand({ node }: NodeLightBandProps) {
+export function NodeLightBand({ node, onTagClick }: NodeLightBandProps) {
   const navigate = useNavigate();
   const { lang } = useLanguage();
 
@@ -92,17 +93,24 @@ export function NodeLightBand({ node }: NodeLightBandProps) {
       {/* Tags */}
       <div style={{ display: 'flex', gap: 5, flexShrink: 0, maxWidth: 200, overflow: 'hidden' }}>
         {(node?.tags || []).slice(0, 3).map(tag => (
-          <span key={tag} style={{
-            fontFamily: MONO,
-            fontSize: 9,
-            color: `${color}cc`,
-            background: `${color}12`,
-            border: `1px solid ${color}28`,
-            padding: '2px 7px',
-            borderRadius: 3,
-            letterSpacing: '0.04em',
-            whiteSpace: 'nowrap',
-          }}>#{tag}</span>
+          <span key={tag}
+            onClick={() => onTagClick?.(tag)}
+            style={{
+              fontFamily: MONO,
+              fontSize: 9,
+              color: `${color}cc`,
+              background: `${color}12`,
+              border: `1px solid ${color}28`,
+              padding: '2px 7px',
+              borderRadius: 3,
+              letterSpacing: '0.04em',
+              whiteSpace: 'nowrap',
+              cursor: onTagClick ? 'pointer' : 'default',
+              transition: 'background 0.12s, border-color 0.12s',
+            }}
+            onMouseEnter={e => { if (onTagClick) { (e.currentTarget as HTMLSpanElement).style.background = `${color}28`; (e.currentTarget as HTMLSpanElement).style.borderColor = `${color}55`; } }}
+            onMouseLeave={e => { (e.currentTarget as HTMLSpanElement).style.background = `${color}12`; (e.currentTarget as HTMLSpanElement).style.borderColor = `${color}28`; }}
+          >#{tag}</span>
         ))}
       </div>
 
