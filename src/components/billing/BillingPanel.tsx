@@ -1,15 +1,17 @@
 /**
  * BillingPanel — slide-in right panel for subscription & credits purchase.
- * Design language: cosmic dark, consistent with CommandDock / CosmosScene.
+ * Uses manual payment flow: QR code → proof upload → admin review → auto-fulfillment.
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState } from 'react';
 import {
-  X, Zap, Check, Star, Users, Sparkles,
-  CreditCard, RefreshCcw, ExternalLink, Clock,
+  X, Zap, Check, Star, Users, Sparkles, CreditCard, History,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useBilling } from '@/hooks/useBilling';
+import { useManualOrders, type ManualOrder } from '@/hooks/useManualOrders';
 import { useAuth } from '@/hooks/useAuth';
+import { ManualPayModal, type OrderCreatedPayload } from '@/components/payment/ManualPayModal';
+import { OrderHistoryPanel } from '@/components/payment/OrderHistoryPanel';
 
 const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
@@ -30,7 +32,7 @@ const SUBSCRIPTION_PLANS = [
       '3 个星系（主题簇）',
       '基础检索',
     ],
-    cta:      null, // not purchasable
+    cta:      null,
   },
   {
     id:       'pro_monthly',
@@ -74,104 +76,77 @@ const SUBSCRIPTION_PLANS = [
 
 const CREDIT_PACKS = [
   {
-    id:       'credits_100',
-    credits:  100,
-    price:    '¥9.9',
-    amountFen: 990,
-    label:    '轻量包',
-    desc:     '适合偶尔使用 AI 功能',
-    accent:   '#66f0ff',
-    saving:   null,
+    id: 'credits_100', credits: 100, price: '¥9.9',
+    label: '轻量包', desc: '适合偶尔使用 AI 功能', accent: '#66f0ff', saving: null,
   },
   {
-    id:       'credits_500',
-    credits:  500,
-    price:    '¥39',
-    amountFen: 3900,
-    label:    '标准包',
-    desc:     '日常知识处理首选',
-    accent:   '#b496ff',
-    saving:   '省 20%',
-    badge:    '推荐',
+    id: 'credits_500', credits: 500, price: '¥39',
+    label: '标准包', desc: '日常知识处理首选', accent: '#b496ff', saving: '省 20%', badge: '推荐',
   },
   {
-    id:       'credits_2000',
-    credits:  2000,
-    price:    '¥129',
-    amountFen: 12900,
-    label:    '超值包',
-    desc:     '重度用户最优选择',
-    accent:   '#ffa040',
-    saving:   '省 35%',
+    id: 'credits_2000', credits: 2000, price: '¥129',
+    label: '超值包', desc: '重度用户最优选择', accent: '#ffa040', saving: '省 35%',
   },
 ];
 
-type Tab = 'subscription' | 'credits';
-type OrderState = { orderNo: string; payUrl: string | null; demoMode: boolean } | null;
+type Tab = 'subscription' | 'credits' | 'orders';
 
 interface Props { onClose: () => void }
 
 export function BillingPanel({ onClose }: Props) {
-  const { user }           = useAuth();
-  const billing            = useBilling(user?.id);
-  const [tab, setTab]      = useState<Tab>('subscription');
+  const { user }     = useAuth();
+  const billing      = useBilling(user?.id);
+  const manualOrders = useManualOrders(user?.id);
+  const [tab, setTab]         = useState<Tab>('subscription');
   const [loading, setLoading] = useState<string | null>(null);
-  const [order,   setOrder]   = useState<OrderState>(null);
-  const [polling, setPolling] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // ── Poll order status after payment window opens ──────────────────────────
-  const startPolling = useCallback((orderNo: string) => {
-    setPolling(true);
-    let attempts = 0;
-    pollRef.current = setInterval(async () => {
-      attempts++;
-      const { data } = await supabase
-        .from('payment_orders')
-        .select('status')
-        .eq('order_no', orderNo)
-        .maybeSingle();
-
-      if (data?.status === 'paid') {
-        clearInterval(pollRef.current!);
-        setPolling(false);
-        setOrder(null);
-        billing.refetch();
-      } else if (attempts >= 100) { // 5 min timeout
-        clearInterval(pollRef.current!);
-        setPolling(false);
-      }
-    }, 3000);
-  }, [billing]);
-
-  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
-
-  // ── Create order & open Alipay window ─────────────────────────────────────
-  const handlePurchase = async (type: 'subscription' | 'credits', itemId: string) => {
-    if (!user) return;
-    setLoading(itemId);
-    try {
-      const { data, error } = await supabase.functions.invoke('alipay-create-order', {
-        body: { type, itemId },
-      });
-      if (error) throw error;
-
-      setOrder(data);
-      if (data.payUrl) {
-        window.open(data.payUrl, '_blank', 'noopener');
-        startPolling(data.orderNo);
-      }
-    } catch (e) {
-      console.error('create order error:', e);
-    } finally {
-      setLoading(null);
-    }
-  };
+  const [activeOrder, setActiveOrder] = useState<OrderCreatedPayload | null>(null);
 
   const currentPlan = billing.plan;
   const periodEnd   = billing.periodEnd
     ? new Date(billing.periodEnd).toLocaleDateString('zh-CN')
     : null;
+
+  // ── Create manual payment order ────────────────────────────────────────────
+  const handlePurchase = async (productCode: string) => {
+    if (!user) return;
+    setLoading(productCode);
+    try {
+      const { data, error } = await supabase.functions.invoke('manual-pay-create', {
+        body: { productCode },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setActiveOrder(data as OrderCreatedPayload);
+    } catch (e) {
+      console.error('create manual order error:', e);
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handleOrderSubmitted = () => {
+    setActiveOrder(null);
+    billing.refetch();
+    manualOrders.refetch();
+    setTab('orders');
+  };
+
+  const handleReopenOrder = (order: ManualOrder) => {
+    // Reconstruct minimal payload to show the payment modal again
+    setActiveOrder({
+      orderId:     order.id,
+      orderNo:     order.order_no,
+      productName: order.product_name,
+      productCode: order.product_code,
+      productType: order.product_type,
+      amountFen:   order.amount_fen,
+      expiresAt:   order.expires_at,
+      wechatQrUrl: null,
+      alipayQrUrl: null,
+      wechatPayee: 'Pesta',
+      alipayPayee: 'Pesta',
+    });
+  };
 
   return (
     <>
@@ -215,7 +190,7 @@ export function BillingPanel({ onClose }: Props) {
               </span>
             </div>
             <div style={{ fontFamily: MONO, fontSize: 10, color: 'rgba(80,90,115,0.65)', letterSpacing: '0.06em' }}>
-              PESTA BILLING · 支付宝安全支付
+              PESTA BILLING · 微信 / 支付宝扫码付款
             </div>
           </div>
           <button
@@ -274,30 +249,33 @@ export function BillingPanel({ onClose }: Props) {
         </div>
 
         {/* Tab switcher */}
-        <div style={{
-          padding: '10px 24px 0',
-          display: 'flex', gap: 4,
-          flexShrink: 0,
-        }}>
+        <div style={{ padding: '10px 24px 0', display: 'flex', gap: 4, flexShrink: 0 }}>
           {([
             { key: 'subscription', label: '订阅计划' },
             { key: 'credits',      label: 'AI Credits' },
+            { key: 'orders',       label: '我的订单' },
           ] as { key: Tab; label: string }[]).map(t => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
               style={{
-                padding: '7px 16px',
+                padding: '7px 14px',
                 fontFamily: MONO, fontSize: 10, letterSpacing: '0.06em',
                 color: tab === t.key ? 'rgba(220,228,250,0.92)' : 'rgba(100,110,140,0.60)',
                 background: tab === t.key ? 'rgba(255,255,255,0.08)' : 'transparent',
                 border: tab === t.key ? '1px solid rgba(255,255,255,0.14)' : '1px solid transparent',
-                borderRadius: 7,
-                cursor: 'pointer',
-                transition: 'all 0.14s',
+                borderRadius: 7, cursor: 'pointer', transition: 'all 0.14s',
+                position: 'relative',
               }}
             >
               {t.label}
+              {t.key === 'orders' && manualOrders.orders.filter(o => o.status === 'submitted').length > 0 && (
+                <span style={{
+                  position: 'absolute', top: 3, right: 3,
+                  width: 6, height: 6, borderRadius: '50%',
+                  background: '#66f0ff',
+                }} />
+              )}
             </button>
           ))}
         </div>
@@ -317,18 +295,12 @@ export function BillingPanel({ onClose }: Props) {
                     key={plan.id}
                     style={{
                       borderRadius: 14,
-                      border: isCurrent
-                        ? `1.5px solid ${plan.accent}55`
-                        : '1px solid rgba(255,255,255,0.07)',
-                      background: isCurrent
-                        ? `linear-gradient(140deg, rgba(255,255,255,0.04), transparent)`
-                        : 'rgba(255,255,255,0.02)',
+                      border: isCurrent ? `1.5px solid ${plan.accent}55` : '1px solid rgba(255,255,255,0.07)',
+                      background: isCurrent ? `linear-gradient(140deg, rgba(255,255,255,0.04), transparent)` : 'rgba(255,255,255,0.02)',
                       padding: '16px 18px',
                       position: 'relative', overflow: 'hidden',
-                      transition: 'border-color 0.18s',
                     }}
                   >
-                    {/* Badge */}
                     {plan.badge && (
                       <div style={{
                         position: 'absolute', top: 12, right: 14,
@@ -340,39 +312,25 @@ export function BillingPanel({ onClose }: Props) {
                         {plan.badge}
                       </div>
                     )}
-
-                    {/* Plan header */}
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
                       <div style={{
                         width: 36, height: 36, borderRadius: 9,
-                        background: `${plan.accent}18`,
-                        border: `1px solid ${plan.accent}33`,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        flexShrink: 0,
+                        background: `${plan.accent}18`, border: `1px solid ${plan.accent}33`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                       }}>
                         <Icon size={16} color={plan.accent} />
                       </div>
                       <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                          <span style={{ fontFamily: INTER, fontSize: 15, fontWeight: 700, color: 'rgba(225,232,250,0.92)' }}>
-                            {plan.label}
-                          </span>
-                          <span style={{ fontFamily: MONO, fontSize: 9, color: 'rgba(100,110,140,0.60)' }}>
-                            {plan.sublabel}
-                          </span>
+                          <span style={{ fontFamily: INTER, fontSize: 15, fontWeight: 700, color: 'rgba(225,232,250,0.92)' }}>{plan.label}</span>
+                          <span style={{ fontFamily: MONO, fontSize: 9, color: 'rgba(100,110,140,0.60)' }}>{plan.sublabel}</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: 2, marginTop: 3 }}>
-                          <span style={{ fontFamily: INTER, fontSize: 22, fontWeight: 700, color: isFree ? '#888fa8' : plan.accent }}>
-                            {plan.price}
-                          </span>
-                          <span style={{ fontFamily: MONO, fontSize: 9, color: 'rgba(100,110,140,0.55)' }}>
-                            {plan.period}
-                          </span>
+                          <span style={{ fontFamily: INTER, fontSize: 22, fontWeight: 700, color: isFree ? '#888fa8' : plan.accent }}>{plan.price}</span>
+                          <span style={{ fontFamily: MONO, fontSize: 9, color: 'rgba(100,110,140,0.55)' }}>{plan.period}</span>
                         </div>
                       </div>
                     </div>
-
-                    {/* Features */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 14 }}>
                       {plan.features.map((f, i) => (
                         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -381,49 +339,37 @@ export function BillingPanel({ onClose }: Props) {
                         </div>
                       ))}
                     </div>
-
-                    {/* CTA */}
                     {isFree ? (
-                      <div style={{
-                        textAlign: 'center',
-                        fontFamily: MONO, fontSize: 9, color: 'rgba(80,90,115,0.55)', letterSpacing: '0.05em',
-                      }}>
+                      <div style={{ textAlign: 'center', fontFamily: MONO, fontSize: 9, color: 'rgba(80,90,115,0.55)', letterSpacing: '0.05em' }}>
                         {isCurrent ? '当前方案' : '基础方案'}
                       </div>
                     ) : isCurrent ? (
                       <div style={{
-                        width: '100%', padding: '8px',
-                        textAlign: 'center',
+                        width: '100%', padding: '8px', textAlign: 'center',
                         fontFamily: MONO, fontSize: 9, letterSpacing: '0.06em',
-                        color: `${plan.accent}cc`,
-                        background: `${plan.accent}12`,
-                        border: `1px solid ${plan.accent}30`,
-                        borderRadius: 7,
+                        color: `${plan.accent}cc`, background: `${plan.accent}12`,
+                        border: `1px solid ${plan.accent}30`, borderRadius: 7,
                       }}>
                         当前方案 · 使用中
                       </div>
                     ) : (
                       <button
-                        onClick={() => handlePurchase('subscription', plan.id)}
+                        onClick={() => handlePurchase(plan.id)}
                         disabled={loading === plan.id}
                         style={{
                           width: '100%', padding: '10px',
                           fontFamily: INTER, fontSize: 13, fontWeight: 600,
                           color: '#040b10',
-                          background: loading === plan.id
-                            ? `${plan.accent}88`
-                            : `linear-gradient(135deg, ${plan.accent}, ${plan.accent}cc)`,
+                          background: loading === plan.id ? `${plan.accent}88` : `linear-gradient(135deg, ${plan.accent}, ${plan.accent}cc)`,
                           border: 'none', borderRadius: 8, cursor: 'pointer',
                           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                          transition: 'opacity 0.15s',
                           boxShadow: `0 4px 20px ${plan.accent}40`,
                         }}
                       >
-                        {loading === plan.id ? (
-                          <><RefreshCcw size={12} style={{ animation: 'spin 1s linear infinite' }} /> 创建订单…</>
-                        ) : (
-                          <><CreditCard size={12} /> {plan.cta}</>
-                        )}
+                        {loading === plan.id
+                          ? '创建订单…'
+                          : <><CreditCard size={12} /> {plan.cta}</>
+                        }
                       </button>
                     )}
                   </div>
@@ -435,18 +381,14 @@ export function BillingPanel({ onClose }: Props) {
           {/* ── Credits tab ───────────────────────────────────────────────── */}
           {tab === 'credits' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {/* Balance info */}
               <div style={{
                 padding: '14px 16px',
-                background: 'rgba(180,150,255,0.06)',
-                border: '1px solid rgba(180,150,255,0.18)',
-                borderRadius: 12,
-                display: 'flex', alignItems: 'center', gap: 12,
+                background: 'rgba(180,150,255,0.06)', border: '1px solid rgba(180,150,255,0.18)',
+                borderRadius: 12, display: 'flex', alignItems: 'center', gap: 12,
               }}>
                 <div style={{
                   width: 40, height: 40, borderRadius: 10,
-                  background: 'rgba(180,150,255,0.14)',
-                  border: '1px solid rgba(180,150,255,0.30)',
+                  background: 'rgba(180,150,255,0.14)', border: '1px solid rgba(180,150,255,0.30)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
                   <Zap size={17} color="#b496ff" />
@@ -464,43 +406,31 @@ export function BillingPanel({ onClose }: Props) {
                 </div>
               </div>
 
-              {/* Credit packs */}
               {CREDIT_PACKS.map(pack => (
                 <div
                   key={pack.id}
                   style={{
-                    borderRadius: 14,
-                    border: `1px solid ${pack.accent}22`,
-                    background: `${pack.accent}06`,
-                    padding: '16px 18px',
-                    position: 'relative',
-                    transition: 'border-color 0.18s',
+                    borderRadius: 14, border: `1px solid ${pack.accent}22`,
+                    background: `${pack.accent}06`, padding: '16px 18px', position: 'relative',
                   }}
                 >
-                  {pack.badge && (
+                  {(pack as { badge?: string }).badge && (
                     <div style={{
                       position: 'absolute', top: 12, right: 14,
-                      fontFamily: MONO, fontSize: 8,
-                      color: pack.accent, background: `${pack.accent}22`,
-                      border: `1px solid ${pack.accent}44`,
-                      borderRadius: 4, padding: '2px 7px',
-                      letterSpacing: '0.06em',
+                      fontFamily: MONO, fontSize: 8, color: pack.accent,
+                      background: `${pack.accent}22`, border: `1px solid ${pack.accent}44`,
+                      borderRadius: 4, padding: '2px 7px', letterSpacing: '0.06em',
                     }}>
-                      {pack.badge}
+                      {(pack as { badge?: string }).badge}
                     </div>
                   )}
-
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
                     <div style={{
                       width: 44, height: 44, borderRadius: 10,
-                      background: `${pack.accent}15`,
-                      border: `1px solid ${pack.accent}33`,
+                      background: `${pack.accent}15`, border: `1px solid ${pack.accent}33`,
                       display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                     }}>
-                      <span style={{
-                        fontFamily: MONO, fontSize: 13, fontWeight: 700,
-                        color: pack.accent,
-                      }}>
+                      <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: pack.accent }}>
                         {pack.credits >= 1000 ? `${pack.credits/1000}k` : pack.credits}
                       </span>
                     </div>
@@ -509,124 +439,74 @@ export function BillingPanel({ onClose }: Props) {
                         <span style={{ fontFamily: INTER, fontSize: 14, fontWeight: 700, color: 'rgba(220,228,250,0.90)' }}>
                           {pack.credits} Credits
                         </span>
-                        <span style={{ fontFamily: MONO, fontSize: 9, color: 'rgba(100,110,140,0.55)' }}>
-                          · {pack.label}
-                        </span>
+                        <span style={{ fontFamily: MONO, fontSize: 9, color: 'rgba(100,110,140,0.55)' }}>· {pack.label}</span>
                       </div>
-                      <div style={{ fontFamily: INTER, fontSize: 11, color: 'rgba(150,160,190,0.65)', marginTop: 2 }}>
-                        {pack.desc}
-                      </div>
+                      <div style={{ fontFamily: INTER, fontSize: 11, color: 'rgba(150,160,190,0.65)', marginTop: 2 }}>{pack.desc}</div>
                     </div>
                     <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontFamily: INTER, fontSize: 20, fontWeight: 700, color: pack.accent }}>
-                        {pack.price}
-                      </div>
+                      <div style={{ fontFamily: INTER, fontSize: 20, fontWeight: 700, color: pack.accent }}>{pack.price}</div>
                       {pack.saving && (
                         <div style={{
                           fontFamily: MONO, fontSize: 8, color: '#00ff66',
-                          background: 'rgba(0,255,102,0.10)',
-                          border: '1px solid rgba(0,255,102,0.22)',
-                          borderRadius: 4, padding: '1px 6px', marginTop: 2,
-                          display: 'inline-block',
+                          background: 'rgba(0,255,102,0.10)', border: '1px solid rgba(0,255,102,0.22)',
+                          borderRadius: 4, padding: '1px 6px', marginTop: 2, display: 'inline-block',
                         }}>
                           {pack.saving}
                         </div>
                       )}
                     </div>
                   </div>
-
                   <button
-                    onClick={() => handlePurchase('credits', pack.id)}
+                    onClick={() => handlePurchase(pack.id)}
                     disabled={loading === pack.id}
                     style={{
                       width: '100%', padding: '9px',
-                      fontFamily: INTER, fontSize: 12, fontWeight: 600,
-                      color: '#040b10',
-                      background: loading === pack.id
-                        ? `${pack.accent}88`
-                        : `linear-gradient(135deg, ${pack.accent}, ${pack.accent}cc)`,
+                      fontFamily: INTER, fontSize: 12, fontWeight: 600, color: '#040b10',
+                      background: loading === pack.id ? `${pack.accent}88` : `linear-gradient(135deg, ${pack.accent}, ${pack.accent}cc)`,
                       border: 'none', borderRadius: 8, cursor: 'pointer',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                      transition: 'opacity 0.15s',
                       boxShadow: `0 4px 16px ${pack.accent}35`,
                     }}
                   >
-                    {loading === pack.id ? (
-                      <><RefreshCcw size={12} style={{ animation: 'spin 1s linear infinite' }} /> 创建订单…</>
-                    ) : (
-                      <><Zap size={12} /> 购买 {pack.credits} Credits</>
-                    )}
+                    {loading === pack.id ? '创建订单…' : <><Zap size={12} /> 购买 {pack.credits} Credits</>}
                   </button>
                 </div>
               ))}
             </div>
           )}
 
-          {/* Alipay notice */}
-          <div style={{
-            marginTop: 16,
-            padding: '10px 14px',
-            background: 'rgba(255,255,255,0.02)',
-            border: '1px solid rgba(255,255,255,0.06)',
-            borderRadius: 8,
-            fontFamily: MONO, fontSize: 8.5, color: 'rgba(80,90,115,0.55)',
-            lineHeight: 1.6, letterSpacing: '0.03em',
-          }}>
-            支付宝安全支付 · 点击购买后将跳转至支付宝完成支付 · 支付成功后自动激活服务
-          </div>
+          {/* ── Orders tab ───────────────────────────────────────────────── */}
+          {tab === 'orders' && (
+            <OrderHistoryPanel
+              orders={manualOrders.orders}
+              loading={manualOrders.loading}
+              onRefetch={manualOrders.refetch}
+              onReopen={handleReopenOrder}
+            />
+          )}
+
+          {/* Payment notice */}
+          {tab !== 'orders' && (
+            <div style={{
+              marginTop: 16, padding: '10px 14px',
+              background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: 8, fontFamily: MONO, fontSize: 8.5,
+              color: 'rgba(80,90,115,0.55)', lineHeight: 1.6, letterSpacing: '0.03em',
+            }}>
+              扫码付款 · 上传凭证 · 人工审核 · 自动发放权益 · 24 小时内完成
+            </div>
+          )}
         </div>
-
-        {/* Polling / order state banner */}
-        {(polling || order?.demoMode) && (
-          <div style={{
-            padding: '12px 24px',
-            borderTop: '1px solid rgba(255,255,255,0.07)',
-            background: order?.demoMode
-              ? 'rgba(255,170,64,0.08)'
-              : 'rgba(0,255,102,0.06)',
-            flexShrink: 0,
-            display: 'flex', alignItems: 'center', gap: 10,
-          }}>
-            {polling ? (
-              <>
-                <Clock size={13} color="#00ff66" style={{ animation: 'spin 2s linear infinite', flexShrink: 0 }} />
-                <div>
-                  <div style={{ fontFamily: INTER, fontSize: 11, color: 'rgba(200,215,240,0.85)', fontWeight: 600 }}>
-                    等待支付完成…
-                  </div>
-                  <div style={{ fontFamily: MONO, fontSize: 8, color: 'rgba(100,110,140,0.60)', marginTop: 2, letterSpacing: '0.03em' }}>
-                    已在新窗口打开支付宝，支付完成后自动刷新
-                  </div>
-                </div>
-                {order?.payUrl && (
-                  <a href={order.payUrl} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 'auto', flexShrink: 0 }}>
-                    <ExternalLink size={12} color="rgba(100,110,140,0.55)" />
-                  </a>
-                )}
-              </>
-            ) : order?.demoMode ? (
-              <>
-                <Zap size={13} color="#ffa040" style={{ flexShrink: 0 }} />
-                <div>
-                  <div style={{ fontFamily: INTER, fontSize: 11, color: 'rgba(255,180,80,0.90)', fontWeight: 600 }}>
-                    演示模式
-                  </div>
-                  <div style={{ fontFamily: MONO, fontSize: 8, color: 'rgba(180,130,60,0.60)', marginTop: 2, letterSpacing: '0.03em' }}>
-                    订单已创建（#{order.orderNo}）· 填入支付宝密钥后即可激活真实支付
-                  </div>
-                </div>
-                <button
-                  onClick={() => setOrder(null)}
-                  style={{ marginLeft: 'auto', flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}
-                >
-                  <X size={11} color="rgba(180,130,60,0.55)" />
-                </button>
-              </>
-            ) : null}
-          </div>
-        )}
-
       </div>
+
+      {/* Manual pay modal */}
+      {activeOrder && (
+        <ManualPayModal
+          order={activeOrder}
+          onClose={() => setActiveOrder(null)}
+          onSubmitted={handleOrderSubmitted}
+        />
+      )}
 
       <style>{`
         @keyframes billing-panel-in {

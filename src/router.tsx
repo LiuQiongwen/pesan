@@ -8,6 +8,7 @@ import PricingPage from "./pages/PricingPage";
 import TermsPage from "./pages/TermsPage";
 import PrivacyPage from "./pages/PrivacyPage";
 import RefundPage from "./pages/RefundPage";
+import AdminPaymentsPage from "./pages/AdminPaymentsPage";
 import { StarMapLayout } from "./components/layout/StarMapLayout";
 
 export const routers = [
@@ -46,6 +47,11 @@ export const routers = [
         element: <MindMapPage />,
       },
     ],
+  },
+  {
+    path: "/admin/payments",
+    name: "admin-payments",
+    element: <AdminPaymentsPage />,
   },
   /* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */
   {

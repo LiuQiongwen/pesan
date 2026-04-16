@@ -3400,6 +3400,140 @@ export type Database = {
           },
         ]
       }
+      manual_order_reviews: {
+        Row: {
+          action: string
+          id: string
+          notes: string | null
+          order_id: string
+          reject_reason: string | null
+          reviewed_at: string | null
+          reviewer_id: string
+        }
+        Insert: {
+          action: string
+          id?: string
+          notes?: string | null
+          order_id: string
+          reject_reason?: string | null
+          reviewed_at?: string | null
+          reviewer_id: string
+        }
+        Update: {
+          action?: string
+          id?: string
+          notes?: string | null
+          order_id?: string
+          reject_reason?: string | null
+          reviewed_at?: string | null
+          reviewer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manual_order_reviews_order_id_fkey"
+            columns: ["order_id"]
+            referencedRelation: "manual_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      manual_order_submissions: {
+        Row: {
+          id: string
+          note: string | null
+          order_id: string
+          payer_nickname: string | null
+          payment_amount_fen: number | null
+          payment_method: string | null
+          payment_time: string | null
+          proof_image_url: string
+          submitted_at: string | null
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          note?: string | null
+          order_id: string
+          payer_nickname?: string | null
+          payment_amount_fen?: number | null
+          payment_method?: string | null
+          payment_time?: string | null
+          proof_image_url: string
+          submitted_at?: string | null
+          user_id: string
+        }
+        Update: {
+          id?: string
+          note?: string | null
+          order_id?: string
+          payer_nickname?: string | null
+          payment_amount_fen?: number | null
+          payment_method?: string | null
+          payment_time?: string | null
+          proof_image_url?: string
+          submitted_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manual_order_submissions_order_id_fkey"
+            columns: ["order_id"]
+            referencedRelation: "manual_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      manual_orders: {
+        Row: {
+          amount_fen: number
+          created_at: string | null
+          expires_at: string
+          fulfilled_at: string | null
+          id: string
+          order_no: string
+          payment_method: string | null
+          product_code: string
+          product_name: string
+          product_type: string
+          reject_reason: string | null
+          status: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          amount_fen: number
+          created_at?: string | null
+          expires_at: string
+          fulfilled_at?: string | null
+          id?: string
+          order_no: string
+          payment_method?: string | null
+          product_code: string
+          product_name: string
+          product_type: string
+          reject_reason?: string | null
+          status?: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          amount_fen?: number
+          created_at?: string | null
+          expires_at?: string
+          fulfilled_at?: string | null
+          id?: string
+          order_no?: string
+          payment_method?: string | null
+          product_code?: string
+          product_name?: string
+          product_type?: string
+          reject_reason?: string | null
+          status?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       memory_wake_items: {
         Row: {
           created_at: string | null
@@ -3560,6 +3694,7 @@ export type Database = {
           avatar_url: string | null
           created_at: string | null
           id: string
+          is_admin: boolean
           theme: string | null
           updated_at: string | null
           username: string | null
@@ -3568,6 +3703,7 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string | null
           id: string
+          is_admin?: boolean
           theme?: string | null
           updated_at?: string | null
           username?: string | null
@@ -3576,6 +3712,7 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string | null
           id?: string
+          is_admin?: boolean
           theme?: string | null
           updated_at?: string | null
           username?: string | null
@@ -3841,39 +3978,6 @@ export type Database = {
         }
         Relationships: []
       }
-      messages_2026_04_12: {
-        Row: {
-          event: string | null
-          extension: string
-          id: string
-          inserted_at: string
-          payload: Json | null
-          private: boolean | null
-          topic: string
-          updated_at: string
-        }
-        Insert: {
-          event?: string | null
-          extension: string
-          id?: string
-          inserted_at?: string
-          payload?: Json | null
-          private?: boolean | null
-          topic: string
-          updated_at?: string
-        }
-        Update: {
-          event?: string | null
-          extension?: string
-          id?: string
-          inserted_at?: string
-          payload?: Json | null
-          private?: boolean | null
-          topic?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
       messages_2026_04_13: {
         Row: {
           event: string | null
@@ -4040,6 +4144,39 @@ export type Database = {
         Relationships: []
       }
       messages_2026_04_18: {
+        Row: {
+          event: string | null
+          extension: string
+          id: string
+          inserted_at: string
+          payload: Json | null
+          private: boolean | null
+          topic: string
+          updated_at: string
+        }
+        Insert: {
+          event?: string | null
+          extension: string
+          id?: string
+          inserted_at?: string
+          payload?: Json | null
+          private?: boolean | null
+          topic: string
+          updated_at?: string
+        }
+        Update: {
+          event?: string | null
+          extension?: string
+          id?: string
+          inserted_at?: string
+          payload?: Json | null
+          private?: boolean | null
+          topic?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      messages_2026_04_19: {
         Row: {
           event: string | null
           extension: string

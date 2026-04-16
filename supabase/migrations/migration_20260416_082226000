@@ -1,0 +1,82 @@
+
+-- ── Phase 1: Add is_admin to profiles ─────────────────────────────────────────
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_admin boolean NOT NULL DEFAULT false;
+
+-- ── manual_orders ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.manual_orders (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_no        text NOT NULL UNIQUE,
+  user_id         uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  product_type    text NOT NULL CHECK (product_type IN ('subscription', 'credits')),
+  product_code    text NOT NULL,
+  product_name    text NOT NULL,
+  amount_fen      integer NOT NULL,
+  payment_method  text CHECK (payment_method IN ('wechat', 'alipay')),
+  status          text NOT NULL DEFAULT 'pending'
+                  CHECK (status IN ('pending','submitted','paid','rejected','expired','fulfilled')),
+  reject_reason   text,
+  fulfilled_at    timestamptz,
+  expires_at      timestamptz NOT NULL,
+  created_at      timestamptz DEFAULT now(),
+  updated_at      timestamptz DEFAULT now()
+);
+ALTER TABLE public.manual_orders ENABLE ROW LEVEL SECURITY;
+
+-- Users can read and create their own orders
+CREATE POLICY "users view own manual orders"
+  ON public.manual_orders FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "users insert own manual orders"
+  ON public.manual_orders FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Admins can read and update all orders
+CREATE POLICY "admins manage manual orders"
+  ON public.manual_orders FOR ALL
+  USING (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true));
+
+-- ── manual_order_submissions ──────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.manual_order_submissions (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id            uuid NOT NULL REFERENCES public.manual_orders(id) ON DELETE CASCADE,
+  user_id             uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  proof_image_url     text NOT NULL,
+  payment_time        timestamptz,
+  payment_amount_fen  integer,
+  payment_method      text CHECK (payment_method IN ('wechat', 'alipay')),
+  payer_nickname      text,
+  note                text,
+  submitted_at        timestamptz DEFAULT now()
+);
+ALTER TABLE public.manual_order_submissions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "users view own submissions"
+  ON public.manual_order_submissions FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "users insert own submissions"
+  ON public.manual_order_submissions FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "admins view all submissions"
+  ON public.manual_order_submissions FOR SELECT
+  USING (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true));
+
+-- ── manual_order_reviews ─────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.manual_order_reviews (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id        uuid NOT NULL REFERENCES public.manual_orders(id) ON DELETE CASCADE,
+  reviewer_id     uuid NOT NULL REFERENCES auth.users(id),
+  action          text NOT NULL CHECK (action IN ('approved', 'rejected')),
+  reject_reason   text,
+  notes           text,
+  reviewed_at     timestamptz DEFAULT now()
+);
+ALTER TABLE public.manual_order_reviews ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "admins manage reviews"
+  ON public.manual_order_reviews FOR ALL
+  USING (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true));
+
+-- ── Indexes ───────────────────────────────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_manual_orders_user    ON public.manual_orders (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_manual_orders_status  ON public.manual_orders (status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_manual_subs_order     ON public.manual_order_submissions (order_id);
+CREATE INDEX IF NOT EXISTS idx_manual_reviews_order  ON public.manual_order_reviews (order_id);
+
+-- ── Realtime ──────────────────────────────────────────────────────────────────
+ALTER PUBLICATION supabase_realtime ADD TABLE public.manual_orders;
