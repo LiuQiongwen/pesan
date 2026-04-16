@@ -1,0 +1,1 @@
+UPDATE public.profiles SET is_admin = true WHERE id = '18a2f257-50d5-418c-b8c9-4322bd184491';
