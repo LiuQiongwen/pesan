@@ -251,7 +251,12 @@ export function ToolboxProvider({ children }: { children: React.ReactNode }) {
         setLastOpened(p => p === id ? null : p);
         return { ...prev, [id]: { ...cur, open: false } };
       }
-      setTopZ(z => z + 1);
+      // Open: bump z-index via setTopZ (same pattern as openPod)
+      setTopZ(z => {
+        const nz = z + 1;
+        setPods(p => ({ ...p, [id]: { ...p[id], zIndex: nz } }));
+        return nz;
+      });
       setLastOpened(id);
       return { ...prev, [id]: { ...cur, open: true, minimized: false } };
     });

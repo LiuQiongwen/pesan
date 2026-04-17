@@ -12,9 +12,10 @@ const INTER = "'Inter',system-ui,sans-serif";
 interface NodeLightBandProps {
   node: HoveredNodeInfo | null;
   onTagClick?: (tag: string) => void;
+  tagFilter?: string | null;
 }
 
-export function NodeLightBand({ node, onTagClick }: NodeLightBandProps) {
+export function NodeLightBand({ node, onTagClick, tagFilter }: NodeLightBandProps) {
   const navigate = useNavigate();
   const { lang } = useLanguage();
 
@@ -92,26 +93,30 @@ export function NodeLightBand({ node, onTagClick }: NodeLightBandProps) {
 
       {/* Tags */}
       <div style={{ display: 'flex', gap: 5, flexShrink: 0, maxWidth: 200, overflow: 'hidden' }}>
-        {(node?.tags || []).slice(0, 3).map(tag => (
+        {(node?.tags || []).slice(0, 3).map(tag => {
+          const isActive = tagFilter === tag;
+          return (
           <span key={tag}
             onClick={() => onTagClick?.(tag)}
             style={{
               fontFamily: MONO,
               fontSize: 9,
-              color: `${color}cc`,
-              background: `${color}12`,
-              border: `1px solid ${color}28`,
+              color: isActive ? '#fff' : `${color}cc`,
+              background: isActive ? `${color}40` : `${color}12`,
+              border: `1px solid ${isActive ? `${color}88` : `${color}28`}`,
               padding: '2px 7px',
               borderRadius: 3,
               letterSpacing: '0.04em',
               whiteSpace: 'nowrap',
               cursor: onTagClick ? 'pointer' : 'default',
               transition: 'background 0.12s, border-color 0.12s',
+              boxShadow: isActive ? `0 0 8px ${color}44` : 'none',
             }}
-            onMouseEnter={e => { if (onTagClick) { (e.currentTarget as HTMLSpanElement).style.background = `${color}28`; (e.currentTarget as HTMLSpanElement).style.borderColor = `${color}55`; } }}
-            onMouseLeave={e => { (e.currentTarget as HTMLSpanElement).style.background = `${color}12`; (e.currentTarget as HTMLSpanElement).style.borderColor = `${color}28`; }}
-          >#{tag}</span>
-        ))}
+            onMouseEnter={e => { if (onTagClick && !isActive) { (e.currentTarget as HTMLSpanElement).style.background = `${color}28`; (e.currentTarget as HTMLSpanElement).style.borderColor = `${color}55`; } }}
+            onMouseLeave={e => { if (!isActive) { (e.currentTarget as HTMLSpanElement).style.background = `${color}12`; (e.currentTarget as HTMLSpanElement).style.borderColor = `${color}28`; } }}
+          >#{tag}{isActive ? ' ✕' : ''}</span>
+          );
+        })}
       </div>
 
       {/* Date */}

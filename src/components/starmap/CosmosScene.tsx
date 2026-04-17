@@ -169,6 +169,7 @@ function ImperativeCore({
 
   // Stale-closure-safe refs
   const hoveredIdRef          = useRef<string | null>(null);
+  const hoverClearTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onToggleRef           = useRef(onNodeToggle);
   const onHoverRef            = useRef(onNodeHover);
   const onEmptyStateClickRef  = useRef(onEmptyStateClick);
@@ -937,13 +938,23 @@ function ImperativeCore({
     gl.domElement.style.cursor = (hitId || isCTAHit) ? 'pointer' : '';
 
     if (hitId !== hoveredIdRef.current) {
-      hoveredIdRef.current = hitId;
-      setHoveredId(hitId);
       if (hitId) {
+        // Immediately set hover on new node
+        if (hoverClearTimerRef.current) { clearTimeout(hoverClearTimerRef.current); hoverClearTimerRef.current = null; }
+        hoveredIdRef.current = hitId;
+        setHoveredId(hitId);
         const note = notesMapRef.current.get(hitId);
         if (note) onHoverRef.current?.({ noteId: hitId, title: note.title, tags: note.tags, summary: note.summary });
       } else {
-        onHoverRef.current?.(null);
+        // Debounce clear — give 120ms grace so cursor can reach the Html overlay buttons
+        if (!hoverClearTimerRef.current) {
+          hoverClearTimerRef.current = setTimeout(() => {
+            hoveredIdRef.current = null;
+            setHoveredId(null);
+            onHoverRef.current?.(null);
+            hoverClearTimerRef.current = null;
+          }, 120);
+        }
       }
     }
   });

@@ -1,0 +1,26 @@
+
+-- 1. Create a SECURITY DEFINER helper to avoid RLS recursion on profiles
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT COALESCE(
+    (SELECT is_admin FROM public.profiles WHERE id = auth.uid()),
+    false
+  );
+$$;
+
+-- 2. Drop the recursive admin policies
+DROP POLICY IF EXISTS "admins read all profiles"   ON public.profiles;
+DROP POLICY IF EXISTS "admins update all profiles" ON public.profiles;
+
+-- 3. Recreate with the non-recursive helper
+CREATE POLICY "admins read all profiles"
+  ON public.profiles FOR SELECT
+  USING (auth.uid() = id OR public.is_admin());
+
+CREATE POLICY "admins update all profiles"
+  ON public.profiles FOR UPDATE
+  USING (public.is_admin());

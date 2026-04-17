@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import type { CosmosNote } from '@/types/cosmos';
+import type { CosmosNote } from '@/components/starmap/cosmos-layout';
 
 const MONO = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter','system-ui',sans-serif";
