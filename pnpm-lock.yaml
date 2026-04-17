@@ -137,6 +137,9 @@ dependencies:
   input-otp:
     specifier: ^1.4.2
     version: 1.4.2(react-dom@19.1.1)(react@19.1.1)
+  jszip:
+    specifier: ^3.10.1
+    version: 3.10.1
   lucide-react:
     specifier: ^0.542.0
     version: 0.542.0(react@19.1.1)
@@ -194,6 +197,9 @@ dependencies:
   vite-plugin-enter-dev:
     specifier: ^0.0.7
     version: 0.0.7(vite@7.1.4)
+  yaml:
+    specifier: ^2.8.3
+    version: 2.8.3
   zod:
     specifier: ^4.1.5
     version: 4.1.5
@@ -258,7 +264,7 @@ devDependencies:
     version: 8.42.0(eslint@9.34.0)(typescript@5.9.2)
   vite:
     specifier: ^7.1.4
-    version: 7.1.4(@types/node@24.3.0)
+    version: 7.1.4(@types/node@24.3.0)(yaml@2.8.3)
 
 packages:
 
@@ -3236,7 +3242,7 @@ packages:
       '@rolldown/pluginutils': 1.0.0-beta.34
       '@types/babel__core': 7.20.5
       react-refresh: 0.17.0
-      vite: 7.1.4(@types/node@24.3.0)
+      vite: 7.1.4(@types/node@24.3.0)(yaml@2.8.3)
     transitivePeerDependencies:
       - supports-color
     dev: true
@@ -3253,7 +3259,7 @@ packages:
       '@rolldown/pluginutils': 1.0.0-beta.47
       '@types/babel__core': 7.20.5
       react-refresh: 0.18.0
-      vite: 7.1.4(@types/node@24.3.0)
+      vite: 7.1.4(@types/node@24.3.0)(yaml@2.8.3)
     transitivePeerDependencies:
       - supports-color
     dev: false
@@ -5480,7 +5486,7 @@ packages:
     dependencies:
       lilconfig: 3.1.3
       postcss: 8.5.6
-      yaml: 2.8.1
+      yaml: 2.8.3
 
   /postcss-nested@6.2.0(postcss@8.5.6):
     resolution: {integrity: sha512-HQbt28KulC5AJzG+cZtj9kvKB93CFCdLvog1WFLf1D+xmMvPGlBstkpTEZfK5+AN9hfJocyBFCNiqyS48bpgzQ==}
@@ -6519,12 +6525,12 @@ packages:
       vite: ^5.0.0 || ^6.0.0
     dependencies:
       '@vitejs/plugin-react': 5.1.1(vite@7.1.4)
-      vite: 7.1.4(@types/node@24.3.0)
+      vite: 7.1.4(@types/node@24.3.0)(yaml@2.8.3)
     transitivePeerDependencies:
       - supports-color
     dev: false
 
-  /vite@7.1.4(@types/node@24.3.0):
+  /vite@7.1.4(@types/node@24.3.0)(yaml@2.8.3):
     resolution: {integrity: sha512-X5QFK4SGynAeeIt+A7ZWnApdUyHYm+pzv/8/A57LqSGcI88U6R6ipOs3uCesdc6yl7nl+zNO0t8LmqAdXcQihw==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
@@ -6571,6 +6577,7 @@ packages:
       postcss: 8.5.6
       rollup: 4.53.2
       tinyglobby: 0.2.15
+      yaml: 2.8.3
     optionalDependencies:
       fsevents: 2.3.3
 
@@ -6658,8 +6665,8 @@ packages:
     engines: {node: '>=18'}
     dev: true
 
-  /yaml@2.8.1:
-    resolution: {integrity: sha512-lcYcMxX2PO9XMGvAJkJ3OsNMw+/7FKes7/hgerGUYWIoWu5j/+YQqcZr5JnPZWzOsEBgMbSbiSTn/dv/69Mkpw==}
+  /yaml@2.8.3:
+    resolution: {integrity: sha512-AvbaCLOO2Otw/lW5bmh9d/WEdcDFdQp2Z2ZUH3pX9U2ihyUY0nvLv7J6TrWowklRGPYbB/IuIMfYgxaCPg5Bpg==}
     engines: {node: '>= 14.6'}
     hasBin: true
 

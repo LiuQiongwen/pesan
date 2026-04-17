@@ -3675,6 +3675,7 @@ export type Database = {
           analysis_content: Json | null
           analysis_id: string | null
           analysis_markdown: string | null
+          content_hash: string | null
           content_markdown: string | null
           created_at: string | null
           id: string
@@ -3683,6 +3684,8 @@ export type Database = {
           mindmap_data: Json | null
           mindmap_markdown: string | null
           node_type: string | null
+          obsidian_import_id: string | null
+          obsidian_path: string | null
           summary: string | null
           summary_markdown: string | null
           tags: string[] | null
@@ -3694,6 +3697,7 @@ export type Database = {
           analysis_content?: Json | null
           analysis_id?: string | null
           analysis_markdown?: string | null
+          content_hash?: string | null
           content_markdown?: string | null
           created_at?: string | null
           id?: string
@@ -3702,6 +3706,8 @@ export type Database = {
           mindmap_data?: Json | null
           mindmap_markdown?: string | null
           node_type?: string | null
+          obsidian_import_id?: string | null
+          obsidian_path?: string | null
           summary?: string | null
           summary_markdown?: string | null
           tags?: string[] | null
@@ -3713,6 +3719,7 @@ export type Database = {
           analysis_content?: Json | null
           analysis_id?: string | null
           analysis_markdown?: string | null
+          content_hash?: string | null
           content_markdown?: string | null
           created_at?: string | null
           id?: string
@@ -3721,6 +3728,8 @@ export type Database = {
           mindmap_data?: Json | null
           mindmap_markdown?: string | null
           node_type?: string | null
+          obsidian_import_id?: string | null
+          obsidian_path?: string | null
           summary?: string | null
           summary_markdown?: string | null
           tags?: string[] | null
@@ -3735,7 +3744,52 @@ export type Database = {
             referencedRelation: "analyses"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "notes_obsidian_import_id_fkey"
+            columns: ["obsidian_import_id"]
+            referencedRelation: "obsidian_imports"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      obsidian_imports: {
+        Row: {
+          created_at: string | null
+          error_msg: string | null
+          file_name: string
+          finished_at: string | null
+          id: string
+          imported: number
+          skipped: number
+          status: string
+          total_files: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          error_msg?: string | null
+          file_name: string
+          finished_at?: string | null
+          id?: string
+          imported?: number
+          skipped?: number
+          status?: string
+          total_files?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          error_msg?: string | null
+          file_name?: string
+          finished_at?: string | null
+          id?: string
+          imported?: number
+          skipped?: number
+          status?: string
+          total_files?: number
+          user_id?: string
+        }
+        Relationships: []
       }
       payment_orders: {
         Row: {
@@ -4000,6 +4054,45 @@ export type Database = {
           },
         ]
       }
+      usage_events: {
+        Row: {
+          cost_actual: number | null
+          cost_estimate: number
+          created_at: string | null
+          feature_code: string
+          id: string
+          metadata: Json | null
+          ref_id: string | null
+          settled_at: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          cost_actual?: number | null
+          cost_estimate?: number
+          created_at?: string | null
+          feature_code: string
+          id?: string
+          metadata?: Json | null
+          ref_id?: string | null
+          settled_at?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          cost_actual?: number | null
+          cost_estimate?: number
+          created_at?: string | null
+          feature_code?: string
+          id?: string
+          metadata?: Json | null
+          ref_id?: string | null
+          settled_at?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_credits: {
         Row: {
           balance: number
@@ -4060,6 +4153,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_credits: {
+        Args: { p_amount: number; p_user_id: string }
+        Returns: undefined
+      }
+      deduct_credits: {
+        Args: { p_amount: number; p_user_id: string }
+        Returns: undefined
+      }
       is_admin: {
         Args: Record<PropertyKey, never>
         Returns: boolean

@@ -1,6 +1,6 @@
 export type SourceType = 'url' | 'text' | 'file' | 'image' | 'video';
 export type AnalysisStatus = 'pending' | 'analyzing' | 'done' | 'error';
-export type NodeType = 'capture' | 'summary' | 'insight' | 'action' | 'question' | 'relation';
+export type NodeType = 'capture' | 'summary' | 'insight' | 'action' | 'question' | 'relation' | 'obsidian';
 
 export interface Analysis {
   id: string;

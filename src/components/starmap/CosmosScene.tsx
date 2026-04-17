@@ -34,6 +34,7 @@ const NODE_TYPE_CFG: Record<string, { label: string; color: string }> = {
   action:   { label: 'ACTION',   color: '#ff4466' },
   question: { label: 'QUESTION', color: '#ffa040' },
   relation: { label: 'RELATION', color: '#c0c8d8' },
+  obsidian: { label: 'OBSIDIAN', color: '#a855f7' },
 };
 
 /** Pick Three.js geometry based on knowledge node type */

@@ -1,0 +1,43 @@
+
+-- 1. Extend notes.node_type to include 'obsidian'
+ALTER TABLE notes DROP CONSTRAINT IF EXISTS notes_node_type_check;
+ALTER TABLE notes ADD CONSTRAINT notes_node_type_check
+  CHECK (node_type IN ('capture','summary','insight','action','question','relation','obsidian'));
+
+-- 2. Add obsidian-specific columns to notes
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS obsidian_path text;
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS obsidian_import_id uuid;
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS content_hash text;
+
+-- 3. Create obsidian_imports tracking table
+CREATE TABLE IF NOT EXISTS obsidian_imports (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid NOT NULL REFERENCES auth.users(id),
+  file_name   text NOT NULL,
+  total_files integer NOT NULL DEFAULT 0,
+  imported    integer NOT NULL DEFAULT 0,
+  skipped     integer NOT NULL DEFAULT 0,
+  status      text NOT NULL DEFAULT 'processing'
+                CHECK (status IN ('processing','done','error')),
+  error_msg   text,
+  created_at  timestamptz DEFAULT now(),
+  finished_at timestamptz
+);
+ALTER TABLE obsidian_imports ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users own imports" ON obsidian_imports FOR ALL
+  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- 4. FK from notes to obsidian_imports
+ALTER TABLE notes ADD CONSTRAINT notes_obsidian_import_id_fkey
+  FOREIGN KEY (obsidian_import_id) REFERENCES obsidian_imports(id) ON DELETE SET NULL;
+
+-- 5. Index for incremental sync lookups
+CREATE INDEX IF NOT EXISTS idx_notes_obsidian_path ON notes(user_id, obsidian_path) WHERE obsidian_path IS NOT NULL;
+
+-- 6. Extend thought_edges.edge_type to include 'wikilink'
+ALTER TABLE thought_edges DROP CONSTRAINT IF EXISTS thought_edges_edge_type_check;
+ALTER TABLE thought_edges ADD CONSTRAINT thought_edges_edge_type_check
+  CHECK (edge_type IN ('supports','contradicts','extends','inspires','related','wikilink'));
+
+-- 7. Enable realtime for obsidian_imports
+ALTER PUBLICATION supabase_realtime ADD TABLE obsidian_imports;
