@@ -1,608 +1,319 @@
-# Credits 消费系统打通方案
+# Obsidian Vault 导入 — MVP 实施方案
 
 ## Context
 
-当前产品已具备：
-- `user_credits` 表（balance 字段）、`credit_ledger` 台账表、`subscriptions` 套餐表
-- `useBilling` hook 读取余额/套餐
-- `BillingPanel` / `PricingPage` 前端购买流程（手动支付 → 管理员审核 → 发放）
-- `admin-grant-benefits` edge function 手动加减 credits
-- **11 个 AI edge functions** 全部直接调用 LLM，**无任何计费拦截**
+用户的"知识宇宙"产品已具备完整的 notes → cosmos-layout → 3D StarMap 渲染管线和 RAG 检索链路。现在需要接入 Obsidian，让用户把已有笔记库批量导入系统，复用现有的 notes 表、knowledge_chunks、thought_edges 和 RAG 搜索。
 
-**核心问题：** 功能与点数完全断开——所有 AI 功能零消费运行，`credit_ledger` 仅记录管理员手动操作。
-
-本方案目标：建立 **统一计费网关**，让所有 AI 功能经过 estimate → reserve → settle → refund 四段链路。
+**核心约束：**
+- MVP 只做 Obsidian → 系统的单向导入
+- 不做双向写回、不做实时文件系统监听
+- 浏览器无法读取本地文件夹 → 使用 **ZIP 压缩包上传** 作为唯一导入方式
+- 解析全部在前端完成（JSZip），不消耗 Edge Function 额度
+- RAG 索引复用现有 `chunk-and-index` Edge Function
 
 ---
 
-## 1. 计费系统总体架构
+## 1. 整体架构
 
 ```
-前端调用
-  │
-  ▼
-Edge Function（业务函数，如 distill-insight）
-  │
-  ├─① import { gate } from "../_shared/billing-gate.ts"
-  ├─② const ticket = await gate.enter(userId, 'insight.distill', { tokens_est })
-  │     ↳ 查 entitlements → 估算 cost → 检查余额 → 写 reserve 行 → 返回 ticket
-  ├─③ 执行 AI 调用（真实业务）
-  ├─④ await gate.settle(ticket, { actual_tokens })
-  │     ↳ 计算实际消耗 → 更新 reserve→settled → 扣减 balance → 写 ledger
-  └─⑤ 如果失败：await gate.refund(ticket)
-        ↳ reserve→refunded → 回退 balance
+用户浏览器                             后端 (Edge Functions)
+┌──────────────────────────────┐      ┌──────────────────────────┐
+│ ① 选择 .zip 文件             │      │                          │
+│ ② JSZip 解压在内存中         │      │                          │
+│ ③ 前端 Markdown 解析器       │      │                          │
+│    ├─ frontmatter (yaml)     │      │                          │
+│    ├─ wikilinks [[…]]        │      │                          │
+│    ├─ tags #tag / yaml tags  │      │                          │
+│    └─ 正文 markdown          │      │                          │
+│ ④ 批量 supabase.insert       │─────▶│  notes / thought_edges   │
+│ ⑤ 逐条调 chunk-and-index     │─────▶│  chunk-and-index (复用)  │
+│ ⑥ 进度条 + 完成反馈          │      │                          │
+└──────────────────────────────┘      └──────────────────────────┘
 ```
 
-**关键设计：**
-- 所有计费逻辑集中在 `_shared/billing-gate.ts`，业务函数只需 3 行调用
-- `gate.enter()` 是唯一的权限 + 余额检查入口
-- 不改动现有 AI 调用逻辑，只在前后包裹 gate
+**关键决策：**
+- 前端解析，避免大文件上传到 Edge Function 的体积限制 (2MB)
+- JSZip 在浏览器内存中解压，逐个读 .md 文件
+- 每个 .md → 一条 notes 行 (node_type = 'obsidian')
+- wikilinks → thought_edges 行 (edge_type = 'wikilink')
+- tags → notes.tags 数组字段
+- RAG 索引复用 chunk-and-index，每条 note 触发一次
 
 ---
 
-## 2. 哪些功能应计费 vs 不应计费
+## 2. 数据映射
 
-### 应计费（调用 AI / 消耗计算资源）
-
-| 功能 | feature_code | 调用的 Edge Function | 计费维度 |
-|------|-------------|---------------------|---------|
-| 内容分析 | `capture.analyze` | `analyze-content` | 固定 3 credits |
-| 知识蒸馏 | `insight.distill` | `distill-insight` | 固定 2 credits |
-| RAG 语义检索 | `retrieval.rag` | `rag-search` | 固定 2 credits |
-| 记忆唤醒 | `memory.wake` | `memory-wake` | 固定 1 credit |
-| 知识转换 | `action.convert` | `knowledge-convert` | 固定 2 credits |
-| 视角切换 | `insight.perspective` | `perspective-switch` | 固定 2 credits |
-| 认知镜像 | `insight.cognitive` | `cognitive-mirror` | 固定 3 credits |
-| 预见层分析 | `insight.anticipation` | `anticipation-layer` | 固定 2 credits |
-| 知识缩放 | `retrieval.zoom` | `knowledge-zoom` | 固定 2 credits |
-| 知识分块索引 | `capture.chunk` | `chunk-and-index` | 免费（非 AI） |
-
-### 不应计费（纯 CRUD / 本地计算）
-
-- 创建/编辑/删除笔记
-- 3D 星图浏览、节点拖拽、连线
-- 标签管理、星系分组
-- 登录/注册/个人设置
-- 管理员操作
-- `chunk-and-index`（纯文本分割 + FTS 索引，不调 AI）
+| Obsidian 概念 | 系统目标 | 字段映射 |
+|---|---|---|
+| .md 文件 | `notes` 行 | title=文件名/H1, content_markdown=正文, node_type='obsidian' |
+| YAML frontmatter tags | `notes.tags` | 合并 frontmatter.tags + inline #tags |
+| `[[Note A]]` wikilink | `thought_edges` | source_id=当前note, target_id=目标note, edge_type='wikilink' |
+| 文件夹路径 | `notes.tags` | 顶层文件夹名作为额外 tag，如 `folder:Projects` |
+| frontmatter | `notes.analysis_content` | 存入 `{ obsidian_frontmatter: {...} }` |
+| 附件引用 ![[img.png]] | 暂不处理 | MVP 跳过，仅保留文本引用 |
 
 ---
 
-## 3. 功能计费映射设计（feature_codes）
+## 3. 数据库变更
 
-```typescript
-// supabase/functions/_shared/feature-registry.ts
+### 3.1 notes 表 — 新增 node_type 值
 
-export type FeatureCode =
-  | 'capture.analyze'
-  | 'insight.distill'
-  | 'insight.perspective'
-  | 'insight.cognitive'
-  | 'insight.anticipation'
-  | 'retrieval.rag'
-  | 'retrieval.zoom'
-  | 'memory.wake'
-  | 'action.convert';
-
-export interface FeatureDefinition {
-  code: FeatureCode;
-  label_zh: string;
-  base_cost: number;          // 固定基础 credits
-  min_plan: 'free' | 'pro' | 'team';  // 最低所需套餐
-  free_daily_limit: number;   // free 套餐每日免费次数
-  pro_daily_limit: number;    // pro 套餐每日免费次数（0=不限）
-}
-
-export const FEATURE_REGISTRY: Record<FeatureCode, FeatureDefinition> = {
-  'capture.analyze':       { code: 'capture.analyze',       label_zh: '内容分析',   base_cost: 3, min_plan: 'free', free_daily_limit: 5,  pro_daily_limit: 0 },
-  'insight.distill':       { code: 'insight.distill',       label_zh: '知识蒸馏',   base_cost: 2, min_plan: 'free', free_daily_limit: 3,  pro_daily_limit: 0 },
-  'retrieval.rag':         { code: 'retrieval.rag',         label_zh: '语义检索',   base_cost: 2, min_plan: 'free', free_daily_limit: 5,  pro_daily_limit: 0 },
-  'memory.wake':           { code: 'memory.wake',           label_zh: '记忆唤醒',   base_cost: 1, min_plan: 'free', free_daily_limit: 5,  pro_daily_limit: 0 },
-  'action.convert':        { code: 'action.convert',        label_zh: '知识转换',   base_cost: 2, min_plan: 'free', free_daily_limit: 3,  pro_daily_limit: 0 },
-  'insight.perspective':   { code: 'insight.perspective',   label_zh: '视角切换',   base_cost: 2, min_plan: 'pro',  free_daily_limit: 0,  pro_daily_limit: 0 },
-  'insight.cognitive':     { code: 'insight.cognitive',     label_zh: '认知镜像',   base_cost: 3, min_plan: 'pro',  free_daily_limit: 0,  pro_daily_limit: 0 },
-  'insight.anticipation':  { code: 'insight.anticipation',  label_zh: '预见层',     base_cost: 2, min_plan: 'pro',  free_daily_limit: 0,  pro_daily_limit: 0 },
-  'retrieval.zoom':        { code: 'retrieval.zoom',        label_zh: '知识缩放',   base_cost: 2, min_plan: 'pro',  free_daily_limit: 0,  pro_daily_limit: 0 },
-};
-```
-
-**套餐 × 功能权限矩阵：**
-
-| 功能 | Free | Pro | Team |
-|------|------|-----|------|
-| capture.analyze | 5次/天免费，超出扣credits | 不限 | 不限 |
-| insight.distill | 3次/天免费，超出扣credits | 不限 | 不限 |
-| retrieval.rag | 5次/天免费，超出扣credits | 不限 | 不限 |
-| memory.wake | 5次/天免费，超出扣credits | 不限 | 不限 |
-| action.convert | 3次/天免费，超出扣credits | 不限 | 不限 |
-| insight.perspective | 需Pro，每次扣credits | 不限 | 不限 |
-| insight.cognitive | 需Pro，每次扣credits | 不限 | 不限 |
-| insight.anticipation | 需Pro，每次扣credits | 不限 | 不限 |
-| retrieval.zoom | 需Pro，每次扣credits | 不限 | 不限 |
-
-**计费策略说明：**
-- **Free 用户：** 基础功能有每日免费额度，超出后扣 credits；高级功能（perspective/cognitive/anticipation/zoom）需升级 Pro 或购买 credits
-- **Pro/Team 用户：** 所有功能在订阅期内不扣 credits（包含在订阅内）
-- **Credits 仅在以下情况扣除：** Free 用户超出每日免费次数 or Free 用户使用 Pro 功能（如果 min_plan='free' 允许 credits 解锁）
-
----
-
-## 4. 点数价格规则设计
-
-**MVP 采用固定点数制，不按 tokens 计费（原因：简化用户心智模型，tokens 对用户不直观）。**
-
-```
-定价公式：base_cost 固定值
-- 轻量 AI 操作（memory.wake）：1 credit
-- 标准 AI 操作（distill/rag/convert/perspective/anticipation/zoom）：2 credits
-- 重度 AI 操作（analyze/cognitive）：3 credits
-```
-
-**未来扩展预留：**
-- `FeatureDefinition` 可添加 `cost_formula: 'fixed' | 'per_token' | 'per_node'` 字段
-- MCP 外部工具调用按工具类别计费：`mcp.{tool_name}` → 独立 base_cost
-
----
-
-## 5. Estimate → Reserve → Settle → Refund 四段式链路
-
-### 数据库新增表：`usage_events`
+`node_type` 当前 CHECK 约束只有 `capture|summary|insight|action|question|relation`，需新增 `obsidian`：
 
 ```sql
-create table public.usage_events (
-  id           uuid primary key default gen_random_uuid(),
-  user_id      uuid not null references auth.users(id),
-  feature_code text not null,
-  status       text not null default 'reserved'
-                 check (status in ('reserved','settled','refunded','failed')),
-  cost_estimate integer not null,       -- gate.enter 时的预估 credits
-  cost_actual   integer,                -- gate.settle 时的实际 credits（MVP = estimate）
-  metadata      jsonb default '{}',     -- 可存 { noteId, mode, tokens_used }
-  created_at    timestamptz default now(),
-  settled_at    timestamptz,
-  ref_id        text                    -- 关联到 credit_ledger.ref_id
+-- 扩展 node_type 枚举
+ALTER TABLE notes DROP CONSTRAINT IF EXISTS notes_node_type_check;
+ALTER TABLE notes ADD CONSTRAINT notes_node_type_check
+  CHECK (node_type IN ('capture','summary','insight','action','question','relation','obsidian'));
+```
+
+### 3.2 新增 obsidian_imports 表 — 跟踪导入批次
+
+```sql
+CREATE TABLE obsidian_imports (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid NOT NULL REFERENCES auth.users(id),
+  file_name   text NOT NULL,
+  total_files integer NOT NULL DEFAULT 0,
+  imported    integer NOT NULL DEFAULT 0,
+  skipped     integer NOT NULL DEFAULT 0,
+  status      text NOT NULL DEFAULT 'processing'
+                CHECK (status IN ('processing','done','error')),
+  error_msg   text,
+  created_at  timestamptz DEFAULT now(),
+  finished_at timestamptz
 );
-
-alter table usage_events enable row level security;
-create policy "users view own events" on usage_events for select using (auth.uid() = user_id);
-
-create index idx_usage_events_user on usage_events (user_id, created_at desc);
-create index idx_usage_events_daily on usage_events (user_id, feature_code, created_at);
+ALTER TABLE obsidian_imports ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users own imports" ON obsidian_imports FOR ALL
+  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 ```
 
-### billing-gate.ts 核心逻辑
-
-```typescript
-// supabase/functions/_shared/billing-gate.ts
-
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { FEATURE_REGISTRY, type FeatureCode } from "./feature-registry.ts";
-
-interface Ticket {
-  eventId: string;
-  userId: string;
-  featureCode: FeatureCode;
-  costEstimate: number;
-  skipBilling: boolean;  // Pro/Team 用户免费时不实际扣除
-}
-
-export const gate = {
-  /** Step 1: 权限检查 + 余额预留 */
-  async enter(userId: string, featureCode: FeatureCode, _meta?: Record<string,unknown>): Promise<Ticket> {
-    const db = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
-    const feature = FEATURE_REGISTRY[featureCode];
-    if (!feature) throw new Error(`Unknown feature: ${featureCode}`);
-
-    // 1. 读取用户套餐 + 余额
-    const [subRes, credRes] = await Promise.all([
-      db.from('subscriptions').select('plan, status, current_period_end').eq('user_id', userId).maybeSingle(),
-      db.from('user_credits').select('balance').eq('user_id', userId).maybeSingle(),
-    ]);
-    const plan = (subRes.data?.plan ?? 'free') as string;
-    const isActive = subRes.data?.status === 'active' &&
-      subRes.data?.current_period_end &&
-      new Date(subRes.data.current_period_end) > new Date();
-    const balance = credRes.data?.balance ?? 0;
-
-    // 2. 权限判断：Pro/Team 订阅有效 → 全部功能免费
-    let skipBilling = false;
-    if ((plan === 'pro' || plan === 'team') && isActive) {
-      skipBilling = true;
-    }
-
-    // 3. Free 用户检查每日免费额度
-    let costEstimate = feature.base_cost;
-    if (!skipBilling && plan === 'free') {
-      // 检查 min_plan 限制
-      if (feature.min_plan !== 'free') {
-        // Free 用户可以用 credits 解锁 Pro 功能
-        // (不硬拦截，但需要有足够 credits)
-      }
-      // 检查今日已用次数
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-      const { count } = await db.from('usage_events')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', userId)
-        .eq('feature_code', featureCode)
-        .in('status', ['settled', 'reserved'])
-        .gte('created_at', todayStart.toISOString());
-      const usedToday = count ?? 0;
-
-      if (usedToday < feature.free_daily_limit) {
-        costEstimate = 0;  // 在免费额度内
-        skipBilling = true;
-      } else {
-        // 超出免费额度，需要扣 credits
-        if (balance < costEstimate) {
-          throw new Error(`INSUFFICIENT_CREDITS:${balance}:${costEstimate}:${feature.label_zh}`);
-        }
-      }
-    }
-
-    // 4. 写入 reserved 事件
-    const { data: event } = await db.from('usage_events').insert({
-      user_id: userId,
-      feature_code: featureCode,
-      status: 'reserved',
-      cost_estimate: costEstimate,
-      metadata: _meta ?? {},
-    }).select('id').single();
-
-    // 5. 非免费时预扣余额
-    if (!skipBilling && costEstimate > 0) {
-      await db.rpc('deduct_credits', { p_user_id: userId, p_amount: costEstimate });
-    }
-
-    return {
-      eventId: event!.id,
-      userId,
-      featureCode,
-      costEstimate,
-      skipBilling,
-    };
-  },
-
-  /** Step 2: 任务完成 → 结算 */
-  async settle(ticket: Ticket, meta?: Record<string,unknown>): Promise<void> {
-    const db = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
-    const actualCost = ticket.costEstimate; // MVP: actual = estimate
-
-    await db.from('usage_events').update({
-      status: 'settled',
-      cost_actual: actualCost,
-      settled_at: new Date().toISOString(),
-      metadata: meta ?? {},
-    }).eq('id', ticket.eventId);
-
-    // 写入 credit_ledger（即使 skipBilling 也记录 0 消耗用于统计）
-    if (!ticket.skipBilling && actualCost > 0) {
-      const { data: cred } = await db.from('user_credits')
-        .select('balance').eq('user_id', ticket.userId).single();
-      await db.from('credit_ledger').insert({
-        user_id: ticket.userId,
-        delta: -actualCost,
-        balance_after: cred!.balance,
-        reason: 'ai_usage',
-        ref_id: `usage:${ticket.eventId}`,
-      });
-    }
-  },
-
-  /** Step 3: 任务失败 → 退还预留 */
-  async refund(ticket: Ticket): Promise<void> {
-    const db = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
-    await db.from('usage_events').update({
-      status: 'refunded',
-      settled_at: new Date().toISOString(),
-    }).eq('id', ticket.eventId);
-
-    if (!ticket.skipBilling && ticket.costEstimate > 0) {
-      await db.rpc('add_credits', { p_user_id: ticket.userId, p_amount: ticket.costEstimate });
-      const { data: cred } = await db.from('user_credits')
-        .select('balance').eq('user_id', ticket.userId).single();
-      await db.from('credit_ledger').insert({
-        user_id: ticket.userId,
-        delta: ticket.costEstimate,
-        balance_after: cred!.balance,
-        reason: 'ai_refund',
-        ref_id: `refund:${ticket.eventId}`,
-      });
-    }
-  },
-};
-```
-
-### 需要的数据库辅助函数
+### 3.3 notes 表新增可选列 — 追踪 obsidian 来源
 
 ```sql
--- 原子扣减 credits
-create or replace function deduct_credits(p_user_id uuid, p_amount integer)
-returns void language plpgsql security definer as $$
-begin
-  update user_credits
-  set balance = balance - p_amount, updated_at = now()
-  where user_id = p_user_id and balance >= p_amount;
-  if not found then raise exception 'INSUFFICIENT_CREDITS'; end if;
-end;$$;
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS obsidian_path text;
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS obsidian_import_id uuid
+  REFERENCES obsidian_imports(id) ON DELETE SET NULL;
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS content_hash text;
+```
 
--- 原子增加 credits
-create or replace function add_credits(p_user_id uuid, p_amount integer)
-returns void language plpgsql security definer as $$
-begin
-  insert into user_credits (user_id, balance)
-  values (p_user_id, p_amount)
-  on conflict (user_id) do update
-  set balance = user_credits.balance + p_amount, updated_at = now();
-end;$$;
+- `obsidian_path`：原始文件路径（如 `Projects/AI/thoughts.md`），用于增量同步去重
+- `obsidian_import_id`：归属哪次导入批次
+- `content_hash`：MD5/SHA256 摘要，增量导入时跳过未变更文件
+
+### 3.4 thought_edges — 已有 wikilink 支持
+
+现有 `thought_edges.edge_type` CHECK: `supports|contradicts|extends|inspires|related`，需新增 `wikilink`：
+
+```sql
+ALTER TABLE thought_edges DROP CONSTRAINT IF EXISTS thought_edges_edge_type_check;
+ALTER TABLE thought_edges ADD CONSTRAINT thought_edges_edge_type_check
+  CHECK (edge_type IN ('supports','contradicts','extends','inspires','related','wikilink'));
 ```
 
 ---
 
-## 6. 套餐权限 + 点数 + 资源上限统一判断
+## 4. 前端解析流程
 
-`gate.enter()` 内部判断链路：
+### 4.1 新增依赖
 
-```
-1. 读取 plan + isActive + balance
-2. if (plan=Pro/Team && isActive) → skipBilling=true, pass
-3. if (plan=Free):
-   a. 检查 feature.min_plan
-      - 如果 min_plan='pro' 且无 credits → 抛 PLAN_REQUIRED 错误
-      - 如果 min_plan='pro' 但有 credits → 允许，扣 credits
-   b. 检查 free_daily_limit
-      - 今日已用 < limit → costEstimate=0, skipBilling=true
-      - 今日已用 >= limit → 需扣 credits
-   c. 检查 balance >= costEstimate → 否则抛 INSUFFICIENT_CREDITS
-4. 写入 usage_events(reserved)
-5. 预扣 balance
-6. 返回 ticket
-```
+- `jszip` — 浏览器端解压 ZIP
+- `yaml` — 解析 YAML frontmatter（轻量，已被很多 markdown 工具依赖）
 
-**资源上限（笔记数、星系数）单独在前端 + CRUD 层检查，不走 billing-gate：**
+### 4.2 解析器模块：`src/lib/obsidian-parser.ts`
 
 ```typescript
-// src/hooks/useEntitlements.ts
-export function useEntitlements(plan: string) {
-  return {
-    maxNotes:    plan === 'free' ? 50 : Infinity,
-    maxGalaxies: plan === 'free' ? 3  : Infinity,
-    // 后续扩展
-  };
+interface ParsedNote {
+  path: string;            // 'Projects/AI/thoughts.md'
+  fileName: string;        // 'thoughts'
+  title: string;           // frontmatter.title || 第一个 H1 || fileName
+  content: string;         // 去除 frontmatter 后的 markdown 正文
+  tags: string[];          // 合并 frontmatter.tags + inline #tags + folder tag
+  wikilinks: string[];     // ['Note A', 'Note B'] — 原始链接文本
+  frontmatter: Record<string, unknown>;
+  contentHash: string;     // 用于增量去重
+  folderTag: string;       // 'folder:Projects'
 }
 ```
 
----
+**解析步骤：**
+1. 读取文件文本内容
+2. 用正则 `^---\n([\s\S]*?)\n---` 提取 frontmatter，用 `yaml.parse()` 解析
+3. 正则 `\[\[([^\]]+)\]\]` 提取所有 wikilinks
+4. 正则 `(?:^|\s)#([a-zA-Z\u4e00-\u9fff][\w\u4e00-\u9fff/\-]*)` 提取 inline tags
+5. 合并 frontmatter.tags + inline tags + folder tag → 去重
+6. 标题优先级：frontmatter.title > 第一个 `# ` 行 > 文件名
+7. 计算 contentHash = 简易字符串哈希（避免引入 crypto 依赖，用 cyrb53 或类似）
+8. 跳过空文件（正文 < 10 字符）
 
-## 7. 数据库表设计
-
-### 新增表
-
-| 表 | 用途 |
-|----|------|
-| `usage_events` | 四段式事件记录（见上方 DDL） |
-
-### 新增函数
-
-| 函数 | 用途 |
-|------|------|
-| `deduct_credits(uuid, int)` | 原子扣减余额 |
-| `add_credits(uuid, int)` | 原子增加余额 |
-
-### 现有表改动
-
-| 表 | 改动 |
-|----|------|
-| `credit_ledger.reason` | 新增枚举值 `'ai_usage'` / `'ai_refund'` |
-| `user_credits` | 无结构改动；新用户注册时自动创建行（已有） |
-
----
-
-## 8. API 路由 / Edge Function 改造
-
-### 新增共享模块
-
-```
-supabase/functions/_shared/
-  ├── billing-gate.ts        # gate.enter / settle / refund
-  └── feature-registry.ts    # FEATURE_REGISTRY 定义
-```
-
-### 改造现有 Edge Functions（以 distill-insight 为例）
+### 4.3 导入器模块：`src/lib/obsidian-importer.ts`
 
 ```typescript
-// 改造前：
-Deno.serve(async (req) => {
-  // ... 直接执行 AI 调用
-});
+interface ImportProgress {
+  phase: 'unzip' | 'parse' | 'insert' | 'index' | 'edges' | 'done';
+  current: number;
+  total: number;
+  currentFile?: string;
+}
 
-// 改造后：
-import { gate } from "../_shared/billing-gate.ts";
-
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") { ... }
-  
-  // 从 Authorization header 提取 userId
-  const authHeader = req.headers.get("Authorization") ?? "";
-  const { data: { user } } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
-  const userId = user?.id;
-  if (!userId) throw new Error("Unauthorized");
-
-  // ① 计费网关 — 进入
-  const ticket = await gate.enter(userId, 'insight.distill', { noteId: body.noteId });
-  
-  try {
-    // ② 执行原有 AI 逻辑（不改动）
-    const result = await doAICall(...);
-    
-    // ③ 结算
-    await gate.settle(ticket, { tokens: result.usage?.total_tokens });
-    
-    return new Response(JSON.stringify(result), { headers });
-  } catch (e) {
-    // ④ 失败退还
-    await gate.refund(ticket);
-    throw e;
-  }
-});
+async function importVault(
+  zipFile: File,
+  userId: string,
+  onProgress: (p: ImportProgress) => void,
+): Promise<ImportResult>
 ```
 
-### 需要改造的 9 个 Edge Functions
+**执行链路：**
+1. **解压** — JSZip 读取 zip，过滤出 .md 文件（跳过 .obsidian/ 目录、.trash/）
+2. **解析** — 逐个文件调 parseNote()，收集 ParsedNote[]
+3. **去重查询** — 查询该用户所有 `obsidian_path IS NOT NULL` 的 notes，按 path+hash 判断是否跳过
+4. **批量插入 notes** — 每 20 条一批 supabase.from('notes').insert(batch)
+5. **RAG 索引** — 对每条新 note 调 `chunk-and-index`（并行度限制为 3）
+6. **建立 wikilink edges** — 解析完成后，用 path→noteId 映射表解析 wikilinks，insert thought_edges
+7. **更新 obsidian_imports** — 标记完成
 
-1. `analyze-content` → `capture.analyze`
-2. `distill-insight` → `insight.distill`
-3. `rag-search` → `retrieval.rag`
-4. `memory-wake` → `memory.wake`
-5. `knowledge-convert` → `action.convert`
-6. `perspective-switch` → `insight.perspective`
-7. `cognitive-mirror` → `insight.cognitive`
-8. `anticipation-layer` → `insight.anticipation`
-9. `knowledge-zoom` → `retrieval.zoom`
+### 4.4 Wikilink 解析策略
 
-**不需要改造的：** `chunk-and-index`（无 AI）、所有 `admin-*`、所有 `manual-pay-*`、`alipay-*`
+- 建立 `fileNameToNoteId: Map<string, string>` 映射（key = 文件名去 .md，小写）
+- 对每个 note 的 wikilinks，查找 `fileNameToNoteId.get(link.toLowerCase())`
+- 找不到的跳过（目标文件可能未在 vault 中或被过滤）
+- 支持 `[[folder/note]]` 格式 → 取最后一段作为文件名匹配
 
 ---
 
-## 9. 前端展示与交互建议
+## 5. 前端 UI 设计
 
-### 9.1 全局 Credits 指示器（常驻）
+### 5.1 导入入口
 
-在 `CommandDock` / `MobileTabBar` 旁添加小型余额徽章：
+在 SettingsCapsule 下拉菜单中新增 **"导入 Obsidian"** 按钮。点击打开全屏模态框。
 
-```
-[⚡ 128]  ← 当前余额，点击打开 BillingPanel
-```
+**文件：** `src/components/obsidian/ObsidianImportModal.tsx`
 
-- 正常：`#b496ff`
-- 余额 < 10：`#ff4466` 闪烁
-- Pro 用户：显示 `PRO ⚡ ∞`
-
-### 9.2 功能触发前的消费估算（低打扰）
-
-在 AI 按钮旁显示 cost badge（不阻断操作）：
+### 5.2 导入模态框 — 三步流程
 
 ```
-[蒸馏] ²   ← 右上角小数字表示 2 credits
-[蒸馏] FREE ← 在免费额度内
+┌─────────────────────────────────────┐
+│  ◈ 导入 Obsidian Vault              │
+│                                     │
+│  ┌─── Step 1: 选择文件 ────────┐    │
+│  │  [拖拽或点击选择 .zip 文件]  │    │
+│  │  支持 .zip 格式              │    │
+│  └──────────────────────────────┘    │
+│                                     │
+│  ┌─── Step 2: 预览 ────────────┐    │
+│  │  📄 检测到 47 个 .md 文件    │    │
+│  │  📁 来自 5 个文件夹          │    │
+│  │  🔗 检测到 123 个 wikilinks  │    │
+│  │  🏷 检测到 28 个标签          │    │
+│  │                              │    │
+│  │  [ 开始导入 ]                │    │
+│  └──────────────────────────────┘    │
+│                                     │
+│  ┌─── Step 3: 进度 ────────────┐    │
+│  │  ████████░░░░  23/47         │    │
+│  │  正在处理: Projects/AI/xxx   │    │
+│  │  阶段: 写入节点 → RAG 索引   │    │
+│  └──────────────────────────────┘    │
+│                                     │
+│  ┌─── 完成 ───────────────────┐     │
+│  │  ✓ 导入完成                 │     │
+│  │  新增 42 个节点 · 跳过 5 个  │     │
+│  │  建立 98 条关系边            │     │
+│  │  RAG 索引 42 条              │     │
+│  │  [ 在星图中查看 ]            │     │
+│  └─────────────────────────────┘    │
+└─────────────────────────────────────┘
 ```
 
-### 9.3 余额不足拦截（CreditGateModal）
+### 5.3 星图中的 Obsidian 节点
 
-当 `gate.enter` 返回 `INSUFFICIENT_CREDITS` 错误时，前端弹出：
+- `node_type = 'obsidian'` 在 CosmosScene 中使用独特图标颜色（如紫色菱形 `#a855f7`）
+- NODE_TYPE_CFG 新增 obsidian 条目：`{ label: 'Obsidian', shape: 'diamond', color: '#a855f7', size: 1.0 }`
+- 节点 hover 时 NodeLightBand 显示 `来源: Obsidian · folder/path`
+- wikilink edges 在宇宙中渲染为浅紫色连线
 
-```
-┌─────────────────────────────┐
-│  Credits 不足               │
-│                             │
-│  「知识蒸馏」需要 2 credits │
-│  当前余额：0               │
-│                             │
-│  [购买 Credits]  [升级 Pro] │
-└─────────────────────────────┘
-```
+### 5.4 导入历史
 
-### 9.4 扣费成功反馈（Toast）
-
-```
-✓ 知识蒸馏完成 · -2 credits · 余额 126
-```
-
-### 9.5 新增前端文件
-
-| 文件 | 用途 |
-|------|------|
-| `src/hooks/useEntitlements.ts` | 套餐权限 + 资源上限 |
-| `src/hooks/useCreditGate.ts` | 包装 `functions.invoke` + 捕获 `INSUFFICIENT_CREDITS` 错误 → 弹出 CreditGateModal |
-| `src/components/billing/CreditBadge.tsx` | 全局余额徽章 |
-| `src/components/billing/CostTag.tsx` | AI 按钮旁的 cost 小标签 |
-| `src/components/billing/CreditGateModal.tsx` | 余额不足弹窗 |
+在 SettingsCapsule 中显示最近一次导入的状态（日期 + 节点数）。
 
 ---
 
-## 10. MVP 最适合先打通的功能
+## 6. 增量同步方案 (MVP-lite)
 
-### Sprint 1（最小闭环）
-
-1. **数据库迁移：** 创建 `usage_events` 表 + `deduct_credits` / `add_credits` 函数
-2. **billing-gate.ts + feature-registry.ts** 共享模块
-3. **改造 2 个最常用函数：** `distill-insight` + `rag-search`
-4. **前端：** `CreditBadge` 余额指示 + `CreditGateModal` 拦截 + Toast 反馈
-5. **验证：** Free 用户超出免费次数后扣费 → Pro 用户不扣费 → 余额不足被拦截
-
-### Sprint 2（全量接入）
-
-6. 改造剩余 7 个 AI Edge Functions
-7. `CostTag` 组件在所有 AI 按钮旁显示消耗预估
-8. `useEntitlements` + 笔记数/星系数限制
-
-### Sprint 3（高级特性）
-
-9. MCP 工具调用计费接入
-10. 按 tokens 动态计费选项
-11. 用量统计仪表盘（用户侧）
+- 用户再次上传同一 vault 的 zip 时：
+  1. 前端解析所有 .md 文件的 path + contentHash
+  2. 查询 DB 中 `obsidian_path` 和 `content_hash` 匹配的 notes
+  3. **path+hash 相同** → 跳过（未变更）
+  4. **path 相同，hash 不同** → update notes 的 content/tags/frontmatter + 重新 chunk-and-index
+  5. **path 不存在** → 新增
+  6. **DB 中有但 zip 中无** → 不删除（保守策略，避免误删）
+- 前端在"预览"步骤显示：`新增 12 · 更新 5 · 未变 30 · 不在本次导入 8`
 
 ---
 
-## 实现文件清单
+## 7. 文件清单
 
 ### 新增文件
 
-| 文件路径 | 说明 |
-|---------|------|
-| `supabase/functions/_shared/billing-gate.ts` | 统一计费网关 |
-| `supabase/functions/_shared/feature-registry.ts` | 功能注册表 |
-| `src/hooks/useEntitlements.ts` | 套餐权限 hook |
-| `src/hooks/useCreditGate.ts` | 前端计费拦截 hook |
-| `src/components/billing/CreditBadge.tsx` | 余额徽章 |
-| `src/components/billing/CostTag.tsx` | 消耗标签 |
-| `src/components/billing/CreditGateModal.tsx` | 余额不足弹窗 |
+| 文件 | 职责 |
+|---|---|
+| `src/lib/obsidian-parser.ts` | Markdown 解析器（frontmatter/tags/wikilinks/hash） |
+| `src/lib/obsidian-importer.ts` | 导入执行器（解压→解析→insert→index→edges） |
+| `src/components/obsidian/ObsidianImportModal.tsx` | 导入模态框 UI（选文件→预览→进度→完成） |
+| `src/hooks/useObsidianImport.ts` | 导入状态管理 hook |
 
 ### 修改文件
 
-| 文件路径 | 改动 |
-|---------|------|
-| `supabase/functions/distill-insight/index.ts` | 接入 billing-gate |
-| `supabase/functions/rag-search/index.ts` | 接入 billing-gate |
-| `supabase/functions/analyze-content/index.ts` | 接入 billing-gate |
-| `supabase/functions/memory-wake/index.ts` | 接入 billing-gate |
-| `supabase/functions/knowledge-convert/index.ts` | 接入 billing-gate |
-| `supabase/functions/perspective-switch/index.ts` | 接入 billing-gate |
-| `supabase/functions/cognitive-mirror/index.ts` | 接入 billing-gate |
-| `supabase/functions/anticipation-layer/index.ts` | 接入 billing-gate |
-| `supabase/functions/knowledge-zoom/index.ts` | 接入 billing-gate |
-| `src/components/floating/CommandDock.tsx` | 添加 CreditBadge |
-| `src/components/floating/MobileTabBar.tsx` | 添加 CreditBadge |
-| `src/components/pods/InsightBox.tsx` | 添加 CostTag + 错误处理 |
-| `src/components/pods/ActionBox.tsx` | 添加 CostTag + 错误处理 |
-| `src/pages/Distiller.tsx` | 添加 CostTag + 错误处理 |
-| `src/pages/Analyze.tsx` | 添加 CostTag + 错误处理 |
-| `src/hooks/useRAG.ts` | 错误处理 → CreditGateModal |
-| `src/hooks/useMemoryWake.ts` | 错误处理 → CreditGateModal |
+| 文件 | 变更内容 |
+|---|---|
+| `src/types/index.ts` | NodeType 增加 `'obsidian'` |
+| `src/components/starmap/cosmos-layout.ts` | NODE_TYPE_CFG 增加 obsidian 条目 |
+| `src/components/starmap/CosmosScene.tsx` | obsidian 节点的特殊形状/颜色渲染 |
+| `src/components/floating/SettingsCapsule.tsx` | 菜单新增"导入 Obsidian"入口 |
+| `src/hooks/useNotes.ts` | normalizeNote 兼容 obsidian node_type |
 
 ### 数据库迁移
 
-```sql
--- 1. usage_events 表
--- 2. deduct_credits 函数
--- 3. add_credits 函数
--- (见上方 DDL)
-```
+- 扩展 `notes.node_type` CHECK 约束
+- 新建 `obsidian_imports` 表
+- notes 新增 `obsidian_path`, `obsidian_import_id`, `content_hash` 列
+- 扩展 `thought_edges.edge_type` CHECK 约束
+
+### 新增依赖
+
+- `jszip` — ZIP 解压
+- `yaml` — YAML frontmatter 解析
 
 ---
 
-## 验证方案
+## 8. MVP 优先级
 
-1. **Free 用户 + 免费额度内：** 调用 distill-insight → 成功，usage_events 记录 cost_estimate=0, status=settled
-2. **Free 用户 + 超出额度：** 调用第 4 次 distill-insight → 扣 2 credits，credit_ledger 写入 -2
-3. **Free 用户 + 余额不足：** 调用 → 返回 INSUFFICIENT_CREDITS → 前端弹出 CreditGateModal
-4. **Pro 用户：** 调用任意功能 → 成功，skipBilling=true，不扣 credits
-5. **AI 调用失败：** gate.refund 退还 → usage_events status=refunded，余额恢复
+### 第一阶段（本次实施）
+1. DB 迁移（表结构 + 约束）
+2. `obsidian-parser.ts`（纯函数，可单测）
+3. `obsidian-importer.ts`（导入链路）
+4. `ObsidianImportModal.tsx`（UI 三步流程）
+5. SettingsCapsule 入口
+6. CosmosScene obsidian 节点样式
+7. wikilink → thought_edges 映射
+
+### 延后
+- 增量同步的"更新已变更文件"逻辑 → 第二阶段
+- 附件/图片导入 → 需 Storage bucket，延后
+- 双向写回 → 不做
+- Obsidian 插件（API 同步） → 远期
+- 导入历史管理 / 批量删除 → 延后
+
+---
+
+## 9. 验证方式
+
+1. 准备一个小型 Obsidian vault（10+ .md 文件，含 frontmatter、wikilinks、tags、文件夹结构）
+2. 压缩为 .zip
+3. 在 /app 页面 → 设置菜单 → 导入 Obsidian → 选择 zip
+4. 验证预览统计正确（文件数、tag 数、link 数）
+5. 点击导入 → 进度条正常推进
+6. 完成后 → 星图中出现紫色 obsidian 节点
+7. wikilink 连线正确渲染
+8. RAG 搜索能命中 obsidian 导入的内容
+9. 再次导入同一 zip → 全部显示"跳过"
