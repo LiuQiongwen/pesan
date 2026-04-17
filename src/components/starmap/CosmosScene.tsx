@@ -693,9 +693,9 @@ function ImperativeCore({
         ((e.clientX - rect.left) / rect.width) * 2 - 1,
         -((e.clientY - rect.top) / rect.height) * 2 + 1,
       );
-      raycaster.setFromCamera(mouse, camera);
+      raycaster.current.setFromCamera(mouse, camera);
       const allMeshes = Array.from(meshToNoteId.current.keys()) as THREE.Mesh[];
-      const hits      = raycaster.intersectObjects(allMeshes);
+      const hits      = raycaster.current.intersectObjects(allMeshes);
       if (hits.length) {
         const hitId = meshToNoteId.current.get(hits[0].object as THREE.Mesh);
         if (hitId) {
