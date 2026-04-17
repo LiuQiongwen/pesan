@@ -61,9 +61,11 @@ interface ContentsProps {
   loading: boolean;
   openPod: (id: PodId) => void;
   pods:    Record<PodId, { open: boolean }>;
+  deleteNote:     (id: string) => Promise<{ error: unknown }>;
+  undoDeleteNote: (id: string) => Promise<{ error: unknown }>;
 }
 
-function StarMapContents({ user, notes, loading, openPod, pods }: ContentsProps) {
+function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undoDeleteNote }: ContentsProps) {
   const navigate = useNavigate();
   const workflow = useAgentWorkflow();
   const device = useDevice();
@@ -217,6 +219,8 @@ function StarMapContents({ user, notes, loading, openPod, pods }: ContentsProps)
         onEmptyStateClick={() => openPod('capture')}
         onNodeDropToPod={handleNodeDropToPod}
         onModeChange={handleModeChange}
+        onDeleteNote={deleteNote}
+        onUndoDeleteNote={undoDeleteNote}
       />
 
       {/* Layer 1 — Agent Trail */}
@@ -318,7 +322,7 @@ function StarMapContents({ user, notes, loading, openPod, pods }: ContentsProps)
 // ── StarMapOuter — provides AgentWorkflowProvider with wired openPod ─────────
 function StarMapOuter() {
   const { user, loading } = useAuth();
-  const { notes, fetchNotes } = useNotes(user?.id);
+  const { notes, fetchNotes, deleteNote, undoDeleteNote } = useNotes(user?.id);
   const { pods, openPod } = useToolbox();
 
   return (
@@ -330,6 +334,8 @@ function StarMapOuter() {
           loading={loading}
           openPod={openPod}
           pods={pods as Record<PodId, { open: boolean }>}
+          deleteNote={deleteNote}
+          undoDeleteNote={undoDeleteNote}
         />
       ) : (
         <div style={{ width: '100vw', height: '100vh', background: '#040508' }} />

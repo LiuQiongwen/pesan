@@ -27,6 +27,7 @@ export function useNotes(userId?: string) {
       .from('notes')
       .select('*')
       .eq('user_id', userId)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     if (!error && data) setNotes(data.map(n => normalizeNote(n as Record<string, unknown>)));
@@ -45,7 +46,9 @@ export function useNotes(userId?: string) {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'notes', filter: `user_id=eq.${userId}` },
         (payload) => {
-          const newNote = normalizeNote(payload.new as Record<string, unknown>);
+          const raw = payload.new as Record<string, unknown>;
+          if (raw.deleted_at) return; // Skip soft-deleted notes
+          const newNote = normalizeNote(raw);
           setNotes(prev => {
             if (prev.some(n => n.id === newNote.id)) return prev;
             return [newNote, ...prev];
@@ -74,12 +77,36 @@ export function useNotes(userId?: string) {
   };
 
   const deleteNote = async (id: string) => {
-    const { error } = await supabase.from('notes').delete().eq('id', id);
+    // Soft-delete: set deleted_at timestamp
+    const { error } = await supabase
+      .from('notes')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id);
     if (!error) setNotes(prev => prev.filter(n => n.id !== id));
     return { error };
   };
 
-  return { notes, loading, fetchNotes, getNote, updateNote, deleteNote };
+  const undoDeleteNote = async (id: string) => {
+    // Restore soft-deleted note
+    const { error } = await supabase
+      .from('notes')
+      .update({ deleted_at: null })
+      .eq('id', id);
+    if (!error) {
+      // Refetch to get the note back into state
+      const { data } = await supabase.from('notes').select('*').eq('id', id).maybeSingle();
+      if (data) {
+        const restored = normalizeNote(data as Record<string, unknown>);
+        setNotes(prev => {
+          if (prev.some(n => n.id === restored.id)) return prev;
+          return [restored, ...prev];
+        });
+      }
+    }
+    return { error };
+  };
+
+  return { notes, loading, fetchNotes, getNote, updateNote, deleteNote, undoDeleteNote };
 }
 
 export function useAnalysis(userId?: string) {

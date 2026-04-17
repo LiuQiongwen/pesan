@@ -3438,6 +3438,39 @@ export type Database = {
           },
         ]
       }
+      galaxy_positions: {
+        Row: {
+          cx: number
+          cy: number
+          cz: number
+          id: string
+          is_manual: boolean
+          tag: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          cx: number
+          cy: number
+          cz: number
+          id?: string
+          is_manual?: boolean
+          tag: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          cx?: number
+          cy?: number
+          cz?: number
+          id?: string
+          is_manual?: boolean
+          tag?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       knowledge_chunks: {
         Row: {
           chunk_index: number
@@ -3670,6 +3703,46 @@ export type Database = {
           },
         ]
       }
+      node_positions: {
+        Row: {
+          id: string
+          is_manual: boolean
+          note_id: string
+          updated_at: string | null
+          user_id: string
+          x: number
+          y: number
+          z: number
+        }
+        Insert: {
+          id?: string
+          is_manual?: boolean
+          note_id: string
+          updated_at?: string | null
+          user_id: string
+          x: number
+          y: number
+          z: number
+        }
+        Update: {
+          id?: string
+          is_manual?: boolean
+          note_id?: string
+          updated_at?: string | null
+          user_id?: string
+          x?: number
+          y?: number
+          z?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "node_positions_note_id_fkey"
+            columns: ["note_id"]
+            referencedRelation: "notes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notes: {
         Row: {
           analysis_content: Json | null
@@ -3678,6 +3751,7 @@ export type Database = {
           content_hash: string | null
           content_markdown: string | null
           created_at: string | null
+          deleted_at: string | null
           id: string
           is_edited: boolean | null
           key_points: Json | null
@@ -3700,6 +3774,7 @@ export type Database = {
           content_hash?: string | null
           content_markdown?: string | null
           created_at?: string | null
+          deleted_at?: string | null
           id?: string
           is_edited?: boolean | null
           key_points?: Json | null
@@ -3722,6 +3797,7 @@ export type Database = {
           content_hash?: string | null
           content_markdown?: string | null
           created_at?: string | null
+          deleted_at?: string | null
           id?: string
           is_edited?: boolean | null
           key_points?: Json | null

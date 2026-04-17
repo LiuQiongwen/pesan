@@ -91,8 +91,18 @@ function fibonacciPoint(i: number, total: number, radius: number): [number, numb
   ];
 }
 
+// ── Manual position overrides ────────────────────────────────────────────────
+export interface ManualPositions {
+  nodes?: Record<string, [number, number, number]>;
+  galaxies?: Record<string, [number, number, number]>;
+}
+
 // ── Main layout builder ───────────────────────────────────────────────────────
-export function buildCosmosLayout(notes: CosmosNote[], dbEdges: DbEdge[] = []): CosmosLayout {
+export function buildCosmosLayout(
+  notes: CosmosNote[],
+  dbEdges: DbEdge[] = [],
+  manual?: ManualPositions,
+): CosmosLayout {
   if (!notes.length) {
     return { positions: {}, clusters: [], edges: [] };
   }
@@ -122,7 +132,7 @@ export function buildCosmosLayout(notes: CosmosNote[], dbEdges: DbEdge[] = []): 
 
     const center: [number, number, number] = tag === '__untagged__'
       ? [0, 0, 0]
-      : fibonacciPoint(i, Math.max(tagList.length, 2), CLUSTER_RADIUS);
+      : (manual?.galaxies?.[tag] ?? fibonacciPoint(i, Math.max(tagList.length, 2), CLUSTER_RADIUS));
 
     const spread = 4 + Math.sqrt(noteIds.length) * 2.5;
     const clusterRadius = spread * 1.6;
@@ -130,6 +140,17 @@ export function buildCosmosLayout(notes: CosmosNote[], dbEdges: DbEdge[] = []): 
     clusters.push({ tag, center, color, noteIds, radius: clusterRadius });
 
     noteIds.forEach((noteId) => {
+      // Check for manual position override
+      const manualPos = manual?.nodes?.[noteId];
+      if (manualPos) {
+        positions[noteId] = {
+          pos: manualPos,
+          color,
+          clusterIdx: tag === '__untagged__' ? -1 : i,
+        };
+        return;
+      }
+
       const rng = seededRng(noteId + 'pos');
       const angle1 = rng() * Math.PI * 2;
       const angle2 = rng() * Math.PI;

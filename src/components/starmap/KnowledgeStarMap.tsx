@@ -2,10 +2,13 @@ import { Suspense, useMemo, useState, useCallback, useRef, useEffect, createElem
 import { createPortal } from 'react-dom';
 import { Canvas } from '@react-three/fiber';
 import { CosmosScene } from './CosmosScene';
-import { buildCosmosLayout, type CosmosNote, type DbEdge } from './cosmos-layout';
+import { buildCosmosLayout, type CosmosNote, type DbEdge, type ManualPositions } from './cosmos-layout';
 import { NodeContextMenu } from './NodeContextMenu';
+import { GalaxyContextMenu } from './GalaxyContextMenu';
 import { GalaxyJoinOverlay, type GalaxyOption } from './GalaxyJoinOverlay';
 import { ConnectConfirmOverlay } from './ConnectConfirmOverlay';
+import { ConfirmDeleteOverlay } from './ConfirmDeleteOverlay';
+import { UndoToast } from './UndoToast';
 import { WorkbenchSummonBar } from './WorkbenchSummonBar';
 import { WorkbenchPanel } from './WorkbenchPanel';
 import { type RelationType } from './connect-types';
@@ -43,6 +46,8 @@ interface KnowledgeStarMapProps {
   onEmptyStateClick?:  () => void;
   onNodeDropToPod?:    (noteId: string, podId: string) => void;
   onModeChange?:       (mode: 'browse' | 'connect', connectFromTitle?: string) => void;
+  onDeleteNote?:       (noteId: string) => Promise<{ error: unknown }>;
+  onUndoDeleteNote?:   (noteId: string) => Promise<{ error: unknown }>;
 }
 
 // ── Loading fallback ──────────────────────────────────────────────────────────
@@ -91,9 +96,21 @@ export default function KnowledgeStarMap({
   onEmptyStateClick,
   onNodeDropToPod,
   onModeChange,
+  onDeleteNote,
+  onUndoDeleteNote,
 }: KnowledgeStarMapProps) {
   const [dbEdges, setDbEdges] = useState<DbEdge[]>([]);
-  const layout = useMemo(() => buildCosmosLayout(notes, dbEdges), [notes, dbEdges]);
+
+  // ── Manual positions (fetched from DB) ──────────────────────────────────
+  const [manualNodePos, setManualNodePos] = useState<Record<string, [number, number, number]>>({});
+  const [manualGalaxyPos, setManualGalaxyPos] = useState<Record<string, [number, number, number]>>({});
+
+  const manualPositions = useMemo<ManualPositions>(() => ({
+    nodes: Object.keys(manualNodePos).length > 0 ? manualNodePos : undefined,
+    galaxies: Object.keys(manualGalaxyPos).length > 0 ? manualGalaxyPos : undefined,
+  }), [manualNodePos, manualGalaxyPos]);
+
+  const layout = useMemo(() => buildCosmosLayout(notes, dbEdges, manualPositions), [notes, dbEdges, manualPositions]);
 
   // Fetch thought_edges from DB
   useEffect(() => {
@@ -104,12 +121,43 @@ export default function KnowledgeStarMap({
       .eq('user_id', userId)
       .then(({ data }) => { if (data) setDbEdges(data as DbEdge[]); });
   }, [userId, notes]); // refetch when notes change (new connections may appear)
+
+  // ── Fetch manual positions ───────────────────────────────────────────────
+  useEffect(() => {
+    if (!userId) return;
+    supabase.from('node_positions').select('note_id, x, y, z').eq('user_id', userId)
+      .then(({ data }) => {
+        if (data) {
+          const map: Record<string, [number, number, number]> = {};
+          for (const r of data) map[r.note_id] = [r.x, r.y, r.z];
+          setManualNodePos(map);
+        }
+      });
+    supabase.from('galaxy_positions').select('tag, cx, cy, cz').eq('user_id', userId)
+      .then(({ data }) => {
+        if (data) {
+          const map: Record<string, [number, number, number]> = {};
+          for (const r of data) map[r.tag] = [r.cx, r.cy, r.cz];
+          setManualGalaxyPos(map);
+        }
+      });
+  }, [userId]);
+
   const [openNodes,       setOpenNodes]        = useState<Set<string>>(new Set());
   const [pendingConn,     setPendingConn]      = useState<PendingConnection | null>(null);
   const [connectStatus,   setConnectStatus]    = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [pendingGalaxy,   setPendingGalaxy]    = useState<PendingGalaxy | null>(null);
   const [galaxyStatus,    setGalaxyStatus]     = useState<'idle' | 'saved' | 'error'>('idle');
   const recenterActiveRef = useRef(false);
+
+  // ── Delete / Undo state ─────────────────────────────────────────────────
+  const [pendingDeleteId,  setPendingDeleteId]  = useState<string | null>(null);
+  const [undoInfo, setUndoInfo] = useState<{ noteId: string; title: string } | null>(null);
+
+  // ── Galaxy context menu state ───────────────────────────────────────────
+  const [galaxyCtx, setGalaxyCtx] = useState<{ tag: string; x: number; y: number } | null>(null);
+  const [pendingGalaxyDelete, setPendingGalaxyDelete] = useState<{ tag: string; mode: 'dissolve' | 'delete_all' } | null>(null);
+  const [galaxyUndoInfo, setGalaxyUndoInfo] = useState<{ tag: string; noteIds: string[]; oldTags: Record<string, string[]> } | null>(null);
 
   // ── Node interaction mode FSM ──────────────────────────────────────────
   const [interactionMode,  setInteractionMode]  = useState<'browse' | 'connect'>('browse');
@@ -342,6 +390,141 @@ export default function KnowledgeStarMap({
     if (recenterTrigger > 0) recenterActiveRef.current = true;
   }, [recenterTrigger]);
 
+  // ── Node delete: initiate (from context menu / NodeWindow) ─────────────
+  const handleDeleteRequest = useCallback((noteId: string) => {
+    setPendingDeleteId(noteId);
+  }, []);
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!pendingDeleteId || !onDeleteNote) return;
+    const note = notesMap.get(pendingDeleteId);
+    const title = note?.title ?? '(未命名)';
+    const id = pendingDeleteId;
+    setPendingDeleteId(null);
+    setOpenNodes(prev => { const n = new Set(prev); n.delete(id); return n; });
+
+    const { error } = await onDeleteNote(id);
+    if (!error) {
+      setUndoInfo({ noteId: id, title });
+    }
+  }, [pendingDeleteId, onDeleteNote, notesMap]);
+
+  const handleDeleteCancel = useCallback(() => setPendingDeleteId(null), []);
+
+  const handleUndo = useCallback(async () => {
+    if (!undoInfo || !onUndoDeleteNote) return;
+    await onUndoDeleteNote(undoInfo.noteId);
+    setUndoInfo(null);
+  }, [undoInfo, onUndoDeleteNote]);
+
+  const handleUndoDismiss = useCallback(() => setUndoInfo(null), []);
+
+  // ── Node move: save position to DB ─────────────────────────────────────
+  const handleNodeMove = useCallback(async (noteId: string, pos: [number, number, number]) => {
+    setManualNodePos(prev => ({ ...prev, [noteId]: pos }));
+    if (!userId) return;
+    await supabase.from('node_positions').upsert({
+      user_id: userId, note_id: noteId,
+      x: pos[0], y: pos[1], z: pos[2],
+      is_manual: true, updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id,note_id' });
+  }, [userId]);
+
+  // ── Reset manual position ──────────────────────────────────────────────
+  const handleResetPosition = useCallback(async (noteId: string) => {
+    setManualNodePos(prev => {
+      const next = { ...prev };
+      delete next[noteId];
+      return next;
+    });
+    if (!userId) return;
+    await supabase.from('node_positions').delete()
+      .eq('user_id', userId).eq('note_id', noteId);
+  }, [userId]);
+
+  // ── Galaxy context menu listener ───────────────────────────────────────
+  useEffect(() => {
+    const onGalaxyCtx = (e: Event) => {
+      const { tag, x, y } = (e as CustomEvent).detail;
+      setGalaxyCtx({ tag, x, y });
+    };
+    window.addEventListener('cosmos-galaxy-context-menu', onGalaxyCtx);
+    return () => window.removeEventListener('cosmos-galaxy-context-menu', onGalaxyCtx);
+  }, []);
+
+  // ── Galaxy dissolve ────────────────────────────────────────────────────
+  const handleGalaxyDissolve = useCallback(async (tag: string) => {
+    const cluster = layout.clusters.find(c => c.tag === tag);
+    if (!cluster) return;
+    // Save old tags for undo
+    const oldTags: Record<string, string[]> = {};
+    for (const nId of cluster.noteIds) {
+      const n = notesMap.get(nId);
+      if (n) oldTags[nId] = [...(n.tags ?? [])];
+    }
+    // Remove tag from all member notes
+    for (const nId of cluster.noteIds) {
+      const n = notesMap.get(nId);
+      if (!n) continue;
+      const newTags = (n.tags ?? []).filter(t => t !== tag);
+      await supabase.from('notes').update({ tags: newTags, updated_at: new Date().toISOString() }).eq('id', nId);
+    }
+    setGalaxyUndoInfo({ tag, noteIds: cluster.noteIds, oldTags });
+  }, [layout, notesMap]);
+
+  // ── Galaxy delete all ──────────────────────────────────────────────────
+  const handleGalaxyDeleteAll = useCallback((tag: string) => {
+    setPendingGalaxyDelete({ tag, mode: 'delete_all' });
+  }, []);
+
+  const handleGalaxyDeleteAllConfirm = useCallback(async () => {
+    if (!pendingGalaxyDelete || !onDeleteNote) return;
+    const cluster = layout.clusters.find(c => c.tag === pendingGalaxyDelete.tag);
+    setPendingGalaxyDelete(null);
+    if (!cluster) return;
+    for (const nId of cluster.noteIds) {
+      await onDeleteNote(nId);
+    }
+    setUndoInfo(null); // Too many to undo individually; galaxy delete is final
+  }, [pendingGalaxyDelete, layout, onDeleteNote]);
+
+  const handleGalaxyDeleteAllCancel = useCallback(() => setPendingGalaxyDelete(null), []);
+
+  // ── Galaxy undo (dissolve) ─────────────────────────────────────────────
+  const handleGalaxyUndo = useCallback(async () => {
+    if (!galaxyUndoInfo) return;
+    for (const nId of galaxyUndoInfo.noteIds) {
+      const oldT = galaxyUndoInfo.oldTags[nId];
+      if (oldT) {
+        await supabase.from('notes').update({ tags: oldT, updated_at: new Date().toISOString() }).eq('id', nId);
+      }
+    }
+    setGalaxyUndoInfo(null);
+  }, [galaxyUndoInfo]);
+
+  // ── Galaxy move: save position to DB ───────────────────────────────────
+  const handleGalaxyMove = useCallback(async (
+    tag: string,
+    center: [number, number, number],
+    memberPositions: Record<string, [number, number, number]>,
+  ) => {
+    setManualGalaxyPos(prev => ({ ...prev, [tag]: center }));
+    setManualNodePos(prev => ({ ...prev, ...memberPositions }));
+    if (!userId) return;
+    await supabase.from('galaxy_positions').upsert({
+      user_id: userId, tag,
+      cx: center[0], cy: center[1], cz: center[2],
+      is_manual: true, updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id,tag' });
+    for (const [nId, pos] of Object.entries(memberPositions)) {
+      await supabase.from('node_positions').upsert({
+        user_id: userId, note_id: nId,
+        x: pos[0], y: pos[1], z: pos[2],
+        is_manual: true, updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id,note_id' });
+    }
+  }, [userId]);
+
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -433,6 +616,8 @@ export default function KnowledgeStarMap({
               onSetMode={handleSetMode}
               onSetSelectedNodeId={handleSelectNode}
               onSetConnectFromId={(id) => setConnectFromId(id)}
+              onNodeMove={handleNodeMove}
+              onGalaxyMove={handleGalaxyMove}
             />
           )}
         </Suspense>
@@ -509,6 +694,74 @@ export default function KnowledgeStarMap({
             setSelectedNodeId(id);
             setCtxMenu(null);
           }}
+          onDelete={onDeleteNote ? (id => { handleDeleteRequest(id); setCtxMenu(null); }) : undefined}
+          onResetPosition={id => { handleResetPosition(id); setCtxMenu(null); }}
+          hasManualPosition={!!(ctxMenu && manualNodePos[ctxMenu.noteId])}
+        />
+      )}
+
+      {/* Galaxy context menu */}
+      {galaxyCtx && (() => {
+        const cluster = layout.clusters.find(c => c.tag === galaxyCtx.tag);
+        return cluster ? (
+          <GalaxyContextMenu
+            tag={galaxyCtx.tag}
+            nodeCount={cluster.noteIds.length}
+            color={cluster.color}
+            x={galaxyCtx.x}
+            y={galaxyCtx.y}
+            onClose={() => setGalaxyCtx(null)}
+            onDissolve={handleGalaxyDissolve}
+            onDeleteAll={handleGalaxyDeleteAll}
+          />
+        ) : null;
+      })()}
+
+      {/* Node delete confirmation */}
+      {pendingDeleteId && (() => {
+        const n = notesMap.get(pendingDeleteId);
+        return (
+          <ConfirmDeleteOverlay
+            title={`删除节点 "${n?.title ?? '(未命名)'}"`}
+            subtitle="节点将被软删除，可在 8 秒内撤销"
+            onConfirm={handleDeleteConfirm}
+            onCancel={handleDeleteCancel}
+          />
+        );
+      })()}
+
+      {/* Galaxy delete-all confirmation */}
+      {pendingGalaxyDelete && (() => {
+        const cluster = layout.clusters.find(c => c.tag === pendingGalaxyDelete.tag);
+        return (
+          <ConfirmDeleteOverlay
+            title={`删除星系 "${pendingGalaxyDelete.tag}" 的全部节点`}
+            subtitle={`将删除 ${cluster?.noteIds.length ?? 0} 个节点，此操作不可撤销`}
+            confirmLabel="全部删除"
+            color="#ff4466"
+            onConfirm={handleGalaxyDeleteAllConfirm}
+            onCancel={handleGalaxyDeleteAllCancel}
+          />
+        );
+      })()}
+
+      {/* Undo toast for node delete */}
+      {undoInfo && (
+        <UndoToast
+          message={`已删除 "${undoInfo.title}"`}
+          color="#ff4466"
+          onUndo={handleUndo}
+          onDismiss={handleUndoDismiss}
+        />
+      )}
+
+      {/* Undo toast for galaxy dissolve */}
+      {galaxyUndoInfo && (
+        <UndoToast
+          message={`已解散星系 "${galaxyUndoInfo.tag}"`}
+          color="#b496ff"
+          onUndo={handleGalaxyUndo}
+          onDismiss={() => setGalaxyUndoInfo(null)}
         />
       )}
     </div>

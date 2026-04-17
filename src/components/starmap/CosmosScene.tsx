@@ -91,6 +91,8 @@ export interface CosmosSceneProps {
   onSetMode?:          (m: 'browse' | 'connect') => void;
   onSetSelectedNodeId?: (id: string | null) => void;
   onSetConnectFromId?:  (id: string | null) => void;
+  onNodeMove?:          (noteId: string, pos: [number, number, number]) => void;
+  onGalaxyMove?:        (tag: string, center: [number, number, number], memberPositions: Record<string, [number, number, number]>) => void;
 }
 
 // ── ImperativeCore ────────────────────────────────────────────────────────────
@@ -121,6 +123,8 @@ interface CoreProps {
   onSetSelectedNodeId: (id: string | null) => void;
   onSetConnectFromId:  (id: string | null) => void;
   onEdgeHover?:       (meta: { fromNoteId: string; toNoteId: string; edgeType: string; description: string | null; midpoint: [number, number, number] } | null) => void;
+  onNodeMove?:        (noteId: string, pos: [number, number, number]) => void;
+  onGalaxyMove?:      (tag: string, center: [number, number, number], memberPositions: Record<string, [number, number, number]>) => void;
 }
 
 function ImperativeCore({
@@ -132,6 +136,7 @@ function ImperativeCore({
   interactionMode, selectedNodeId, connectFromId,
   onSetMode, onSetSelectedNodeId, onSetConnectFromId,
   onEdgeHover,
+  onNodeMove, onGalaxyMove,
 }: CoreProps) {
   const { scene, camera, gl } = useThree();
 
@@ -173,6 +178,31 @@ function ImperativeCore({
 
   // Drag feedback ref
   const isDraggingRef    = useRef(false);
+
+  // ── Node move state ─────────────────────────────────────────────────────
+  type MoveState = {
+    noteId: string;
+    mesh: THREE.Mesh;
+    origPos: THREE.Vector3;
+    planeZ: number;
+  };
+  const moveStateRef = useRef<MoveState | null>(null);
+
+  // ── Galaxy move state ───────────────────────────────────────────────────
+  type GalaxyMoveState = {
+    tag: string;
+    origCenter: THREE.Vector3;
+    memberOffsets: Map<string, THREE.Vector3>; // noteId → offset from center
+    planeZ: number;
+    haloMesh: THREE.Mesh | null;
+    ringMesh: THREE.Mesh | null;
+  };
+  const galaxyMoveStateRef = useRef<GalaxyMoveState | null>(null);
+
+  const onNodeMoveRef    = useRef(onNodeMove);
+  const onGalaxyMoveRef  = useRef(onGalaxyMove);
+  useEffect(() => { onNodeMoveRef.current = onNodeMove; }, [onNodeMove]);
+  useEffect(() => { onGalaxyMoveRef.current = onGalaxyMove; }, [onGalaxyMove]);
 
   // Drag-to-connect state
   type ConnectState = {
@@ -539,9 +569,38 @@ function ImperativeCore({
       if (autoRotateTimer.current) clearTimeout(autoRotateTimer.current);
       if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
 
-      // Hit-test for a note mesh
       const rc = new THREE.Raycaster();
       rc.setFromCamera(getPointer(e), camera);
+
+      // ── Alt+click on galaxy halo → enter galaxy-move mode ──────────────
+      if (e.altKey) {
+        const haloMeshes = Array.from(halosByTagRef.current.entries());
+        for (const [tag, halo] of haloMeshes) {
+          const haloHits = rc.intersectObject(halo);
+          if (haloHits.length > 0) {
+            const cluster = layout.clusters.find(c => c.tag === tag);
+            if (!cluster) continue;
+            const center = new THREE.Vector3(...cluster.center);
+            const offsets = new Map<string, THREE.Vector3>();
+            for (const nId of cluster.noteIds) {
+              const m = noteMeshes.current.get(nId);
+              if (m) offsets.set(nId, m.position.clone().sub(center));
+            }
+            galaxyMoveStateRef.current = {
+              tag,
+              origCenter: center.clone(),
+              memberOffsets: offsets,
+              planeZ: center.z,
+              haloMesh: halo,
+              ringMesh: ringsByTagRef.current.get(tag) ?? null,
+            };
+            gl.domElement.style.cursor = 'grabbing';
+            return;
+          }
+        }
+      }
+
+      // Hit-test for a note mesh
       const meshes = Array.from(meshToNoteId.current.keys());
       const hits   = rc.intersectObjects(meshes);
       if (!hits.length) return;
@@ -551,6 +610,18 @@ function ImperativeCore({
 
       // Shift+click → workbench selection, skip hold-drag timer
       if (e.shiftKey) return;
+
+      // ── If this node is already SELECTED, enter move mode immediately ──
+      if (selectedNodeIdRef.current === noteId && modeRef.current === 'browse') {
+        moveStateRef.current = {
+          noteId,
+          mesh: hitMesh,
+          origPos: hitMesh.position.clone(),
+          planeZ: hitMesh.position.z,
+        };
+        gl.domElement.style.cursor = 'grabbing';
+        return;
+      }
 
       // Start 350 ms hold timer → enter drag-to-connect mode
       holdTimerRef.current = setTimeout(() => {
@@ -609,6 +680,51 @@ function ImperativeCore({
     const onMove = (e: MouseEvent) => {
       const dx = e.clientX - downX, dy = e.clientY - downY;
       if (Math.sqrt(dx * dx + dy * dy) > 6) isDraggingRef.current = true;
+
+      // ── Node move mode ─────────────────────────────────────────────────
+      const ms = moveStateRef.current;
+      if (ms) {
+        const cursor3D = getPointer3D(e, ms.planeZ);
+        if (cursor3D) {
+          ms.mesh.position.set(cursor3D.x, cursor3D.y, ms.planeZ);
+          currentPosRef.current.set(ms.noteId, ms.mesh.position.clone());
+          // Update connected edges in real-time
+          edgesByNoteIdRef.current.get(ms.noteId)?.forEach(line => {
+            const meta = edgeMetaRef.current.get(line);
+            if (!meta) return;
+            const posAttr = line.geometry.getAttribute('position') as THREE.BufferAttribute;
+            if (meta.fromNoteId === ms.noteId) {
+              posAttr.setXYZ(0, cursor3D.x, cursor3D.y, ms.planeZ);
+            } else {
+              posAttr.setXYZ(1, cursor3D.x, cursor3D.y, ms.planeZ);
+            }
+            posAttr.needsUpdate = true;
+          });
+        }
+        return;
+      }
+
+      // ── Galaxy move mode ───────────────────────────────────────────────
+      const gms = galaxyMoveStateRef.current;
+      if (gms) {
+        const cursor3D = getPointer3D(e, gms.planeZ);
+        if (cursor3D) {
+          const delta = cursor3D.clone().sub(gms.origCenter);
+          // Move halo/ring
+          if (gms.haloMesh) gms.haloMesh.position.copy(gms.origCenter).add(delta);
+          if (gms.ringMesh) gms.ringMesh.position.copy(gms.origCenter).add(delta);
+          // Move all member nodes
+          gms.memberOffsets.forEach((offset, nId) => {
+            const mesh = noteMeshes.current.get(nId);
+            if (mesh) {
+              const newPos = gms.origCenter.clone().add(delta).add(offset);
+              mesh.position.copy(newPos);
+              currentPosRef.current.set(nId, newPos.clone());
+            }
+          });
+        }
+        return;
+      }
 
       const cs = connectStateRef.current;
       if (!cs || !cs.line) return;
@@ -699,6 +815,40 @@ function ImperativeCore({
     const onUp = (e: MouseEvent) => {
       const dx = e.clientX - downX, dy = e.clientY - downY;
       isDraggingRef.current = false;
+      gl.domElement.style.cursor = '';
+
+      // ── Finalize node move ─────────────────────────────────────────────
+      const ms = moveStateRef.current;
+      if (ms) {
+        moveStateRef.current = null;
+        const movedDist = ms.mesh.position.distanceTo(ms.origPos);
+        if (movedDist > 0.5) {
+          const p = ms.mesh.position;
+          onNodeMoveRef.current?.(ms.noteId, [p.x, p.y, p.z]);
+        }
+        autoRotateTimer.current = setTimeout(() => { orbitAutoRotate.current = true; }, 3000);
+        return;
+      }
+
+      // ── Finalize galaxy move ───────────────────────────────────────────
+      const gms = galaxyMoveStateRef.current;
+      if (gms) {
+        galaxyMoveStateRef.current = null;
+        const newCenter = gms.haloMesh
+          ? gms.haloMesh.position.clone()
+          : gms.origCenter;
+        const movedDist = newCenter.distanceTo(gms.origCenter);
+        if (movedDist > 0.5) {
+          const memberPositions: Record<string, [number, number, number]> = {};
+          gms.memberOffsets.forEach((offset, nId) => {
+            const m = noteMeshes.current.get(nId);
+            if (m) memberPositions[nId] = [m.position.x, m.position.y, m.position.z];
+          });
+          onGalaxyMoveRef.current?.(gms.tag, [newCenter.x, newCenter.y, newCenter.z], memberPositions);
+        }
+        autoRotateTimer.current = setTimeout(() => { orbitAutoRotate.current = true; }, 3000);
+        return;
+      }
       if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
       autoRotateTimer.current = setTimeout(() => { orbitAutoRotate.current = true; }, 3000);
 
@@ -849,6 +999,20 @@ function ImperativeCore({
           window.dispatchEvent(new CustomEvent('cosmos-context-menu', {
             detail: { noteId: hitId, x: e.clientX, y: e.clientY },
           }));
+          return;
+        }
+      }
+      // Check galaxy halo right-click
+      const haloArr = Array.from(halosByTagRef.current.values());
+      const haloHits = raycaster.current.intersectObjects(haloArr);
+      if (haloHits.length) {
+        for (const [tag, halo] of halosByTagRef.current.entries()) {
+          if (halo === haloHits[0].object) {
+            window.dispatchEvent(new CustomEvent('cosmos-galaxy-context-menu', {
+              detail: { tag, x: e.clientX, y: e.clientY },
+            }));
+            break;
+          }
         }
       }
     };
@@ -935,11 +1099,11 @@ function ImperativeCore({
 
     frameCountRef.current++;
 
-    // ── OrbitControls: disable during drag-to-connect ───────────────────────
+    // ── OrbitControls: disable during drag-to-connect or node/galaxy move ──
     if (controls) {
       const ctrl = controls as unknown as { enabled: boolean; autoRotate: boolean };
-      ctrl.enabled     = !connectStateRef.current;
-      ctrl.autoRotate  = orbitAutoRotate.current && !connectStateRef.current;
+      ctrl.enabled     = !connectStateRef.current && !moveStateRef.current && !galaxyMoveStateRef.current;
+      ctrl.autoRotate  = orbitAutoRotate.current && !connectStateRef.current && !moveStateRef.current && !galaxyMoveStateRef.current;
     }
 
     // ── Drag line pulse animation ───────────────────────────────────────────
@@ -1121,13 +1285,26 @@ function ImperativeCore({
       mesh.scale.setScalar(scale);
       mat.emissiveIntensity = intensity;
 
-      // Floating motion (amplified during drag for physics feel)
-      mesh.position.set(
-        np.pos[0] + Math.sin(t * 0.3  + phase)       * 0.18 * dragBoost,
-        np.pos[1] + Math.cos(t * 0.25 + phase * 0.8) * 0.22 * dragBoost,
-        np.pos[2] + Math.sin(t * 0.2  + phase * 1.3) * 0.15 * dragBoost,
-      );
-      currentPosRef.current.set(noteId, mesh.position.clone());
+      // Skip floating animation for nodes being actively moved
+      const isBeingMoved = moveStateRef.current?.noteId === noteId;
+      const isInGalaxyMove = galaxyMoveStateRef.current?.memberOffsets.has(noteId);
+      if (isBeingMoved || isInGalaxyMove) {
+        // Node is under user control — don't override position
+        // But highlight the node being moved
+        if (isBeingMoved) {
+          mesh.scale.setScalar(1.4);
+          mat.emissiveIntensity = 3.5;
+        }
+        currentPosRef.current.set(noteId, mesh.position.clone());
+      } else {
+        // Normal floating motion (amplified during drag for physics feel)
+        mesh.position.set(
+          np.pos[0] + Math.sin(t * 0.3  + phase)       * 0.18 * dragBoost,
+          np.pos[1] + Math.cos(t * 0.25 + phase * 0.8) * 0.22 * dragBoost,
+          np.pos[2] + Math.sin(t * 0.2  + phase * 1.3) * 0.15 * dragBoost,
+        );
+        currentPosRef.current.set(noteId, mesh.position.clone());
+      }
     });
 
     if (flashNoteId && !flashTimesRef.current.has(flashNoteId)) {
@@ -1302,6 +1479,7 @@ export function CosmosScene({
   entranceNoteId, onEmptyStateClick, onNodeConnect, onNodeDropToGalaxy, onNodeDropToPod,
   onNodeWorkbenchSelect,
   interactionMode: mode = 'browse', selectedNodeId, connectFromId, onSetMode, onSetSelectedNodeId, onSetConnectFromId,
+  onNodeMove, onGalaxyMove,
 }: CosmosSceneProps) {
   const highlightSet  = useMemo(() => new Set(highlightedNoteIds), [highlightedNoteIds]);
   const navigate      = useNavigate();
@@ -1362,6 +1540,8 @@ export function CosmosScene({
         onSetSelectedNodeId={onSetSelectedNodeId!}
         onSetConnectFromId={onSetConnectFromId!}
         onEdgeHover={handleEdgeHover}
+        onNodeMove={onNodeMove}
+        onGalaxyMove={onGalaxyMove}
       />
       {lodLevel === 0 && layout.clusters.map(c => <ClusterLabel key={c.tag} cluster={c} />)}
 

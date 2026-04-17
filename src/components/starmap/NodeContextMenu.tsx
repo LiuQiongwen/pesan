@@ -43,6 +43,9 @@ interface Props {
   onSendToPod: (noteId: string, podId: string) => void;
   onFlash: (noteId: string) => void;
   onConnect?: (noteId: string) => void;
+  onDelete?: (noteId: string) => void;
+  onResetPosition?: (noteId: string) => void;
+  hasManualPosition?: boolean;
 }
 
 function Item({ label, onClick, sub }: { label: string; onClick: () => void; sub?: boolean }) {
@@ -65,7 +68,7 @@ function Item({ label, onClick, sub }: { label: string; onClick: () => void; sub
   );
 }
 
-export function NodeContextMenu({ noteId, x, y, note, onClose, onOpenNote, onDistill, onSendToPod, onFlash, onConnect }: Props) {
+export function NodeContextMenu({ noteId, x, y, note, onClose, onOpenNote, onDistill, onSendToPod, onFlash, onConnect, onDelete, onResetPosition, hasManualPosition }: Props) {
   const [podHover, setPodHover] = useState(false);
   const isPhone = typeof window !== 'undefined' && window.innerWidth < 768;
 
@@ -124,6 +127,12 @@ export function NodeContextMenu({ noteId, x, y, note, onClose, onOpenNote, onDis
             <MobileMenuItem label="Quick Distill" sub="Generate insights" onClick={act(() => onDistill(noteId))} />
             <MobileMenuItem label="Locate in Cosmos" sub="Flash and center" onClick={act(() => onFlash(noteId))} />
             {onConnect && <MobileMenuItem label="Connect to..." sub="Link this node to another" color="#ff44ff" onClick={act(() => onConnect(noteId))} />}
+            {onDelete && (
+              <>
+                <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '4px 20px' }} />
+                <MobileMenuItem label="Delete Node" sub="Soft-delete with undo" color="#ff4466" onClick={act(() => onDelete(noteId))} />
+              </>
+            )}
             <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '4px 20px' }} />
             <div style={{ padding: '6px 20px 4px', fontFamily: MONO, fontSize: 10, color: 'rgba(102,240,255,0.50)', letterSpacing: '0.10em' }}>
               SEND TO POD
@@ -224,6 +233,15 @@ export function NodeContextMenu({ noteId, x, y, note, onClose, onOpenNote, onDis
         <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '3px 0' }} />
         <Item label="✦ 在宇宙中定位" onClick={() => { onFlash(noteId); onClose(); }} />
         {onConnect && <Item label="⟷ 连接到..." onClick={() => { onConnect(noteId); onClose(); }} />}
+        {hasManualPosition && onResetPosition && (
+          <Item label="⊕ 重置位置" onClick={() => { onResetPosition(noteId); onClose(); }} />
+        )}
+        {onDelete && (
+          <>
+            <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '3px 0' }} />
+            <Item label="✕ 删除节点" onClick={() => { onDelete(noteId); onClose(); }} />
+          </>
+        )}
       </div>
     </div>,
     document.body
