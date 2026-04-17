@@ -29,24 +29,36 @@ const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
 
 const NODE_TYPE_CFG: Record<string, { label: string; color: string }> = {
-  capture:  { label: 'CAPTURE',  color: '#00ff66' },
-  summary:  { label: 'SUMMARY',  color: '#66f0ff' },
-  insight:  { label: 'INSIGHT',  color: '#b496ff' },
-  action:   { label: 'ACTION',   color: '#ff4466' },
-  question: { label: 'QUESTION', color: '#ffa040' },
-  relation: { label: 'RELATION', color: '#c0c8d8' },
-  obsidian: { label: 'OBSIDIAN', color: '#a855f7' },
+  capture:       { label: 'CAPTURE',       color: '#00ff66' },
+  summary:       { label: 'SUMMARY',       color: '#66f0ff' },
+  insight:       { label: 'INSIGHT',       color: '#b496ff' },
+  action:        { label: 'ACTION',        color: '#ff4466' },
+  question:      { label: 'QUESTION',      color: '#ffa040' },
+  relation:      { label: 'RELATION',      color: '#c0c8d8' },
+  obsidian:      { label: 'OBSIDIAN',      color: '#a855f7' },
+  wiki_topic:    { label: 'WIKI:TOPIC',    color: '#10b981' },
+  wiki_entity:   { label: 'WIKI:ENTITY',   color: '#06b6d4' },
+  wiki_timeline: { label: 'WIKI:TIMELINE', color: '#f59e0b' },
+  wiki_summary:  { label: 'WIKI:SUMMARY',  color: '#8b5cf6' },
+  wiki_question: { label: 'WIKI:Q',        color: '#ef4444' },
+  wiki_overview: { label: 'WIKI:OVERVIEW', color: '#ec4899' },
 };
 
 /** Pick Three.js geometry based on knowledge node type */
 function makeNodeGeometry(nodeType: NodeType | undefined, size: number): THREE.BufferGeometry {
   switch (nodeType) {
-    case 'summary':  return new THREE.OctahedronGeometry(size * 1.05);
-    case 'insight':  return new THREE.IcosahedronGeometry(size * 0.95, 1);
-    case 'action':   return new THREE.BoxGeometry(size * 1.2, size * 1.2, size * 1.2);
-    case 'question': return new THREE.TetrahedronGeometry(size * 1.15);
-    case 'relation': return new THREE.TorusGeometry(size * 0.8, size * 0.25, 8, 16);
-    default:         return new THREE.SphereGeometry(size, 18, 18); // 'capture' or unknown
+    case 'summary':        return new THREE.OctahedronGeometry(size * 1.05);
+    case 'insight':        return new THREE.IcosahedronGeometry(size * 0.95, 1);
+    case 'action':         return new THREE.BoxGeometry(size * 1.2, size * 1.2, size * 1.2);
+    case 'question':       return new THREE.TetrahedronGeometry(size * 1.15);
+    case 'relation':       return new THREE.TorusGeometry(size * 0.8, size * 0.25, 8, 16);
+    case 'wiki_topic':     return new THREE.DodecahedronGeometry(size * 1.2);
+    case 'wiki_entity':    return new THREE.DodecahedronGeometry(size * 1.1);
+    case 'wiki_timeline':  return new THREE.DodecahedronGeometry(size * 1.1);
+    case 'wiki_summary':   return new THREE.DodecahedronGeometry(size * 1.1);
+    case 'wiki_question':  return new THREE.DodecahedronGeometry(size * 1.0);
+    case 'wiki_overview':  return new THREE.DodecahedronGeometry(size * 1.3);
+    default:               return new THREE.SphereGeometry(size, 18, 18);
   }
 }
 

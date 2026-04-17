@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { X, Edit3, Check, XCircle, Tag, Clock, ExternalLink,
-         RefreshCw, FlaskConical, Zap, HelpCircle, Bell, GitBranch } from 'lucide-react';
+         RefreshCw, FlaskConical, Zap, HelpCircle, Bell, GitBranch, BookOpen, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
@@ -47,6 +47,7 @@ export function NodeWindow({ note, accentColor, onClose, onNavigate, onNewNode }
   const [delegating, setDelegating] = useState<string | null>(null); // which action is running
 
   const nodeType = note.node_type ?? 'capture';
+  const isWiki = nodeType.startsWith('wiki_');
   const typeCfg  = NODE_TYPE_CFG[nodeType];
 
   const r = parseInt(accentColor.slice(1, 3), 16);
@@ -271,6 +272,12 @@ export function NodeWindow({ note, accentColor, onClose, onNavigate, onNewNode }
 
       {/* ── RELATIONS SECTION ────────────────────────────────────── */}
       {!editing && <NodeRelationsBlock noteId={note.id} userId={note.user_id} accent={accent} onNavigate={onNavigate} />}
+
+      {/* ── WIKI SOURCE REFS (only for wiki_ nodes) ────────────────── */}
+      {!editing && isWiki && <WikiSourcesBlock noteId={note.id} userId={note.user_id} accent={accent} onNavigate={onNavigate} />}
+
+      {/* ── WIKI RE-COMPILE BUTTON ──────────────────────────────────── */}
+      {!editing && isWiki && <WikiRecompileBtn userId={note.user_id} />}
 
       {/* ── AGENT CONTINUE PANEL ──────────────────────────────────── */}
       {!editing && (
@@ -544,3 +551,143 @@ function NodeRelationsBlock({
   );
 }
 
+
+// ── Wiki Sources Block ──────────────────────────────────────────────────────
+
+interface WikiSrcRow {
+  id: string;
+  note_id: string | null;
+  note_title: string;
+  excerpt: string | null;
+}
+
+function WikiSourcesBlock({
+  noteId, userId, accent, onNavigate,
+}: {
+  noteId: string; userId: string; accent: string;
+  onNavigate?: (id: string) => void;
+}) {
+  const [sources, setSources] = useState<WikiSrcRow[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // Find the wiki_page that matches this mirror note (by title match or compiled_from edges)
+      const { data: edges } = await supabase.from('thought_edges')
+        .select('source_id')
+        .eq('target_id', noteId)
+        .eq('user_id', userId)
+        .eq('edge_type', 'compiled_from');
+
+      const srcIds = (edges ?? []).map(e => e.source_id);
+      if (srcIds.length === 0 || cancelled) return;
+
+      const { data: notes } = await supabase.from('notes')
+        .select('id, title, summary')
+        .in('id', srcIds);
+
+      if (cancelled) return;
+      setSources((notes ?? []).map(n => ({
+        id: n.id,
+        note_id: n.id,
+        note_title: n.title ?? 'Untitled',
+        excerpt: n.summary?.slice(0, 80) ?? null,
+      })));
+    })();
+    return () => { cancelled = true; };
+  }, [noteId, userId]);
+
+  if (sources.length === 0) return null;
+
+  return (
+    <div style={{
+      padding: '6px 10px 8px',
+      borderTop: '1px solid rgba(255,255,255,0.04)',
+      background: 'rgba(16,185,129,0.03)',
+    }}>
+      <div style={{
+        fontFamily: MONO, fontSize: 7, letterSpacing: '0.12em',
+        color: 'rgba(16,185,129,0.6)', marginBottom: 5, textTransform: 'uppercase',
+        display: 'flex', alignItems: 'center', gap: 4,
+      }}>
+        <BookOpen size={8} /> 编译来源 ({sources.length})
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        {sources.slice(0, 6).map(src => (
+          <div
+            key={src.id}
+            onClick={() => onNavigate?.(src.note_id!)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '3px 6px', borderRadius: 5, cursor: 'pointer',
+              background: 'rgba(16,185,129,0.05)',
+              border: '1px solid rgba(16,185,129,0.1)',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(16,185,129,0.12)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'rgba(16,185,129,0.05)')}
+          >
+            <span style={{
+              fontFamily: MONO, fontSize: 7, color: '#10b981',
+              padding: '1px 4px', background: 'rgba(16,185,129,0.15)',
+              borderRadius: 3, whiteSpace: 'nowrap',
+            }}>
+              SRC
+            </span>
+            <span style={{
+              fontFamily: INTER, fontSize: 10, color: accent,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
+            }}>
+              {src.note_title}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Wiki Recompile Button ───────────────────────────────────────────────────
+
+function WikiRecompileBtn({ userId }: { userId: string }) {
+  const [compiling, setCompiling] = useState(false);
+
+  const handleRecompile = async () => {
+    setCompiling(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('wiki-compile', {
+        body: { user_id: userId, trigger: 'manual' },
+      });
+      if (error) throw error;
+      toast.success(`编译完成: 新建 ${data?.created ?? 0} 页, 更新 ${data?.updated ?? 0} 页`);
+    } catch {
+      toast.error('编译失败');
+    } finally {
+      setCompiling(false);
+    }
+  };
+
+  return (
+    <div style={{
+      padding: '6px 10px 8px',
+      borderTop: '1px solid rgba(255,255,255,0.04)',
+    }}>
+      <button
+        onClick={handleRecompile}
+        disabled={compiling}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+          padding: '5px 0', borderRadius: 6, cursor: compiling ? 'wait' : 'pointer',
+          fontFamily: MONO, fontSize: 9, letterSpacing: '0.05em',
+          color: '#10b981',
+          background: 'rgba(16,185,129,0.08)',
+          border: '1px solid rgba(16,185,129,0.18)',
+          opacity: compiling ? 0.6 : 1,
+        }}
+      >
+        {compiling ? <Loader2 size={9} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={9} />}
+        {compiling ? '编译中...' : '重新编译 Wiki'}
+      </button>
+    </div>
+  );
+}

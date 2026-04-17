@@ -1,6 +1,37 @@
 export type SourceType = 'url' | 'text' | 'file' | 'image' | 'video';
 export type AnalysisStatus = 'pending' | 'analyzing' | 'done' | 'error';
-export type NodeType = 'capture' | 'summary' | 'insight' | 'action' | 'question' | 'relation' | 'obsidian';
+export type NodeType =
+  | 'capture' | 'summary' | 'insight' | 'action' | 'question' | 'relation' | 'obsidian'
+  | 'wiki_topic' | 'wiki_entity' | 'wiki_timeline' | 'wiki_summary' | 'wiki_question' | 'wiki_overview';
+
+export type WikiPageType = 'topic' | 'entity' | 'timeline' | 'summary' | 'question' | 'overview';
+
+export interface WikiPage {
+  id: string;
+  user_id: string;
+  slug: string;
+  title: string;
+  page_type: WikiPageType;
+  summary: string | null;
+  content_markdown: string | null;
+  tags: string[];
+  metadata: Record<string, unknown>;
+  version: number;
+  source_note_ids: string[];
+  source_chunk_ids: string[];
+  compiled_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WikiSourceRef {
+  id: string;
+  wiki_page_id: string;
+  note_id: string | null;
+  chunk_id: string | null;
+  section_anchor: string | null;
+  excerpt: string | null;
+}
 
 export interface Analysis {
   id: string;

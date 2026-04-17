@@ -1,0 +1,73 @@
+
+-- 1. Create wiki_pages table
+CREATE TABLE wiki_pages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id),
+  slug text NOT NULL,
+  title text NOT NULL,
+  page_type text NOT NULL DEFAULT 'topic',
+  summary text,
+  content_markdown text,
+  tags text[] DEFAULT '{}',
+  metadata jsonb DEFAULT '{}',
+  version integer NOT NULL DEFAULT 1,
+  source_note_ids text[] DEFAULT '{}',
+  source_chunk_ids text[] DEFAULT '{}',
+  compiled_at timestamptz DEFAULT now(),
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now(),
+  CONSTRAINT wiki_pages_type_check CHECK (page_type IN ('topic','entity','timeline','summary','question','overview'))
+);
+ALTER TABLE wiki_pages ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage wiki" ON wiki_pages FOR ALL USING (auth.uid() = user_id);
+CREATE UNIQUE INDEX idx_wiki_pages_slug ON wiki_pages(user_id, slug);
+CREATE INDEX idx_wiki_pages_type ON wiki_pages(user_id, page_type);
+ALTER PUBLICATION supabase_realtime ADD TABLE wiki_pages;
+
+-- 2. Create wiki_source_refs table
+CREATE TABLE wiki_source_refs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  wiki_page_id uuid NOT NULL REFERENCES wiki_pages(id) ON DELETE CASCADE,
+  note_id uuid REFERENCES notes(id) ON DELETE SET NULL,
+  chunk_id uuid REFERENCES knowledge_chunks(id) ON DELETE SET NULL,
+  section_anchor text,
+  excerpt text,
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE wiki_source_refs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage refs" ON wiki_source_refs FOR ALL
+  USING (EXISTS (SELECT 1 FROM wiki_pages WHERE id = wiki_page_id AND user_id = auth.uid()));
+CREATE INDEX idx_wiki_refs_page ON wiki_source_refs(wiki_page_id);
+CREATE INDEX idx_wiki_refs_note ON wiki_source_refs(note_id);
+
+-- 3. Extend notes.node_type for wiki types
+ALTER TABLE notes DROP CONSTRAINT IF EXISTS notes_node_type_check;
+ALTER TABLE notes ADD CONSTRAINT notes_node_type_check CHECK (
+  node_type IN ('capture','summary','insight','action','question','relation','obsidian',
+                'wiki_topic','wiki_entity','wiki_timeline','wiki_summary','wiki_question','wiki_overview')
+);
+
+-- 4. Extend thought_edges.edge_type for wiki relationships
+ALTER TABLE thought_edges DROP CONSTRAINT IF EXISTS thought_edges_edge_type_check;
+ALTER TABLE thought_edges ADD CONSTRAINT thought_edges_edge_type_check CHECK (
+  edge_type IN ('supports','contradicts','extends','inspires','related','wikilink',
+                'semantic','insight_of','drives_action','answers',
+                'compiled_from','wiki_crossref')
+);
+
+-- 5. Add FTS search vector to wiki_pages
+ALTER TABLE wiki_pages ADD COLUMN search_vector tsvector
+  DEFAULT to_tsvector('simple', '');
+
+CREATE INDEX idx_wiki_pages_fts ON wiki_pages USING gin(search_vector);
+
+CREATE OR REPLACE FUNCTION wiki_pages_search_update() RETURNS trigger AS $$
+BEGIN
+  NEW.search_vector := to_tsvector('simple', coalesce(NEW.title,'') || ' ' || coalesce(NEW.summary,'') || ' ' || coalesce(NEW.content_markdown,''));
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER wiki_pages_search_trigger
+  BEFORE INSERT OR UPDATE ON wiki_pages
+  FOR EACH ROW EXECUTE FUNCTION wiki_pages_search_update();

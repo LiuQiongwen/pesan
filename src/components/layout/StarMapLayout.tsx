@@ -199,6 +199,7 @@ function StarMapContents({ user, notes, loading, openPod, pods }: ContentsProps)
     n.created_at && Date.now() - new Date(n.created_at).getTime() < 7 * 86400000
   ).length;
   const obsidianCount = notes.filter(n => n.node_type === 'obsidian').length;
+  const wikiCount = notes.filter(n => (n.node_type ?? '').startsWith('wiki_')).length;
 
   return (
     <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', background: '#040508' }}>
@@ -232,7 +233,7 @@ function StarMapContents({ user, notes, loading, openPod, pods }: ContentsProps)
           {user.email?.split('@')[0]}
         </div>
         <div style={{ fontFamily: MONO, fontSize: 'clamp(7px,0.7vw,9px)', color: 'rgba(60,72,95,0.60)', letterSpacing: '0.08em', marginBottom: 'clamp(7px,0.8vh,12px)' }}>
-          {notes.length} nodes · {totalTags} clusters · +{thisWeek} this week{obsidianCount > 0 ? ` · ${obsidianCount} obsidian` : ''}
+          {notes.length} nodes · {totalTags} clusters · +{thisWeek} this week{obsidianCount > 0 ? ` · ${obsidianCount} obsidian` : ''}{wikiCount > 0 ? ` · ${wikiCount} wiki` : ''}
         </div>
         <button
           onClick={() => setRecenterTrigger(t => t + 1)}

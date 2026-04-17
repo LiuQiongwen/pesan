@@ -10,11 +10,20 @@ export interface Citation {
   excerpt: string;
 }
 
+export interface WikiCitation {
+  id: number;
+  wiki_page_id: string;
+  title: string;
+  page_type: string;
+  excerpt: string;
+}
+
 export interface RAGConversation {
   id: string | null;
   query: string;
   answer: string;
   citations: Citation[];
+  wiki_citations: WikiCitation[];
   created_at: string;
 }
 
@@ -41,6 +50,7 @@ export function useRAG() {
           query: query.trim(),
           answer: data.answer,
           citations: data.citations || [],
+          wiki_citations: data.wiki_citations || [],
           created_at: new Date().toISOString(),
         };
         setConversations((prev) => [convo, ...prev]);

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, Loader2, BookOpen, RefreshCw, ChevronDown, ChevronUp, ArrowRight, Database, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useRAG, RAGConversation } from "@/hooks/useRAG";
+import { useRAG, RAGConversation, WikiCitation } from "@/hooks/useRAG";
 import { useT, useLanguage } from "@/contexts/LanguageContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -59,8 +59,29 @@ function CitationCard({ citation }: { citation: RAGConversation["citations"][num
   );
 }
 
+function WikiCitCard({ citation }: { citation: WikiCitation }) {
+  const typeLabels: Record<string, string> = {
+    topic: "WIKI:TOPIC", entity: "WIKI:ENTITY", timeline: "WIKI:TIMELINE",
+    summary: "WIKI:SUMMARY", question: "WIKI:Q", overview: "WIKI:OVERVIEW",
+  };
+  return (
+    <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.04] px-3 py-2">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-emerald-400 font-bold text-[10px] bg-emerald-400/10 px-1.5 py-0.5 rounded font-mono">
+          {typeLabels[citation.page_type] || "WIKI"}
+        </span>
+        <span className="text-white/80 text-sm truncate flex-1">{citation.title}</span>
+      </div>
+      {citation.excerpt && (
+        <p className="text-white/40 text-xs leading-relaxed">{citation.excerpt}</p>
+      )}
+    </div>
+  );
+}
+
 function ConversationItem({ convo }: { convo: RAGConversation }) {
   const [showCitations, setShowCitations] = useState(false);
+  const totalCitations = convo.citations.length + (convo.wiki_citations?.length || 0);
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.03] p-5 space-y-3">
       {/* Query */}
@@ -74,15 +95,23 @@ function ConversationItem({ convo }: { convo: RAGConversation }) {
           {renderAnswerWithCitations(convo.answer)}
         </p>
       </div>
+      {/* Wiki citations */}
+      {convo.wiki_citations && convo.wiki_citations.length > 0 && (
+        <div className="pl-5 space-y-1.5">
+          {convo.wiki_citations.map(w => (
+            <WikiCitCard key={w.wiki_page_id} citation={w} />
+          ))}
+        </div>
+      )}
       {/* Citations toggle */}
-      {convo.citations.length > 0 && (
+      {totalCitations > 0 && (
         <div className="pl-5">
           <button
             className="flex items-center gap-1.5 text-emerald-400/70 text-xs hover:text-emerald-400 transition-colors mb-2"
             onClick={() => setShowCitations(o => !o)}
           >
             <BookOpen size={11} />
-            {convo.citations.length} 条引用 / {convo.citations.length} citation{convo.citations.length > 1 ? "s" : ""}
+            {convo.citations.length} 条原文引用
             {showCitations ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
           </button>
           {showCitations && (

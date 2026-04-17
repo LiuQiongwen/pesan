@@ -13,8 +13,10 @@ export const RELATION_TYPES = [
 
 /** System/auto edge types (not user-selectable but displayable) */
 export const SYSTEM_EDGE_TYPES = [
-  { id: 'related',   label: '共享标签', desc: '通过共同标签自动关联', color: '#4a5068' },
-  { id: 'wikilink',  label: 'Wiki链接', desc: 'Obsidian [[wikilink]] 导入', color: '#a855f7' },
+  { id: 'related',        label: '共享标签',   desc: '通过共同标签自动关联',           color: '#4a5068' },
+  { id: 'wikilink',       label: 'Wiki链接',   desc: 'Obsidian [[wikilink]] 导入',    color: '#a855f7' },
+  { id: 'compiled_from',  label: '编译来源',   desc: 'Wiki 页由此笔记编译生成',        color: '#10b981' },
+  { id: 'wiki_crossref',  label: '知识互引',   desc: 'Wiki 页之间的交叉引用',          color: '#06b6d4' },
 ] as const;
 
 export type RelationType = typeof RELATION_TYPES[number]['id'];

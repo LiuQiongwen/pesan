@@ -118,6 +118,12 @@ export function useAgentPipeline(userId: string | undefined) {
           source_type: params.sourceType,
         },
       }).catch(() => {});
+
+      // Fire wiki compilation in background (auto-update wiki pages)
+      supabase.functions.invoke('wiki-compile', {
+        body: { user_id: userId, trigger: 'new_note', note_ids: [mainNote.id] },
+      }).catch(() => {});
+
       setStepStatus('retrieve', 'done');
 
       // ── STEP 5: DISTILL ─────────────────────────────────────────

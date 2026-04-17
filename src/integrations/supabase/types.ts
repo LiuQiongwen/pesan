@@ -4126,6 +4126,112 @@ export type Database = {
         }
         Relationships: []
       }
+      wiki_pages: {
+        Row: {
+          compiled_at: string | null
+          content_markdown: string | null
+          created_at: string | null
+          id: string
+          metadata: Json | null
+          page_type: string
+          search_vector: unknown | null
+          slug: string
+          source_chunk_ids: string[] | null
+          source_note_ids: string[] | null
+          summary: string | null
+          tags: string[] | null
+          title: string
+          updated_at: string | null
+          user_id: string
+          version: number
+        }
+        Insert: {
+          compiled_at?: string | null
+          content_markdown?: string | null
+          created_at?: string | null
+          id?: string
+          metadata?: Json | null
+          page_type?: string
+          search_vector?: unknown | null
+          slug: string
+          source_chunk_ids?: string[] | null
+          source_note_ids?: string[] | null
+          summary?: string | null
+          tags?: string[] | null
+          title: string
+          updated_at?: string | null
+          user_id: string
+          version?: number
+        }
+        Update: {
+          compiled_at?: string | null
+          content_markdown?: string | null
+          created_at?: string | null
+          id?: string
+          metadata?: Json | null
+          page_type?: string
+          search_vector?: unknown | null
+          slug?: string
+          source_chunk_ids?: string[] | null
+          source_note_ids?: string[] | null
+          summary?: string | null
+          tags?: string[] | null
+          title?: string
+          updated_at?: string | null
+          user_id?: string
+          version?: number
+        }
+        Relationships: []
+      }
+      wiki_source_refs: {
+        Row: {
+          chunk_id: string | null
+          created_at: string | null
+          excerpt: string | null
+          id: string
+          note_id: string | null
+          section_anchor: string | null
+          wiki_page_id: string
+        }
+        Insert: {
+          chunk_id?: string | null
+          created_at?: string | null
+          excerpt?: string | null
+          id?: string
+          note_id?: string | null
+          section_anchor?: string | null
+          wiki_page_id: string
+        }
+        Update: {
+          chunk_id?: string | null
+          created_at?: string | null
+          excerpt?: string | null
+          id?: string
+          note_id?: string | null
+          section_anchor?: string | null
+          wiki_page_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wiki_source_refs_chunk_id_fkey"
+            columns: ["chunk_id"]
+            referencedRelation: "knowledge_chunks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wiki_source_refs_note_id_fkey"
+            columns: ["note_id"]
+            referencedRelation: "notes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wiki_source_refs_wiki_page_id_fkey"
+            columns: ["wiki_page_id"]
+            referencedRelation: "wiki_pages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       zoom_cache: {
         Row: {
           content_markdown: string | null
