@@ -1175,20 +1175,46 @@ function ImperativeCore({
       m.opacity = THREE.MathUtils.lerp(m.opacity, ringTarget, 0.04);
     });
 
-    // ── Hover-only edge reveal + edge hover detection ──────────────────────
-    if (hoveredId !== lastHoveredRef.current) {
-      lastHoveredRef.current = hoveredId;
-      allEdgeLinesRef.current.forEach(l => {
-        const isManual = l.userData?.isManual;
-        const baseLine = l.material as THREE.Material & { opacity: number };
-        baseLine.opacity = isManual ? 0.12 : 0;
-      });
-      if (hoveredId) {
-        edgesByNoteIdRef.current.get(hoveredId)?.forEach(l => {
-          (l.material as THREE.Material & { opacity: number }).opacity = 0.45;
-        });
+    // ── Distance-aware edge opacity ──────────────────────────────────────────
+    // Manual (user-created) edges fade with distance, matching halo/ring LOD language.
+    // Curve: full opacity < 60, fade 60→110, invisible > 110.
+    // Non-manual (auto/wikilink) edges remain hover-only but also respect distance.
+    const manualEdgeAlpha = dist < 60 ? 1 : dist < 110 ? 1 - (dist - 60) / 50 : 0;
+
+    // Recompute base opacities whenever hover target changes OR every frame for smooth lerp
+    const hoveredChanged = hoveredId !== lastHoveredRef.current;
+    if (hoveredChanged) lastHoveredRef.current = hoveredId;
+
+    allEdgeLinesRef.current.forEach(l => {
+      const ud = l.userData;
+      const isManual = ud?.isManual;
+      const mat = l.material as THREE.Material & { opacity: number };
+
+      // Determine if this edge is "active" (hovered / selected / connected-to-hovered)
+      const fromId = ud?.fromNoteId as string | undefined;
+      const toId   = ud?.toNoteId   as string | undefined;
+      const isHoveredEdge = hoveredId != null && (fromId === hoveredId || toId === hoveredId);
+      const isSelectedEdge = selectedNodeIdRef.current != null &&
+        (fromId === selectedNodeIdRef.current || toId === selectedNodeIdRef.current);
+      const isActive = isHoveredEdge || isSelectedEdge;
+
+      let targetOpacity: number;
+
+      if (isActive) {
+        // Active edges: bright, but still gently fade at extreme distance
+        const activeAlpha = dist < 90 ? 1 : dist < 160 ? 1 - (dist - 90) / 70 * 0.7 : 0.3;
+        targetOpacity = 0.45 * activeAlpha;
+      } else if (isManual) {
+        // Manual edges: visible at rest, fade with distance
+        targetOpacity = 0.12 * manualEdgeAlpha;
+      } else {
+        // Auto edges: invisible unless hovered (handled above)
+        targetOpacity = 0;
       }
-    }
+
+      // Smooth lerp for continuous fade (never jump)
+      mat.opacity = THREE.MathUtils.lerp(mat.opacity, targetOpacity, 0.08);
+    });
 
     // ── Empty state orb + ring animation ────────────────────────────────────
     if (emptyCTAMeshRef.current) {
