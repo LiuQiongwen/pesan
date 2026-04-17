@@ -31,11 +31,11 @@ Deno.serve(async (req) => {
     const notesQuery = db.from("notes")
       .select("id, title, tags, summary, content_markdown, summary_markdown, analysis_markdown, node_type, created_at")
       .eq("user_id", user_id)
+      .is("deleted_at", null)
       .not("node_type", "like", "wiki_%")
       .order("created_at", { ascending: false });
 
     if (trigger === "new_note" && note_ids?.length) {
-      // For targeted compilation, get the new notes + recent context
       const { data: targetNotes } = await db.from("notes")
         .select("id, title, tags, summary, content_markdown, summary_markdown, analysis_markdown, node_type, created_at")
         .in("id", note_ids);
@@ -47,7 +47,6 @@ Deno.serve(async (req) => {
       return await compileFromNotes(db, AI_TOKEN, user_id, deduped, note_ids || []);
     }
 
-    // Manual/batch: compile from all recent notes
     const { data: allNotes } = await notesQuery.limit(50);
     return await compileFromNotes(db, AI_TOKEN, user_id, allNotes || [], []);
 
@@ -72,18 +71,15 @@ async function compileFromNotes(
     });
   }
 
-  // Build source context from notes
-  const sourceBlocks = notes.slice(0, 30).map((n, i) => {
+  const sourceBlocks = notes.slice(0, 15).map((n, i) => {
     const content = [
       (n.summary as string) || "",
-      ((n.content_markdown as string) || "").slice(0, 600),
-      ((n.analysis_markdown as string) || "").slice(0, 400),
+      ((n.content_markdown as string) || "").slice(0, 300),
     ].filter(Boolean).join("\n");
     const tags = ((n.tags as string[]) || []).join(", ");
-    return `[NOTE-${i}] id=${n.id} title="${n.title || "Untitled"}" tags=[${tags}]\n${content.slice(0, 800)}`;
+    return `[NOTE-${i}] id=${n.id} title="${n.title || "Untitled"}" tags=[${tags}]\n${content.slice(0, 500)}`;
   }).join("\n---\n");
 
-  // Get existing wiki pages
   const { data: existingPages } = await db.from("wiki_pages")
     .select("id, slug, title, page_type, summary, version, tags, source_note_ids")
     .eq("user_id", userId);
@@ -92,7 +88,6 @@ async function compileFromNotes(
     `[WIKI:${p.slug}] type=${p.page_type} title="${p.title}" tags=[${(p.tags || []).join(",")}] v${p.version}`
   ).join("\n");
 
-  // Ask LLM to identify topics and generate/update wiki pages
   const systemPrompt = `You are a knowledge compiler. Given source notes and existing wiki pages, generate structured wiki pages.
 
 RULES:
@@ -133,7 +128,7 @@ Output: JSON array of page objects. Max 3 pages per call.`;
       system: systemPrompt,
       messages: [{ role: "user", content: userMsg }],
       stream: false,
-      max_tokens: 3000,
+      max_tokens: 2000,
     }),
     signal: AbortSignal.timeout(50000),
   });
@@ -146,7 +141,6 @@ Output: JSON array of page objects. Max 3 pages per call.`;
   const aiData = await aiRes.json();
   const rawText = (aiData.content?.[0]?.text || "").trim();
 
-  // Parse LLM output
   let pages: Array<Record<string, unknown>> = [];
   try {
     const cleaned = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
@@ -175,7 +169,6 @@ Output: JSON array of page objects. Max 3 pages per call.`;
     const sourceNoteIds = srcIndices.map(i => notes[i]?.id).filter(Boolean).map(String);
 
     if (page.action === "update" && page.existing_slug) {
-      // Update existing wiki page
       const existing = (existingPages || []).find(p => p.slug === page.existing_slug);
       if (existing) {
         const mergedSources = [...new Set([...(existing.source_note_ids || []), ...sourceNoteIds])];
@@ -190,7 +183,6 @@ Output: JSON array of page objects. Max 3 pages per call.`;
           updated_at: new Date().toISOString(),
         }).eq("id", existing.id);
 
-        // Update mirror note
         await db.from("notes").update({
           title: String(page.title || existing.title),
           summary: String(page.summary || ""),
@@ -206,7 +198,6 @@ Output: JSON array of page objects. Max 3 pages per call.`;
       }
     }
 
-    // Create new wiki page
     const { data: newPage } = await db.from("wiki_pages").insert({
       user_id: userId,
       slug,
@@ -220,7 +211,6 @@ Output: JSON array of page objects. Max 3 pages per call.`;
       version: 1,
     }).select("id").maybeSingle();
 
-    // Create mirror note in star map
     const nodeType = `wiki_${pageType}`;
     const { data: mirrorNote } = await db.from("notes").insert({
       user_id: userId,
@@ -235,7 +225,6 @@ Output: JSON array of page objects. Max 3 pages per call.`;
       mindmap_data: {},
     }).select("id").maybeSingle();
 
-    // Create compiled_from edges
     if (mirrorNote && sourceNoteIds.length > 0) {
       const edges = sourceNoteIds.slice(0, 10).map(srcId => ({
         user_id: userId,
@@ -248,7 +237,6 @@ Output: JSON array of page objects. Max 3 pages per call.`;
       await db.from("thought_edges").insert(edges);
     }
 
-    // Insert source refs
     if (newPage) {
       const refs = sourceNoteIds.slice(0, 10).map(noteId => ({
         wiki_page_id: newPage.id,
@@ -261,7 +249,6 @@ Output: JSON array of page objects. Max 3 pages per call.`;
       }
     }
 
-    // Index wiki page into knowledge_chunks for RAG
     if (mirrorNote) {
       const content = [String(page.summary || ""), String(page.content_markdown || "")].join("\n\n");
       await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/chunk-and-index`, {

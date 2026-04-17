@@ -108,7 +108,8 @@ export function useAgentPipeline(userId: string | undefined) {
       if (!mainNote) throw new Error('节点写入失败');
       await updateAnalysisStatus(analysis.id, 'done');
 
-      // Fire RAG indexing in background
+      // Fire RAG indexing in background, then wiki compilation sequentially
+      // (sequential to avoid 429 rate-limit on concurrent LLM calls)
       supabase.functions.invoke('chunk-and-index', {
         body: {
           note_id: mainNote.id,
@@ -117,12 +118,11 @@ export function useAgentPipeline(userId: string | undefined) {
           title: d.title || '',
           source_type: params.sourceType,
         },
-      }).catch(() => {});
-
-      // Fire wiki compilation in background (auto-update wiki pages)
-      supabase.functions.invoke('wiki-compile', {
-        body: { user_id: userId, trigger: 'new_note', note_ids: [mainNote.id] },
-      }).catch(() => {});
+      }).then(() => wait(2000)).then(() =>
+        supabase.functions.invoke('wiki-compile', {
+          body: { user_id: userId, trigger: 'new_note', note_ids: [mainNote.id] },
+        })
+      ).catch(() => {});
 
       setStepStatus('retrieve', 'done');
 
