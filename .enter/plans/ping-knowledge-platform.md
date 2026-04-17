@@ -1,319 +1,257 @@
-# Obsidian Vault 导入 — MVP 实施方案
+# Obsidian 增量同步 — 实施方案
 
 ## Context
 
-用户的"知识宇宙"产品已具备完整的 notes → cosmos-layout → 3D StarMap 渲染管线和 RAG 检索链路。现在需要接入 Obsidian，让用户把已有笔记库批量导入系统，复用现有的 notes 表、knowledge_chunks、thought_edges 和 RAG 搜索。
+现有 `obsidian-importer.ts` 已具备基础增量能力：  
+- `content_hash` (cyrb53) 存于 `notes.content_hash`  
+- `obsidian_path` 存于 `notes.obsidian_path`（唯一索引 `idx_notes_obsidian_path`）  
+- Dedup 阶段按 path 查旧记录、按 hash 判断是否跳过或更新  
 
-**核心约束：**
-- MVP 只做 Obsidian → 系统的单向导入
-- 不做双向写回、不做实时文件系统监听
-- 浏览器无法读取本地文件夹 → 使用 **ZIP 压缩包上传** 作为唯一导入方式
-- 解析全部在前端完成（JSZip），不消耗 Edge Function 额度
-- RAG 索引复用现有 `chunk-and-index` Edge Function
+**缺失能力**：  
+1. **删除检测**：zip 中不存在但 DB 仍存在的旧笔记未处理  
+2. **旧 chunks 清理**：更新笔记时旧 `knowledge_chunks` 未删  
+3. **旧 edges 清理**：更新笔记时旧 `thought_edges` (wikilink) 未删  
+4. **重命名处理**：path 变化但 hash 相同的文件被当作 delete+insert  
+5. **同步结果统计**：缺少 deleted / renamed 计数  
+6. **UI 同步模式**：Modal 无法区分首次导入和重新同步  
+7. **RAG re-index 时旧 chunks 残留**：chunk-and-index 不会先删旧数据  
 
----
+## 实施方案（单一推荐路径）
 
-## 1. 整体架构
+### Step 1: DB Migration
 
-```
-用户浏览器                             后端 (Edge Functions)
-┌──────────────────────────────┐      ┌──────────────────────────┐
-│ ① 选择 .zip 文件             │      │                          │
-│ ② JSZip 解压在内存中         │      │                          │
-│ ③ 前端 Markdown 解析器       │      │                          │
-│    ├─ frontmatter (yaml)     │      │                          │
-│    ├─ wikilinks [[…]]        │      │                          │
-│    ├─ tags #tag / yaml tags  │      │                          │
-│    └─ 正文 markdown          │      │                          │
-│ ④ 批量 supabase.insert       │─────▶│  notes / thought_edges   │
-│ ⑤ 逐条调 chunk-and-index     │─────▶│  chunk-and-index (复用)  │
-│ ⑥ 进度条 + 完成反馈          │      │                          │
-└──────────────────────────────┘      └──────────────────────────┘
-```
-
-**关键决策：**
-- 前端解析，避免大文件上传到 Edge Function 的体积限制 (2MB)
-- JSZip 在浏览器内存中解压，逐个读 .md 文件
-- 每个 .md → 一条 notes 行 (node_type = 'obsidian')
-- wikilinks → thought_edges 行 (edge_type = 'wikilink')
-- tags → notes.tags 数组字段
-- RAG 索引复用 chunk-and-index，每条 note 触发一次
-
----
-
-## 2. 数据映射
-
-| Obsidian 概念 | 系统目标 | 字段映射 |
-|---|---|---|
-| .md 文件 | `notes` 行 | title=文件名/H1, content_markdown=正文, node_type='obsidian' |
-| YAML frontmatter tags | `notes.tags` | 合并 frontmatter.tags + inline #tags |
-| `[[Note A]]` wikilink | `thought_edges` | source_id=当前note, target_id=目标note, edge_type='wikilink' |
-| 文件夹路径 | `notes.tags` | 顶层文件夹名作为额外 tag，如 `folder:Projects` |
-| frontmatter | `notes.analysis_content` | 存入 `{ obsidian_frontmatter: {...} }` |
-| 附件引用 ![[img.png]] | 暂不处理 | MVP 跳过，仅保留文本引用 |
-
----
-
-## 3. 数据库变更
-
-### 3.1 notes 表 — 新增 node_type 值
-
-`node_type` 当前 CHECK 约束只有 `capture|summary|insight|action|question|relation`，需新增 `obsidian`：
+添加 `obsidian_imports` 新列以支持增量统计：
 
 ```sql
--- 扩展 node_type 枚举
-ALTER TABLE notes DROP CONSTRAINT IF EXISTS notes_node_type_check;
-ALTER TABLE notes ADD CONSTRAINT notes_node_type_check
-  CHECK (node_type IN ('capture','summary','insight','action','question','relation','obsidian'));
+ALTER TABLE obsidian_imports
+  ADD COLUMN IF NOT EXISTS updated integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS deleted integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS renamed integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS is_sync  boolean NOT NULL DEFAULT false;
 ```
 
-### 3.2 新增 obsidian_imports 表 — 跟踪导入批次
+无需新表。现有 `notes.content_hash` + `notes.obsidian_path` 已足够。
 
-```sql
-CREATE TABLE obsidian_imports (
-  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id     uuid NOT NULL REFERENCES auth.users(id),
-  file_name   text NOT NULL,
-  total_files integer NOT NULL DEFAULT 0,
-  imported    integer NOT NULL DEFAULT 0,
-  skipped     integer NOT NULL DEFAULT 0,
-  status      text NOT NULL DEFAULT 'processing'
-                CHECK (status IN ('processing','done','error')),
-  error_msg   text,
-  created_at  timestamptz DEFAULT now(),
-  finished_at timestamptz
-);
-ALTER TABLE obsidian_imports ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "users own imports" ON obsidian_imports FOR ALL
-  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+### Step 2: 修改 `obsidian-importer.ts` — 增量同步核心
+
+在 Phase 3 (Dedup) 中新增三类检测：
+
+**A. 删除检测**  
 ```
-
-### 3.3 notes 表新增可选列 — 追踪 obsidian 来源
-
-```sql
-ALTER TABLE notes ADD COLUMN IF NOT EXISTS obsidian_path text;
-ALTER TABLE notes ADD COLUMN IF NOT EXISTS obsidian_import_id uuid
-  REFERENCES obsidian_imports(id) ON DELETE SET NULL;
-ALTER TABLE notes ADD COLUMN IF NOT EXISTS content_hash text;
+existingPaths = Set(所有 obsidian_path from existing notes)
+parsedPaths   = Set(所有 parsed note paths)
+deletedPaths  = existingPaths - parsedPaths
 ```
+对 `deletedPaths` 中的每条：
+1. 从 `thought_edges` 删除 source_id 或 target_id = noteId 且 edge_type='wikilink' 的边
+2. 从 `knowledge_chunks` 删除 note_id = noteId 的 chunks
+3. 将 `notes` 软删除：设置 `node_type = 'obsidian_deleted'`，或直接 hard delete（MVP 选 hard delete）
 
-- `obsidian_path`：原始文件路径（如 `Projects/AI/thoughts.md`），用于增量同步去重
-- `obsidian_import_id`：归属哪次导入批次
-- `content_hash`：MD5/SHA256 摘要，增量导入时跳过未变更文件
-
-### 3.4 thought_edges — 已有 wikilink 支持
-
-现有 `thought_edges.edge_type` CHECK: `supports|contradicts|extends|inspires|related`，需新增 `wikilink`：
-
-```sql
-ALTER TABLE thought_edges DROP CONSTRAINT IF EXISTS thought_edges_edge_type_check;
-ALTER TABLE thought_edges ADD CONSTRAINT thought_edges_edge_type_check
-  CHECK (edge_type IN ('supports','contradicts','extends','inspires','related','wikilink'));
+**B. 重命名检测**  
+在 delete 候选中，按 hash 反查 insert 候选：
 ```
+for each deleted note (path_old, hash_old):
+  find insert candidate where hash === hash_old
+  if found:
+    → UPDATE notes SET obsidian_path = path_new WHERE id = old_note_id
+    → move from toInsert/toDelete to toRename
+```
+这样 rename 不触发 re-index、不丢 noteId。
 
----
+**C. 修改笔记清理旧数据**  
+在 Phase 4 (Update) 中，每条 toUpdate 的笔记：
+1. 先 DELETE FROM knowledge_chunks WHERE note_id = noteId
+2. 先 DELETE FROM thought_edges WHERE (source_id = noteId OR target_id = noteId) AND edge_type = 'wikilink'
+3. 然后更新 notes 行
+4. 在 Phase 5 重新 chunk-and-index
+5. 在 Phase 6 重新建 wikilink edges
 
-## 4. 前端解析流程
-
-### 4.1 新增依赖
-
-- `jszip` — 浏览器端解压 ZIP
-- `yaml` — 解析 YAML frontmatter（轻量，已被很多 markdown 工具依赖）
-
-### 4.2 解析器模块：`src/lib/obsidian-parser.ts`
+### Step 3: 更新 ImportResult 和 ImportProgress 类型
 
 ```typescript
-interface ParsedNote {
-  path: string;            // 'Projects/AI/thoughts.md'
-  fileName: string;        // 'thoughts'
-  title: string;           // frontmatter.title || 第一个 H1 || fileName
-  content: string;         // 去除 frontmatter 后的 markdown 正文
-  tags: string[];          // 合并 frontmatter.tags + inline #tags + folder tag
-  wikilinks: string[];     // ['Note A', 'Note B'] — 原始链接文本
-  frontmatter: Record<string, unknown>;
-  contentHash: string;     // 用于增量去重
-  folderTag: string;       // 'folder:Projects'
+export interface ImportResult {
+  importId: string;
+  imported: number;   // new files
+  updated: number;    // changed files
+  skipped: number;    // unchanged files
+  deleted: number;    // removed files
+  renamed: number;    // path changed, content same
+  edgesCreated: number;
+  totalFiles: number; // in zip
+}
+
+export type ImportPhase = 'unzip' | 'parse' | 'diff' | 'delete' | 'insert' | 'update' | 'index' | 'edges' | 'done' | 'error';
+```
+
+### Step 4: 更新 `ObsidianImportModal.tsx` — 同步模式
+
+**Preview step** 中新增检测逻辑：  
+- 如果用户已有 obsidian notes，自动切换为"Re-sync"模式  
+- 预览面板显示 diff 统计：`+12 new · ~5 changed · -3 deleted · ↻1 renamed · =80 unchanged`  
+
+**Done step** 中扩展结果展示：  
+- 6 格 grid：imported / updated / skipped / deleted / renamed / edges
+
+### Step 5: 更新 `useObsidianImport.ts`
+
+新增 `syncMode: boolean` 属性，由 Modal 在 preview 阶段判断是否已有 obsidian notes。
+
+---
+
+## 文件修改清单
+
+| File | Change |
+|------|--------|
+| `supabase/migrations/...` | ALTER obsidian_imports 增加 updated/deleted/renamed/is_sync 列 |
+| `src/lib/obsidian-importer.ts` | Phase 3 增加 delete/rename 检测；Phase 4 增加旧 chunks/edges 清理；更新类型；更新统计 |
+| `src/lib/obsidian-parser.ts` | 无修改 |
+| `src/hooks/useObsidianImport.ts` | 返回 syncMode 检测结果 |
+| `src/components/obsidian/ObsidianImportModal.tsx` | Preview 显示 diff 统计；Done 显示 6 格结果；header 区分 Import/Re-sync |
+
+## 详细实施 — obsidian-importer.ts 改写
+
+完整 Phase 3 (Diff) 重写：
+
+```typescript
+// Phase 3: Diff
+onProgress({ phase: 'diff', current: 0, total: parsed.length });
+
+const { data: existing } = await supabase
+  .from('notes')
+  .select('id, obsidian_path, content_hash')
+  .eq('user_id', userId)
+  .eq('node_type', 'obsidian');
+
+const existingMap = new Map<string, { id: string; hash: string | null }>();
+const hashToExisting = new Map<string, { id: string; path: string }>();
+for (const row of existing || []) {
+  if (row.obsidian_path) {
+    existingMap.set(row.obsidian_path, { id: row.id, hash: row.content_hash });
+    if (row.content_hash) {
+      hashToExisting.set(row.content_hash, { id: row.id, path: row.obsidian_path });
+    }
+  }
+}
+
+const parsedPathSet = new Set(parsed.map(n => n.path));
+
+const toInsert: ParsedNote[] = [];
+const toUpdate: { noteId: string; note: ParsedNote }[] = [];
+const toDelete: { noteId: string; path: string }[] = [];
+const toRename: { noteId: string; oldPath: string; newPath: string }[] = [];
+let skipped = 0;
+
+// Classify parsed notes
+for (const note of parsed) {
+  const ex = existingMap.get(note.path);
+  if (ex) {
+    if (ex.hash === note.contentHash) {
+      skipped++;
+    } else {
+      toUpdate.push({ noteId: ex.id, note });
+    }
+  } else {
+    toInsert.push(note);
+  }
+}
+
+// Detect deletes: in DB but not in zip
+for (const [path, ex] of existingMap) {
+  if (!parsedPathSet.has(path)) {
+    toDelete.push({ noteId: ex.id, path });
+  }
+}
+
+// Detect renames: delete candidate whose hash matches an insert candidate
+const insertByHash = new Map<string, ParsedNote>();
+for (const n of toInsert) insertByHash.set(n.contentHash, n);
+
+for (let i = toDelete.length - 1; i >= 0; i--) {
+  const del = toDelete[i];
+  const oldHash = existingMap.get(del.path)?.hash;
+  if (oldHash && insertByHash.has(oldHash)) {
+    const newNote = insertByHash.get(oldHash)!;
+    toRename.push({ noteId: del.noteId, oldPath: del.path, newPath: newNote.path });
+    // Remove from insert and delete lists
+    toInsert.splice(toInsert.indexOf(newNote), 1);
+    insertByHash.delete(oldHash);
+    toDelete.splice(i, 1);
+  }
 }
 ```
 
-**解析步骤：**
-1. 读取文件文本内容
-2. 用正则 `^---\n([\s\S]*?)\n---` 提取 frontmatter，用 `yaml.parse()` 解析
-3. 正则 `\[\[([^\]]+)\]\]` 提取所有 wikilinks
-4. 正则 `(?:^|\s)#([a-zA-Z\u4e00-\u9fff][\w\u4e00-\u9fff/\-]*)` 提取 inline tags
-5. 合并 frontmatter.tags + inline tags + folder tag → 去重
-6. 标题优先级：frontmatter.title > 第一个 `# ` 行 > 文件名
-7. 计算 contentHash = 简易字符串哈希（避免引入 crypto 依赖，用 cyrb53 或类似）
-8. 跳过空文件（正文 < 10 字符）
-
-### 4.3 导入器模块：`src/lib/obsidian-importer.ts`
-
+Phase "delete":
 ```typescript
-interface ImportProgress {
-  phase: 'unzip' | 'parse' | 'insert' | 'index' | 'edges' | 'done';
-  current: number;
-  total: number;
-  currentFile?: string;
+// Phase: Delete
+onProgress({ phase: 'delete', current: 0, total: toDelete.length });
+for (let i = 0; i < toDelete.length; i++) {
+  const { noteId } = toDelete[i];
+  await supabase.from('thought_edges').delete()
+    .or(`source_id.eq.${noteId},target_id.eq.${noteId}`)
+    .eq('edge_type', 'wikilink');
+  await supabase.from('knowledge_chunks').delete().eq('note_id', noteId);
+  await supabase.from('notes').delete().eq('id', noteId);
+  onProgress({ phase: 'delete', current: i + 1, total: toDelete.length });
 }
-
-async function importVault(
-  zipFile: File,
-  userId: string,
-  onProgress: (p: ImportProgress) => void,
-): Promise<ImportResult>
 ```
 
-**执行链路：**
-1. **解压** — JSZip 读取 zip，过滤出 .md 文件（跳过 .obsidian/ 目录、.trash/）
-2. **解析** — 逐个文件调 parseNote()，收集 ParsedNote[]
-3. **去重查询** — 查询该用户所有 `obsidian_path IS NOT NULL` 的 notes，按 path+hash 判断是否跳过
-4. **批量插入 notes** — 每 20 条一批 supabase.from('notes').insert(batch)
-5. **RAG 索引** — 对每条新 note 调 `chunk-and-index`（并行度限制为 3）
-6. **建立 wikilink edges** — 解析完成后，用 path→noteId 映射表解析 wikilinks，insert thought_edges
-7. **更新 obsidian_imports** — 标记完成
-
-### 4.4 Wikilink 解析策略
-
-- 建立 `fileNameToNoteId: Map<string, string>` 映射（key = 文件名去 .md，小写）
-- 对每个 note 的 wikilinks，查找 `fileNameToNoteId.get(link.toLowerCase())`
-- 找不到的跳过（目标文件可能未在 vault 中或被过滤）
-- 支持 `[[folder/note]]` 格式 → 取最后一段作为文件名匹配
-
----
-
-## 5. 前端 UI 设计
-
-### 5.1 导入入口
-
-在 SettingsCapsule 下拉菜单中新增 **"导入 Obsidian"** 按钮。点击打开全屏模态框。
-
-**文件：** `src/components/obsidian/ObsidianImportModal.tsx`
-
-### 5.2 导入模态框 — 三步流程
-
-```
-┌─────────────────────────────────────┐
-│  ◈ 导入 Obsidian Vault              │
-│                                     │
-│  ┌─── Step 1: 选择文件 ────────┐    │
-│  │  [拖拽或点击选择 .zip 文件]  │    │
-│  │  支持 .zip 格式              │    │
-│  └──────────────────────────────┘    │
-│                                     │
-│  ┌─── Step 2: 预览 ────────────┐    │
-│  │  📄 检测到 47 个 .md 文件    │    │
-│  │  📁 来自 5 个文件夹          │    │
-│  │  🔗 检测到 123 个 wikilinks  │    │
-│  │  🏷 检测到 28 个标签          │    │
-│  │                              │    │
-│  │  [ 开始导入 ]                │    │
-│  └──────────────────────────────┘    │
-│                                     │
-│  ┌─── Step 3: 进度 ────────────┐    │
-│  │  ████████░░░░  23/47         │    │
-│  │  正在处理: Projects/AI/xxx   │    │
-│  │  阶段: 写入节点 → RAG 索引   │    │
-│  └──────────────────────────────┘    │
-│                                     │
-│  ┌─── 完成 ───────────────────┐     │
-│  │  ✓ 导入完成                 │     │
-│  │  新增 42 个节点 · 跳过 5 个  │     │
-│  │  建立 98 条关系边            │     │
-│  │  RAG 索引 42 条              │     │
-│  │  [ 在星图中查看 ]            │     │
-│  └─────────────────────────────┘    │
-└─────────────────────────────────────┘
+Phase "rename":
+```typescript
+for (const { noteId, newPath } of toRename) {
+  const newFileName = newPath.split('/').pop()?.replace(/\.md$/i, '') ?? '';
+  const parts = newPath.split('/');
+  const newFolderTag = parts.length > 1 ? `folder:${parts[0]}` : '';
+  await supabase.from('notes').update({
+    obsidian_path: newPath,
+    title: newFileName, // update title to new file name
+  }).eq('id', noteId);
+}
 ```
 
-### 5.3 星图中的 Obsidian 节点
+Phase "update" — clean before write:
+```typescript
+for (const { noteId, note } of toUpdate) {
+  // Clean old chunks and wikilink edges
+  await supabase.from('knowledge_chunks').delete().eq('note_id', noteId);
+  await supabase.from('thought_edges').delete()
+    .or(`source_id.eq.${noteId},target_id.eq.${noteId}`)
+    .eq('edge_type', 'wikilink');
+  // Update note fields
+  await supabase.from('notes').update({ ... }).eq('id', noteId);
+}
+```
 
-- `node_type = 'obsidian'` 在 CosmosScene 中使用独特图标颜色（如紫色菱形 `#a855f7`）
-- NODE_TYPE_CFG 新增 obsidian 条目：`{ label: 'Obsidian', shape: 'diamond', color: '#a855f7', size: 1.0 }`
-- 节点 hover 时 NodeLightBand 显示 `来源: Obsidian · folder/path`
-- wikilink edges 在宇宙中渲染为浅紫色连线
+## UI Preview Diff
 
-### 5.4 导入历史
+在 scanZip 完成后、用户点击 Start 前，查询已有 obsidian notes 数量：
+```typescript
+const { count } = await supabase
+  .from('notes')
+  .select('id', { count: 'exact', head: true })
+  .eq('user_id', userId)
+  .eq('node_type', 'obsidian');
 
-在 SettingsCapsule 中显示最近一次导入的状态（日期 + 节点数）。
+const isSyncMode = (count ?? 0) > 0;
+```
 
----
+如果 isSyncMode，Preview 面板：
+- Header: "Re-sync Obsidian Vault"
+- 显示: "Found {count} existing notes. Will detect changes."
+- Button: "Start Sync" instead of "Start Import"
 
-## 6. 增量同步方案 (MVP-lite)
+## Done 面板 6 格 Grid
 
-- 用户再次上传同一 vault 的 zip 时：
-  1. 前端解析所有 .md 文件的 path + contentHash
-  2. 查询 DB 中 `obsidian_path` 和 `content_hash` 匹配的 notes
-  3. **path+hash 相同** → 跳过（未变更）
-  4. **path 相同，hash 不同** → update notes 的 content/tags/frontmatter + 重新 chunk-and-index
-  5. **path 不存在** → 新增
-  6. **DB 中有但 zip 中无** → 不删除（保守策略，避免误删）
-- 前端在"预览"步骤显示：`新增 12 · 更新 5 · 未变 30 · 不在本次导入 8`
+```
++{imported} new | ~{updated} changed | ={skipped} same
+-{deleted} removed | ↻{renamed} renamed | ⚡{edges} edges
+```
 
----
+## Verification
 
-## 7. 文件清单
-
-### 新增文件
-
-| 文件 | 职责 |
-|---|---|
-| `src/lib/obsidian-parser.ts` | Markdown 解析器（frontmatter/tags/wikilinks/hash） |
-| `src/lib/obsidian-importer.ts` | 导入执行器（解压→解析→insert→index→edges） |
-| `src/components/obsidian/ObsidianImportModal.tsx` | 导入模态框 UI（选文件→预览→进度→完成） |
-| `src/hooks/useObsidianImport.ts` | 导入状态管理 hook |
-
-### 修改文件
-
-| 文件 | 变更内容 |
-|---|---|
-| `src/types/index.ts` | NodeType 增加 `'obsidian'` |
-| `src/components/starmap/cosmos-layout.ts` | NODE_TYPE_CFG 增加 obsidian 条目 |
-| `src/components/starmap/CosmosScene.tsx` | obsidian 节点的特殊形状/颜色渲染 |
-| `src/components/floating/SettingsCapsule.tsx` | 菜单新增"导入 Obsidian"入口 |
-| `src/hooks/useNotes.ts` | normalizeNote 兼容 obsidian node_type |
-
-### 数据库迁移
-
-- 扩展 `notes.node_type` CHECK 约束
-- 新建 `obsidian_imports` 表
-- notes 新增 `obsidian_path`, `obsidian_import_id`, `content_hash` 列
-- 扩展 `thought_edges.edge_type` CHECK 约束
-
-### 新增依赖
-
-- `jszip` — ZIP 解压
-- `yaml` — YAML frontmatter 解析
-
----
-
-## 8. MVP 优先级
-
-### 第一阶段（本次实施）
-1. DB 迁移（表结构 + 约束）
-2. `obsidian-parser.ts`（纯函数，可单测）
-3. `obsidian-importer.ts`（导入链路）
-4. `ObsidianImportModal.tsx`（UI 三步流程）
-5. SettingsCapsule 入口
-6. CosmosScene obsidian 节点样式
-7. wikilink → thought_edges 映射
-
-### 延后
-- 增量同步的"更新已变更文件"逻辑 → 第二阶段
-- 附件/图片导入 → 需 Storage bucket，延后
-- 双向写回 → 不做
-- Obsidian 插件（API 同步） → 远期
-- 导入历史管理 / 批量删除 → 延后
-
----
-
-## 9. 验证方式
-
-1. 准备一个小型 Obsidian vault（10+ .md 文件，含 frontmatter、wikilinks、tags、文件夹结构）
-2. 压缩为 .zip
-3. 在 /app 页面 → 设置菜单 → 导入 Obsidian → 选择 zip
-4. 验证预览统计正确（文件数、tag 数、link 数）
-5. 点击导入 → 进度条正常推进
-6. 完成后 → 星图中出现紫色 obsidian 节点
-7. wikilink 连线正确渲染
-8. RAG 搜索能命中 obsidian 导入的内容
-9. 再次导入同一 zip → 全部显示"跳过"
+1. **首次导入**：上传 zip → 正常导入 → 所有 notes 为 new
+2. **无变化 re-sync**：上传相同 zip → 全部 skipped = N, imported/updated/deleted = 0
+3. **修改文件**：改一个 .md 的内容 → updated = 1, 旧 chunks 被清理
+4. **新增文件**：添加一个 .md → imported = 1
+5. **删除文件**：移除一个 .md → deleted = 1, 对应 note + chunks + edges 被清理
+6. **重命名**：改文件名不改内容 → renamed = 1, noteId 保留, path 更新
+7. **RAG 验证**：修改后的笔记在 Retrieval pod 中能搜索到新内容
