@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
-import { Settings, User, Languages, LogOut, ChevronDown, Sparkles, Zap, LayoutDashboard, FileArchive } from 'lucide-react';
+import { Settings, User, Languages, LogOut, ChevronDown, Sparkles, Zap, LayoutDashboard, FileArchive, Download } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useLanguage, useT } from '@/contexts/LanguageContext';
 import { useNavigate } from 'react-router-dom';
 import { useBilling } from '@/hooks/useBilling';
 import { BillingPanel } from '@/components/billing/BillingPanel';
 import { ObsidianImportModal } from '@/components/obsidian/ObsidianImportModal';
+import { CosmosExportModal } from '@/components/obsidian/CosmosExportModal';
 
 const MONO = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
@@ -15,6 +16,7 @@ export function SettingsCapsule() {
   const [open,         setOpen]         = useState(false);
   const [billingOpen,  setBillingOpen]  = useState(false);
   const [obsidianOpen, setObsidianOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [isAdmin,      setIsAdmin]      = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const { user, signOut } = useAuth();
@@ -244,6 +246,30 @@ export function SettingsCapsule() {
                 </div>
               </button>
 
+              {/* Cosmos Export */}
+              <button
+                onClick={() => { setOpen(false); setExportOpen(true); }}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '8px 10px', borderRadius: 6,
+                  background: 'transparent', border: 'none',
+                  cursor: 'pointer', transition: 'background 0.12s', textAlign: 'left',
+                  marginBottom: 1,
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(168,85,247,0.08)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+              >
+                <Download size={12} color="rgba(168,85,247,0.75)" />
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontFamily: INTER, fontSize: 11, color: 'rgba(195,170,255,0.85)', fontWeight: 600 }}>
+                    Export to Obsidian
+                  </span>
+                  <div style={{ fontFamily: MONO, fontSize: 8, color: 'rgba(140,150,180,0.50)', letterSpacing: '0.04em', marginTop: 1 }}>
+                    _cosmos/ folder zip
+                  </div>
+                </div>
+              </button>
+
               <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '3px 0' }} />
 
               {/* Admin block — only for test@test.com or is_admin */}
@@ -356,6 +382,7 @@ export function SettingsCapsule() {
 
       {/* Obsidian Import Modal */}
       <ObsidianImportModal open={obsidianOpen} onClose={() => setObsidianOpen(false)} />
+      <CosmosExportModal open={exportOpen} onClose={() => setExportOpen(false)} />
     </>
   );
 }
