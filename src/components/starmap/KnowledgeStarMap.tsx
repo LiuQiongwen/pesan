@@ -410,12 +410,12 @@ export default function KnowledgeStarMap({
               onNodeDropToGalaxy={handleNodeDropToGalaxy}
               onNodeDropToPod={onNodeDropToPod}
               onNodeWorkbenchSelect={handleWorkbenchSelect}
-              mode={interactionMode}
+              interactionMode={interactionMode}
               selectedNodeId={selectedNodeId}
               connectFromId={connectFromId}
-              onSelectNode={handleSelectNode}
               onSetMode={handleSetMode}
-              onConnectPick={handleConnectPick}
+              onSetSelectedNodeId={handleSelectNode}
+              onSetConnectFromId={(id) => setConnectFromId(id)}
             />
           )}
         </Suspense>

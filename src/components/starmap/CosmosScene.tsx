@@ -1176,7 +1176,7 @@ export function CosmosScene({
   recenterActiveRef, onLodChange, onFlashNote, userId,
   entranceNoteId, onEmptyStateClick, onNodeConnect, onNodeDropToGalaxy, onNodeDropToPod,
   onNodeWorkbenchSelect,
-  mode = 'browse', selectedNodeId, connectFromId, onSelectNode, onSetMode, onConnectPick,
+  interactionMode: mode = 'browse', selectedNodeId, connectFromId, onSetMode, onSetSelectedNodeId, onSetConnectFromId,
 }: CosmosSceneProps) {
   const highlightSet  = useMemo(() => new Set(highlightedNoteIds), [highlightedNoteIds]);
   const navigate      = useNavigate();
@@ -1225,12 +1225,12 @@ export function CosmosScene({
         onNodeDropToGalaxy={onNodeDropToGalaxy}
         onNodeDropToPod={onNodeDropToPod}
         onNodeWorkbenchSelect={onNodeWorkbenchSelect}
-        mode={mode}
+        interactionMode={mode}
         selectedNodeId={selectedNodeId ?? null}
         connectFromId={connectFromId ?? null}
-        onSelectNode={onSelectNode}
-        onSetMode={onSetMode}
-        onConnectPick={onConnectPick}
+        onSetMode={onSetMode!}
+        onSetSelectedNodeId={onSetSelectedNodeId!}
+        onSetConnectFromId={onSetConnectFromId!}
       />
       {lodLevel === 0 && layout.clusters.map(c => <ClusterLabel key={c.tag} cluster={c} />)}
 
