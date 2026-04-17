@@ -1,353 +1,268 @@
-# Wiki Knowledge Compilation Layer — MVP Implementation Plan
+# Node/Galaxy Delete & Move — Implementation Plan
 
 ## Context
 
-The system currently has: raw document capture -> chunk-and-index -> FTS-based RAG search -> star map visualization.
-Problem: every query goes through raw chunks. There's no "compiled knowledge" layer that accumulates understanding over time.
-
-This plan adds a **wiki compilation layer** between raw sources and the query/agent interface:
-`Raw Sources -> [NEW] Wiki Compilation -> RAG + Star Map + Agents`
-
-Wiki pages are AI-maintained, source-referenced, structured knowledge pages that compress and cross-link accumulated knowledge.
+The knowledge star map currently treats nodes and galaxies (clusters) as read-only, auto-positioned objects. Users cannot delete nodes/galaxies, nor manually reposition them. This plan adds four fundamental CRUD/spatial operations: **node delete**, **galaxy delete/dissolve**, **node drag-move**, and **galaxy drag-move** — turning the star map into a truly user-controlled knowledge space.
 
 ---
 
-## 1. Database Schema
+## 1. Database Migration
 
-### New table: `wiki_pages`
+### 1a. `node_positions` table — persists manual placements
 
 ```sql
-CREATE TABLE wiki_pages (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES auth.users(id),
-  slug text NOT NULL,
-  title text NOT NULL,
-  page_type text NOT NULL DEFAULT 'topic',
-  summary text,
-  content_markdown text,
-  tags text[] DEFAULT '{}',
-  metadata jsonb DEFAULT '{}',
-  version integer NOT NULL DEFAULT 1,
-  source_note_ids text[] DEFAULT '{}',
-  source_chunk_ids text[] DEFAULT '{}',
-  compiled_at timestamptz DEFAULT now(),
-  created_at timestamptz DEFAULT now(),
+CREATE TABLE node_positions (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    uuid NOT NULL REFERENCES auth.users(id),
+  note_id    uuid NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+  x          double precision NOT NULL,
+  y          double precision NOT NULL,
+  z          double precision NOT NULL,
+  is_manual  boolean NOT NULL DEFAULT true,
   updated_at timestamptz DEFAULT now(),
-  CONSTRAINT wiki_pages_type_check CHECK (page_type IN ('topic','entity','timeline','summary','question','overview'))
+  UNIQUE(user_id, note_id)
 );
-
-ALTER TABLE wiki_pages ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "users manage wiki" ON wiki_pages FOR ALL USING (auth.uid() = user_id);
-CREATE UNIQUE INDEX idx_wiki_pages_slug ON wiki_pages(user_id, slug);
-CREATE INDEX idx_wiki_pages_type ON wiki_pages(user_id, page_type);
-ALTER PUBLICATION supabase_realtime ADD TABLE wiki_pages;
+ALTER TABLE node_positions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage own positions" ON node_positions FOR ALL USING (auth.uid() = user_id);
 ```
 
-### New table: `wiki_source_refs` (granular source tracking per section)
+### 1b. `galaxy_positions` table — persists manual galaxy center overrides
 
 ```sql
-CREATE TABLE wiki_source_refs (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  wiki_page_id uuid NOT NULL REFERENCES wiki_pages(id) ON DELETE CASCADE,
-  note_id uuid REFERENCES notes(id) ON DELETE SET NULL,
-  chunk_id uuid REFERENCES knowledge_chunks(id) ON DELETE SET NULL,
-  section_anchor text,
-  excerpt text,
-  created_at timestamptz DEFAULT now()
+CREATE TABLE galaxy_positions (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    uuid NOT NULL REFERENCES auth.users(id),
+  tag        text NOT NULL,
+  cx         double precision NOT NULL,
+  cy         double precision NOT NULL,
+  cz         double precision NOT NULL,
+  is_manual  boolean NOT NULL DEFAULT true,
+  updated_at timestamptz DEFAULT now(),
+  UNIQUE(user_id, tag)
 );
-
-ALTER TABLE wiki_source_refs ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "users manage refs" ON wiki_source_refs FOR ALL
-  USING (EXISTS (SELECT 1 FROM wiki_pages WHERE id = wiki_page_id AND user_id = auth.uid()));
-CREATE INDEX idx_wiki_refs_page ON wiki_source_refs(wiki_page_id);
-CREATE INDEX idx_wiki_refs_note ON wiki_source_refs(note_id);
+ALTER TABLE galaxy_positions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage own galaxy positions" ON galaxy_positions FOR ALL USING (auth.uid() = user_id);
 ```
 
-### Extend `notes.node_type` for wiki types
+### 1c. Add soft-delete column to `notes`
 
 ```sql
-ALTER TABLE notes DROP CONSTRAINT IF EXISTS notes_node_type_check;
-ALTER TABLE notes ADD CONSTRAINT notes_node_type_check CHECK (
-  node_type IN ('capture','summary','insight','action','question','relation','obsidian',
-                'wiki_topic','wiki_entity','wiki_timeline','wiki_summary','wiki_question','wiki_overview')
-);
+ALTER TABLE notes ADD COLUMN deleted_at timestamptz DEFAULT NULL;
+CREATE INDEX idx_notes_deleted ON notes (user_id) WHERE deleted_at IS NOT NULL;
 ```
 
-### Extend `thought_edges.edge_type` for wiki relationships
-
-```sql
-ALTER TABLE thought_edges DROP CONSTRAINT IF EXISTS thought_edges_edge_type_check;
-ALTER TABLE thought_edges ADD CONSTRAINT thought_edges_edge_type_check CHECK (
-  edge_type IN ('supports','contradicts','extends','inspires','related','wikilink',
-                'semantic','insight_of','drives_action','answers',
-                'compiled_from','wiki_crossref')
-);
-```
+All existing queries in `useNotes.ts` will be updated to filter `deleted_at IS NULL`.
 
 ---
 
-## 2. TypeScript Type Extensions
+## 2. Node Delete
 
-### File: `src/types/index.ts`
+### Entry Points
+- **Context menu** (right-click / long-press) → add "🗑 删除节点" item in `NodeContextMenu.tsx`
+- **NodeWindow** detail panel → add a small trash button in the header bar
 
-Add to `NodeType`:
+### Interaction Flow
+1. User triggers delete → **confirmation overlay** appears (reusable `ConfirmDeleteOverlay` component)
+   - Shows node title, tag count, edge count
+   - Red "删除" button + "取消" button
+   - Keyboard: Enter = confirm, Esc = cancel
+2. On confirm:
+   - **Soft-delete**: `UPDATE notes SET deleted_at = now() WHERE id = $1`
+   - Remove from local `notes` state immediately (optimistic)
+   - Related edges auto-handled: `thought_edges` has FK ON DELETE CASCADE on `source_id`/`target_id`... wait, let me verify.
+
+### Edge & Cascade Handling
+- `thought_edges.source_id` / `target_id` → FK to `notes(id)` — but notes aren't hard-deleted, they're soft-deleted. So edges remain in DB. We filter them out in the frontend: when building `CosmosLayout`, skip edges referencing deleted notes (which won't be in the notes array anyway since `useNotes` filters `deleted_at IS NULL`).
+- `knowledge_chunks.note_id` → FK to notes. Soft-delete keeps chunks intact for potential undo.
+- `wiki_source_refs.note_id` → FK SET NULL. Soft-delete doesn't trigger this.
+
+### Galaxy Handling After Node Delete
+- If a galaxy's last node is deleted, the galaxy simply disappears from the layout (no nodes → no cluster).
+- No special handling needed — `buildCosmosLayout` recomputes.
+
+### Undo Mechanism
+- After soft-delete, show a **toast with "撤销" button** at bottom of screen for 8 seconds.
+- Undo = `UPDATE notes SET deleted_at = NULL WHERE id = $1`, re-add to local state.
+- After 8 seconds, toast disappears. Data remains soft-deleted but recoverable via future "trash" UI.
+
+### Files Modified
+- `src/hooks/useNotes.ts` — change `deleteNote` to soft-delete, add `undoDeleteNote`, filter `deleted_at IS NULL` in fetch
+- `src/components/starmap/NodeContextMenu.tsx` — add "删除节点" menu item
+- `src/components/starmap/NodeWindow.tsx` — add trash button
+- **NEW**: `src/components/starmap/ConfirmDeleteOverlay.tsx` — reusable confirmation modal
+- **NEW**: `src/components/starmap/UndoToast.tsx` — auto-dismiss toast with undo action
+- `src/components/starmap/KnowledgeStarMap.tsx` — wire delete handlers + undo state
+
+---
+
+## 3. Galaxy Delete / Dissolve
+
+### Concept
+Galaxies (clusters) are tag-based groupings. "Deleting a galaxy" means removing the tag from all member nodes.
+
+### Two Modes
+1. **解散星系 (Dissolve)** — default: Remove the galaxy's primary tag from all member notes. Nodes move to `__untagged__` cluster or their next tag's cluster. Nodes are preserved.
+2. **彻底删除 (Delete All)** — soft-delete all member notes in the galaxy. Uses the same node-delete flow for each.
+
+### Entry Point
+- **Right-click on galaxy halo/ring area** → context menu with galaxy name, dissolve/delete options
+- Detected in `CosmosScene.tsx` `onContextMenu`: if raycaster hits a halo mesh, dispatch `cosmos-galaxy-context-menu` event
+
+### Interaction Flow
+1. Right-click galaxy halo → `GalaxyContextMenu` appears with:
+   - Galaxy name (tag) + node count
+   - "解散星系" (dissolve) — default, safe
+   - "删除星系及全部节点" (delete all) — destructive, red
+2. On dissolve:
+   - For each note in galaxy: remove the galaxy's tag from `tags` array
+   - `UPDATE notes SET tags = array_remove(tags, $tag) WHERE user_id = $uid AND $tag = ANY(tags)`
+   - Show undo toast for 8 seconds
+3. On delete all:
+   - Confirmation dialog (extra warning: "将删除 N 个节点")
+   - Soft-delete all member notes
+   - Show undo toast
+
+### Files Modified
+- `src/components/starmap/CosmosScene.tsx` — detect right-click on halo, dispatch galaxy context menu event
+- **NEW**: `src/components/starmap/GalaxyContextMenu.tsx` — context menu for galaxy operations
+- `src/components/starmap/KnowledgeStarMap.tsx` — wire galaxy delete/dissolve handlers, undo state
+
+---
+
+## 4. Node Drag-Move
+
+### Interaction
+- **Hold + drag** is already used for drag-to-connect. We need a different gesture.
+- **Approach**: In `browse` mode, Alt+drag (desktop) or two-finger-then-single-drag (mobile) initiates node move. Alternatively, simpler: when a node is **selected** (single-clicked), dragging it moves it.
+- **Chosen approach for MVP**: When a node is selected (`selectedNodeId === noteId`), a subsequent mousedown+drag on that same node enters **move mode** instead of connect mode. The 350ms hold timer is skipped for already-selected nodes.
+
+### Visual Feedback During Drag
+- Dragged node gets: scale 1.4, emissiveIntensity 3.5, slight blue tint
+- A subtle "shadow" ghost remains at original position (low opacity mesh clone)
+- Connected edges follow the node (update line endpoints in real-time)
+- Cursor: `grabbing`
+
+### Position Persistence
+- On drag end:
+  - Upsert to `node_positions` table: `(user_id, note_id, x, y, z, is_manual=true)`
+  - Update local layout position immediately
+- `buildCosmosLayout` checks for manual positions: if `node_positions` entry exists, use that instead of computed Fibonacci position
+
+### Auto-Layout vs Manual
+- Nodes with `is_manual = true` in `node_positions` keep their position across layout rebuilds
+- If a node's tag changes (moving to different galaxy), and it has a manual position, **keep the manual position** unless user explicitly resets
+- Future: "重置位置" button in NodeContextMenu to clear manual position
+
+### Files Modified
+- `src/components/starmap/CosmosScene.tsx` — add move-mode drag handling in onDown/onMove/onUp for selected nodes
+- `src/components/starmap/cosmos-layout.ts` — accept `manualPositions: Record<string, [number,number,number]>` parameter, apply overrides
+- `src/components/starmap/KnowledgeStarMap.tsx` — fetch/save node_positions, pass to layout builder, handle onNodeMove callback
+- `src/components/starmap/NodeContextMenu.tsx` — add "重置位置" option (clears manual position)
+
+---
+
+## 5. Galaxy Drag-Move
+
+### Interaction
+- **Alt+click+drag on galaxy halo/ring** initiates galaxy move
+- All nodes in the galaxy move together, preserving relative offsets from the galaxy center
+
+### Implementation
+- In `CosmosScene.tsx`, detect Alt+mousedown on halo mesh → enter galaxy-move mode
+- Track `dragDelta = currentCursorPos - galaxyCenter`
+- Each frame during drag: move all member node meshes by delta, update halo/ring positions
+- On release: compute new center = oldCenter + totalDelta, compute each node's new absolute position = old + totalDelta
+  - Upsert `galaxy_positions` for the galaxy center
+  - Upsert `node_positions` for each member node (mark is_manual=true)
+  
+### Visual Feedback During Galaxy Drag
+- Galaxy halo: opacity boost to 0.08, subtle pulse
+- All member nodes: slight scale boost (1.1x), shared glow color intensifies
+- Connected edges between members stay connected; edges to external nodes stretch dynamically
+- Galaxy tag label follows the center
+
+### Relative Position Preservation
+- On drag start: snapshot each node's offset from galaxy center: `offset_i = nodePos_i - galaxyCenter`
+- During drag: `nodePos_i = newGalaxyCenter + offset_i`
+- On release: persist all new positions
+
+### Files Modified
+- `src/components/starmap/CosmosScene.tsx` — add galaxy-move mode (Alt+drag on halo), real-time mesh repositioning
+- `src/components/starmap/cosmos-layout.ts` — accept `galaxyPositionOverrides` parameter
+- `src/components/starmap/KnowledgeStarMap.tsx` — fetch/save galaxy_positions, handle onGalaxyMove callback
+
+---
+
+## 6. Data Flow Summary
+
+### State in `KnowledgeStarMap.tsx`
+```
+nodePositions: Record<string, { x, y, z }>  // fetched from node_positions table
+galaxyPositions: Record<string, { cx, cy, cz }>  // fetched from galaxy_positions table
+undoStack: Array<{ type: 'delete_node' | 'dissolve_galaxy' | 'delete_galaxy', payload }>
+```
+
+### Layout Builder Signature Change
 ```ts
-export type NodeType =
-  | 'capture' | 'summary' | 'insight' | 'action' | 'question' | 'relation' | 'obsidian'
-  | 'wiki_topic' | 'wiki_entity' | 'wiki_timeline' | 'wiki_summary' | 'wiki_question' | 'wiki_overview';
+buildCosmosLayout(
+  notes: CosmosNote[],
+  dbEdges: DbEdge[],
+  manualNodePositions?: Record<string, [number,number,number]>,
+  manualGalaxyPositions?: Record<string, [number,number,number]>
+): CosmosLayout
 ```
 
-Add new types:
+### New Callbacks on CosmosScene
 ```ts
-export type WikiPageType = 'topic' | 'entity' | 'timeline' | 'summary' | 'question' | 'overview';
-
-export interface WikiPage {
-  id: string;
-  user_id: string;
-  slug: string;
-  title: string;
-  page_type: WikiPageType;
-  summary: string | null;
-  content_markdown: string | null;
-  tags: string[];
-  metadata: Record<string, unknown>;
-  version: number;
-  source_note_ids: string[];
-  source_chunk_ids: string[];
-  compiled_at: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface WikiSourceRef {
-  id: string;
-  wiki_page_id: string;
-  note_id: string | null;
-  chunk_id: string | null;
-  section_anchor: string | null;
-  excerpt: string | null;
-}
+onNodeMove?: (noteId: string, pos: [number,number,number]) => void
+onGalaxyMove?: (tag: string, center: [number,number,number], memberPositions: Record<string, [number,number,number]>) => void
+onGalaxyContextMenu?: (tag: string, x: number, y: number) => void
 ```
 
 ---
 
-## 3. Edge Function: `wiki-compile`
+## 7. MVP Priority
 
-New edge function: `supabase/functions/wiki-compile/index.ts`
+### Phase A — Ship First (core operations)
+1. **Node soft-delete** + undo toast (context menu + NodeWindow button)
+2. **Galaxy dissolve** (context menu on halo right-click)
+3. **Node drag-move** (selected node + drag) with position persistence
+4. **DB migration** for `node_positions`, `galaxy_positions`, `notes.deleted_at`
 
-### Input
-```json
-{
-  "user_id": "uuid",
-  "trigger": "new_note" | "manual" | "batch",
-  "note_ids": ["uuid"] // optional, for targeted compilation
-}
-```
+### Phase B — Ship Second (polish)
+5. Galaxy delete-all (soft-delete all members)
+6. Galaxy drag-move (Alt+drag on halo)
+7. "重置位置" in context menu
+8. Ghost shadow during node drag
 
-### Logic Flow
-1. **Gather context**: Fetch all user's `knowledge_chunks` (FTS search by note tags/title), plus existing `wiki_pages`
-2. **Classify**: Ask LLM to identify which topics/entities the new material relates to
-3. **Match existing pages**: Check if any existing wiki page covers the topic (by slug/tags overlap)
-4. **Generate/Update**:
-   - If matching wiki page exists: send existing page content + new chunks -> LLM generates updated page
-   - If no match: LLM creates new wiki page
-5. **Extract source refs**: LLM output includes `[src:chunk_id]` markers -> parsed into `wiki_source_refs`
-6. **Write results**: Upsert `wiki_pages`, insert `wiki_source_refs`, create/update mirror `notes` row (for star map)
-7. **Create edges**: `compiled_from` edges from wiki note to source notes
-
-### LLM Prompt Strategy
-- System prompt instructs LLM to act as a "knowledge compiler"
-- Input: topic name + existing page content (if updating) + new source chunks
-- Output: structured JSON with `title`, `summary`, `content_markdown`, `tags`, `source_refs[]`
-- Content must include inline `[src:N]` markers that map to source chunks
-- LLM must NOT hallucinate — only synthesize from provided chunks
-
-### Key Constraints
-- Never modifies raw notes or chunks
-- Incremental: only processes new/changed notes since last compilation
-- Caps at 10 chunks per compilation call to stay within token limits
-- Bumps `version` on each update
+### Phase C — Future
+9. Trash/archive view for soft-deleted notes
+10. Batch operations (multi-select → delete/move)
 
 ---
 
-## 4. Edge Function: `rag-search` Enhancement (Wiki-First Query)
+## 8. Files Summary
 
-### Modified query flow in existing `rag-search/index.ts`:
-
-```
-1. Receive query + user_id
-2. NEW: FTS search wiki_pages (title, content_markdown) -> top 3 wiki hits
-3. Existing: FTS search knowledge_chunks -> top 15 raw chunk hits
-4. Build context for LLM:
-   a. Wiki context block: "[WIKI] Title: ... \n Content: ..."
-   b. Chunk context blocks: "[1] Source: ... \n Content: ..."
-5. Updated system prompt: "Use wiki summaries as primary knowledge. Use raw chunks as supporting evidence. Cite both."
-6. Return answer + wiki_citations + chunk_citations
-```
-
-### New response shape:
-```json
-{
-  "answer": "...",
-  "wiki_citations": [{ "wiki_page_id": "...", "title": "...", "excerpt": "..." }],
-  "citations": [{ "chunk_id": "...", "note_id": "...", "excerpt": "..." }],
-  "conversation_id": "..."
-}
-```
+| File | Change |
+|------|--------|
+| `supabase/migrations/...` | NEW: node_positions, galaxy_positions tables + notes.deleted_at column |
+| `src/hooks/useNotes.ts` | Soft-delete, undo, filter deleted_at IS NULL |
+| `src/components/starmap/cosmos-layout.ts` | Accept manual position overrides |
+| `src/components/starmap/CosmosScene.tsx` | Node move mode, galaxy context menu detection, galaxy move mode |
+| `src/components/starmap/KnowledgeStarMap.tsx` | Fetch/persist positions, delete/dissolve handlers, undo state |
+| `src/components/starmap/NodeContextMenu.tsx` | Add delete + reset-position items |
+| `src/components/starmap/NodeWindow.tsx` | Add delete button |
+| `src/components/starmap/ConfirmDeleteOverlay.tsx` | NEW: confirmation modal |
+| `src/components/starmap/UndoToast.tsx` | NEW: timed undo toast |
+| `src/components/starmap/GalaxyContextMenu.tsx` | NEW: galaxy right-click menu |
 
 ---
 
-## 5. Star Map Integration
+## 9. Verification
 
-### File: `src/components/starmap/CosmosScene.tsx`
-
-Add to `NODE_TYPE_CFG`:
-```ts
-wiki_topic:    { label: 'WIKI:TOPIC',    color: '#10b981' },
-wiki_entity:   { label: 'WIKI:ENTITY',   color: '#06b6d4' },
-wiki_timeline: { label: 'WIKI:TIMELINE', color: '#f59e0b' },
-wiki_summary:  { label: 'WIKI:SUMMARY',  color: '#8b5cf6' },
-wiki_question: { label: 'WIKI:Q',        color: '#ef4444' },
-wiki_overview: { label: 'WIKI:OVERVIEW', color: '#ec4899' },
-```
-
-Wiki nodes render with a **diamond/gem geometry** (DodecahedronGeometry) to visually distinguish from raw notes.
-
-### File: `src/components/starmap/connect-types.ts`
-
-Add edge types:
-```ts
-compiled_from: { icon: '...', label: '编译自', color: '#10b981', impact: '标记来源' },
-wiki_crossref: { icon: '...', label: '知识互引', color: '#06b6d4', impact: '交叉引用' },
-```
-
-### File: `src/components/starmap/NodeWindow.tsx`
-
-When `node_type` starts with `wiki_`:
-- Show "Wiki Page" badge with emerald accent
-- Show "Sources" section listing source notes (from `wiki_source_refs`)
-- Show "Re-compile" button that triggers `wiki-compile` for this page
-- Show wiki content with inline source reference markers
-
----
-
-## 6. Frontend: Wiki Panel in NodeWindow
-
-When opening a wiki node, the NodeWindow shows:
-- Page type badge (topic/entity/timeline/etc.)
-- Summary section
-- Full compiled content (markdown rendered)
-- Source references section (clickable, navigates to source nodes)
-- "Re-compile" action button
-- Version indicator + last compiled timestamp
-
----
-
-## 7. Frontend: Manual Compile Trigger
-
-### File: `src/components/floating/SettingsCapsule.tsx`
-
-Add "Compile Knowledge" button in dropdown menu -> opens `WikiCompileModal`.
-
-### New file: `src/components/wiki/WikiCompileModal.tsx`
-
-Simple modal:
-1. Shows current wiki page count + last compile time
-2. "Compile Now" button -> calls `wiki-compile` edge function with `trigger: 'manual'`
-3. Progress indicator (loading state)
-4. Done state: shows new/updated page count
-5. Option to compile only for specific tags/topics
-
----
-
-## 8. Source Chain & Traceability
-
-Every wiki page tracks:
-- `source_note_ids[]` — which notes contributed (array on wiki_pages)
-- `source_chunk_ids[]` — which chunks were used (array on wiki_pages)
-- `wiki_source_refs` table — granular per-section references
-
-In the UI, inline `[src:N]` markers in wiki content render as clickable superscripts that:
-1. Highlight the source reference
-2. Show excerpt from the original chunk
-3. Allow navigation to the source note
-
----
-
-## 9. Auto-trigger Hook
-
-### File: `src/hooks/useAgentPipeline.ts`
-
-After step 4 (retrieve/save note), add background wiki compilation trigger:
-```ts
-// After chunk-and-index completes, trigger wiki compilation
-supabase.functions.invoke('wiki-compile', {
-  body: { user_id: userId, trigger: 'new_note', note_ids: [mainNote.id] },
-}).catch(() => {}); // fire-and-forget
-```
-
----
-
-## 10. MVP Implementation Order
-
-### Step 1: Database migration
-- Create `wiki_pages` + `wiki_source_refs` tables
-- Extend `notes.node_type` + `thought_edges.edge_type`
-
-### Step 2: Types
-- Update `src/types/index.ts` with wiki types
-
-### Step 3: Edge function `wiki-compile`
-- Implement the compilation agent
-- Handles both create and incremental update
-
-### Step 4: Enhance `rag-search`
-- Add wiki-first search layer
-- Return wiki citations alongside chunk citations
-
-### Step 5: Star map integration
-- Add wiki node types to `NODE_TYPE_CFG` with distinct geometry
-- Add wiki edge types to `connect-types.ts`
-- Update `cosmos-layout.ts` to handle wiki nodes
-
-### Step 6: NodeWindow wiki view
-- Detect wiki node types -> render wiki-specific content
-- Source references section
-- Re-compile button
-
-### Step 7: Manual compile trigger
-- WikiCompileModal component
-- SettingsCapsule entry point
-
-### Step 8: Auto-trigger in pipeline
-- Add wiki-compile call to useAgentPipeline after indexing
-
-### Step 9: RAG search UI update
-- Show wiki citations in RAGSearch page
-- Distinguish wiki sources from chunk sources
-
----
-
-## Files to Create
-- `supabase/functions/wiki-compile/index.ts` — compilation agent edge function
-- `src/components/wiki/WikiCompileModal.tsx` — manual compile trigger UI
-
-## Files to Modify
-- `supabase/functions/rag-search/index.ts` — add wiki-first search
-- `src/types/index.ts` — add wiki types
-- `src/components/starmap/CosmosScene.tsx` — add wiki node configs + geometry
-- `src/components/starmap/connect-types.ts` — add wiki edge types
-- `src/components/starmap/cosmos-layout.ts` — handle wiki node layout
-- `src/components/starmap/NodeWindow.tsx` — wiki page view
-- `src/components/floating/SettingsCapsule.tsx` — compile trigger button
-- `src/hooks/useAgentPipeline.ts` — auto-trigger compilation
-- `src/hooks/useRAG.ts` — handle wiki citations
-- `src/pages/RAGSearch.tsx` — render wiki citations
-
-## Verification
-1. Create a few notes via normal capture flow
-2. Trigger manual compilation -> verify wiki pages created in DB
-3. Open star map -> verify wiki nodes appear with distinct geometry/color
-4. Open wiki node -> verify source chain is visible
-5. RAG search -> verify wiki pages are hit first, raw chunks as evidence
-6. Add new note -> verify wiki auto-updates in background
+1. **Node delete**: Right-click node → "删除" → confirm → node disappears + undo toast → click undo → node reappears
+2. **Galaxy dissolve**: Right-click galaxy halo → "解散星系" → nodes scatter to untagged → undo restores tags
+3. **Node move**: Click to select → drag node → release → position persists across page reload
+4. **Galaxy move**: Alt+drag halo → all nodes move together → positions persist
+5. **Edge handling**: Delete a node → its edges disappear from star map. Move a node → its edges follow.
+6. **Keyboard**: Esc cancels any active drag. Delete key as alternative delete trigger for selected node.
