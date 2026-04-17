@@ -317,7 +317,7 @@ function StarMapContents({ user, notes, loading, openPod, pods }: ContentsProps)
 // ── StarMapOuter — provides AgentWorkflowProvider with wired openPod ─────────
 function StarMapOuter() {
   const { user, loading } = useAuth();
-  const { notes }         = useNotes(user?.id);
+  const { notes, fetchNotes } = useNotes(user?.id);
   const { pods, openPod } = useToolbox();
 
   return (
