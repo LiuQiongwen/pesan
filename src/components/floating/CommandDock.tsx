@@ -10,6 +10,8 @@ import { useToolbox, type PodId } from '@/contexts/ToolboxContext';
 import { useAgentWorkflow } from '@/contexts/AgentWorkflowContext';
 import { type LucideIcon } from 'lucide-react';
 import { PestaLogo } from '@/components/brand/PestaLogo';
+import { useDevice } from '@/hooks/useDevice';
+import { MobileTabBar } from '@/components/floating/MobileTabBar';
 
 const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
@@ -35,6 +37,15 @@ function hexRgb(hex: string) {
 }
 
 export function CommandDock() {
+  const { isPhone } = useDevice();
+
+  // Phone: use bottom tab bar
+  if (isPhone) return <MobileTabBar />;
+
+  return <DesktopCommandDock />;
+}
+
+function DesktopCommandDock() {
   const { pods, togglePod } = useToolbox();
   const { activeStep, completedSteps } = useAgentWorkflow();
   const [hoveredId,     setHoveredId]     = useState<PodId | null>(null);

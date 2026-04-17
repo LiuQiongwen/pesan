@@ -10,6 +10,7 @@ import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth }  from '@/hooks/useAuth';
 import { useNotes } from '@/hooks/useNotes';
 import { useToolbox, type PodId } from '@/contexts/ToolboxContext';
+import { useDevice } from '@/hooks/useDevice';
 import { AgentWorkflowProvider, useAgentWorkflow } from '@/contexts/AgentWorkflowContext';
 import { PestaLogo } from '@/components/brand/PestaLogo';
 
@@ -65,6 +66,7 @@ interface ContentsProps {
 function StarMapContents({ user, notes, loading, openPod, pods }: ContentsProps) {
   const navigate = useNavigate();
   const workflow = useAgentWorkflow();
+  const device = useDevice();
 
   const [hoveredNode,     setHoveredNode]     = useState<HoveredNodeInfo | null>(null);
   const [highlightedIds,  setHighlightedIds]  = useState<string[]>([]);
@@ -96,8 +98,9 @@ function StarMapContents({ user, notes, loading, openPod, pods }: ContentsProps)
     }
   }, [tagFilter, notes]);
 
-  // ── Global keyboard shortcuts ──────────────────────────────────────────────
+  // ── Global keyboard shortcuts (desktop/tablet only) ────────────────────────
   useEffect(() => {
+    if (device === 'phone') return;
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
@@ -109,7 +112,7 @@ function StarMapContents({ user, notes, loading, openPod, pods }: ContentsProps)
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [openPod, hoveredNode, flashNote]);
+  }, [device, openPod, hoveredNode, flashNote]);
 
 
   // ── Drag-to-pod handler ───────────────────────────────────────────────────
@@ -262,8 +265,8 @@ function StarMapContents({ user, notes, loading, openPod, pods }: ContentsProps)
       {/* Layer 5 — Node hover light band */}
       <NodeLightBand node={hoveredNode} onTagClick={handleTagClick} tagFilter={tagFilter} />
 
-      {/* Layer 6 — Quick Capture Bar */}
-      <QuickCaptureBar userId={user.id} onFlashNote={flashNote} hasNotes={notes.length > 0} />
+      {/* Layer 6 — Quick Capture Bar (desktop/tablet only) */}
+      {device !== 'phone' && <QuickCaptureBar userId={user.id} onFlashNote={flashNote} hasNotes={notes.length > 0} />}
 
       {/* Layer 7 — Command Dock */}
       <CommandDock />
@@ -271,9 +274,9 @@ function StarMapContents({ user, notes, loading, openPod, pods }: ContentsProps)
       {/* Layer 7 — Settings Capsule */}
       <SettingsCapsule />
 
-      {/* Layer 8 — Window Manager Controls */}
-      <AlignmentGuides />
-      <LayoutEditBar />
+      {/* Layer 8 — Window Manager Controls (desktop/tablet only) */}
+      {device !== 'phone' && <AlignmentGuides />}
+      {device !== 'phone' && <LayoutEditBar />}
 
     </div>
   );

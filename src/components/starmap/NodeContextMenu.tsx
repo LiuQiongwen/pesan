@@ -6,12 +6,31 @@ const MONO = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter','system-ui',sans-serif";
 
 const PODS = [
-  { id: 'capture',   label: '捕获舱', color: '#00ff66' },
-  { id: 'retrieval', label: '检索舱', color: '#66f0ff' },
-  { id: 'insight',   label: '洞察舱', color: '#b496ff' },
-  { id: 'memory',    label: '记忆舱', color: '#ffa040' },
-  { id: 'action',    label: '行动舱', color: '#ff4466' },
+  { id: 'capture',   label: 'Capture', color: '#00ff66' },
+  { id: 'retrieval', label: 'Retrieve', color: '#66f0ff' },
+  { id: 'insight',   label: 'Insight',  color: '#b496ff' },
+  { id: 'memory',    label: 'Memory',   color: '#ffa040' },
+  { id: 'action',    label: 'Action',   color: '#ff4466' },
 ];
+
+/* ── Mobile menu item ─────────────────────────────────────────────────── */
+function MobileMenuItem({ label, sub, color, onClick }: { label: string; sub?: string; color?: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick} style={{
+      display: 'flex', flexDirection: 'column', gap: 2,
+      width: '100%', textAlign: 'left',
+      padding: '10px 20px',
+      fontFamily: INTER, fontSize: 15, fontWeight: 500,
+      color: color ?? 'rgba(220,230,250,0.90)',
+      background: 'transparent',
+      border: 'none', cursor: 'pointer',
+      WebkitTapHighlightColor: 'rgba(102,240,255,0.08)',
+    }}>
+      <span>{label}</span>
+      {sub && <span style={{ fontFamily: MONO, fontSize: 10, color: 'rgba(160,175,200,0.50)', letterSpacing: '0.04em' }}>{sub}</span>}
+    </button>
+  );
+}
 
 interface Props {
   noteId: string;
@@ -47,18 +66,82 @@ function Item({ label, onClick, sub }: { label: string; onClick: () => void; sub
 
 export function NodeContextMenu({ noteId, x, y, note, onClose, onOpenNote, onDistill, onSendToPod, onFlash }: Props) {
   const [podHover, setPodHover] = useState(false);
+  const isPhone = typeof window !== 'undefined' && window.innerWidth < 768;
 
-  // Dismiss on any outside mousedown
+  // Dismiss on any outside click/touch
   useEffect(() => {
-    const h = (e: MouseEvent) => {
+    const h = (e: MouseEvent | TouchEvent) => {
       const el = document.getElementById('cosmos-ctx-menu');
-      if (el && !el.contains(e.target as Node)) onClose();
+      const target = 'touches' in e ? e.touches[0]?.target : e.target;
+      if (el && target && !el.contains(target as Node)) onClose();
     };
-    setTimeout(() => document.addEventListener('mousedown', h), 0);
-    return () => document.removeEventListener('mousedown', h);
+    setTimeout(() => {
+      document.addEventListener('mousedown', h);
+      document.addEventListener('touchstart', h, { passive: true });
+    }, 0);
+    return () => {
+      document.removeEventListener('mousedown', h);
+      document.removeEventListener('touchstart', h);
+    };
   }, [onClose]);
 
-  // Keep within viewport
+  // ── Phone: bottom-anchored action sheet ──────────────────────────────────
+  if (isPhone) {
+    const act = (fn: () => void) => () => { fn(); onClose(); };
+    return createPortal(
+      <>
+        {/* Backdrop */}
+        <div onClick={onClose} style={{
+          position: 'fixed', inset: 0, zIndex: 9998,
+          background: 'rgba(0,0,0,0.55)',
+          animation: 'cosmos-window-in 0.15s ease',
+        }} />
+        {/* Sheet */}
+        <div id="cosmos-ctx-menu" style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 9999,
+          background: 'rgba(2,5,16,0.98)',
+          backdropFilter: 'blur(24px)',
+          borderTop: '1px solid rgba(102,240,255,0.12)',
+          borderRadius: '16px 16px 0 0',
+          padding: '16px 0 max(16px, env(safe-area-inset-bottom))',
+          animation: 'mobile-sheet-up 0.25s cubic-bezier(0.32, 0.72, 0, 1)',
+        }}>
+          {/* Drag handle */}
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.15)', margin: '0 auto 12px' }} />
+          {/* Title */}
+          <div style={{
+            padding: '0 20px 12px',
+            fontFamily: INTER, fontSize: 14, fontWeight: 600,
+            color: 'rgba(220,230,250,0.88)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {note?.title ?? '(Unnamed)'}
+          </div>
+          {/* Actions */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <MobileMenuItem label="Open Note" sub="Open this knowledge node" onClick={act(() => onOpenNote(noteId))} />
+            <MobileMenuItem label="Quick Distill" sub="Generate insights" onClick={act(() => onDistill(noteId))} />
+            <MobileMenuItem label="Locate in Cosmos" sub="Flash and center" onClick={act(() => onFlash(noteId))} />
+            <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '4px 20px' }} />
+            <div style={{ padding: '6px 20px 4px', fontFamily: MONO, fontSize: 10, color: 'rgba(102,240,255,0.50)', letterSpacing: '0.10em' }}>
+              SEND TO POD
+            </div>
+            {PODS.map(pod => (
+              <MobileMenuItem
+                key={pod.id}
+                label={pod.label}
+                color={pod.color}
+                onClick={act(() => onSendToPod(noteId, pod.id))}
+              />
+            ))}
+          </div>
+        </div>
+      </>,
+      document.body,
+    );
+  }
+
+  // ── Desktop: positioned dropdown (existing) ──────────────────────────────
   const ax = Math.min(x, window.innerWidth  - 200);
   const ay = Math.min(y, window.innerHeight - 220);
 

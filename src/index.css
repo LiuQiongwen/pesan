@@ -153,6 +153,25 @@ html, body, #root {
   to   { transform: rotate(360deg); }
 }
 
+/* ── Mobile animations ──────────────────────────────────────── */
+@keyframes mobile-sheet-up {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+@keyframes mobile-sheet-down {
+  from { transform: translateY(0); }
+  to   { transform: translateY(100%); }
+}
+
+/* ── Mobile-specific overrides ──────────────────────────────── */
+@media (max-width: 767px) {
+  :root {
+    --dock-bottom:  0px;
+    --qbar-bottom:  72px;
+    --touch-target: 44px;
+  }
+}
+
 .animate-flow-light {
   position: relative;
   overflow: hidden;

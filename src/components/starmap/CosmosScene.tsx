@@ -707,17 +707,73 @@ function ImperativeCore({
       }
     };
 
+    // ── Touch: long-press → context-menu, tap → toggle node ────────────────
+    let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+    let touchStartPos = { x: 0, y: 0 };
+    let touchMoved = false;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      const t = e.touches[0];
+      touchStartPos = { x: t.clientX, y: t.clientY };
+      touchMoved = false;
+      longPressTimer = setTimeout(() => {
+        // Long-press: treat as context menu
+        const rect = canvas.getBoundingClientRect();
+        const mouse = new THREE.Vector2(
+          ((t.clientX - rect.left) / rect.width) * 2 - 1,
+          -((t.clientY - rect.top) / rect.height) * 2 + 1,
+        );
+        raycaster.current.setFromCamera(mouse, camera);
+        const allMeshes = Array.from(meshToNoteId.current.keys()) as THREE.Mesh[];
+        const hits = raycaster.current.intersectObjects(allMeshes);
+        if (hits.length) {
+          const hitId = meshToNoteId.current.get(hits[0].object as THREE.Mesh);
+          if (hitId) {
+            // Vibrate feedback if available
+            navigator.vibrate?.(30);
+            window.dispatchEvent(new CustomEvent('cosmos-context-menu', {
+              detail: { noteId: hitId, x: t.clientX, y: t.clientY },
+            }));
+          }
+        }
+        longPressTimer = null;
+      }, 500);
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      const t = e.touches[0];
+      const dx = t.clientX - touchStartPos.x;
+      const dy = t.clientY - touchStartPos.y;
+      if (dx * dx + dy * dy > 100) { // 10px threshold
+        touchMoved = true;
+        if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+      }
+    };
+
+    const onTouchEnd = () => {
+      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    };
+
     canvas.addEventListener('mousedown',    onDown);
     canvas.addEventListener('mousemove',    onMove);
     canvas.addEventListener('mouseup',      onUp);
     canvas.addEventListener('contextmenu',  onContextMenu);
+    canvas.addEventListener('touchstart',   onTouchStart, { passive: true });
+    canvas.addEventListener('touchmove',    onTouchMove, { passive: true });
+    canvas.addEventListener('touchend',     onTouchEnd);
     window.addEventListener('keydown',      onKeyDown);
     return () => {
       canvas.removeEventListener('mousedown',   onDown);
       canvas.removeEventListener('mousemove',   onMove);
       canvas.removeEventListener('mouseup',     onUp);
       canvas.removeEventListener('contextmenu', onContextMenu);
+      canvas.removeEventListener('touchstart',  onTouchStart);
+      canvas.removeEventListener('touchmove',   onTouchMove);
+      canvas.removeEventListener('touchend',    onTouchEnd);
       window.removeEventListener('keydown',     onKeyDown);
+      if (longPressTimer) clearTimeout(longPressTimer);
       if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
       if (autoRotateTimer.current) clearTimeout(autoRotateTimer.current);
     };

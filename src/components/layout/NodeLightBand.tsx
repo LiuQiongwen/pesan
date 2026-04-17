@@ -18,6 +18,7 @@ interface NodeLightBandProps {
 export function NodeLightBand({ node, onTagClick, tagFilter }: NodeLightBandProps) {
   const navigate = useNavigate();
   const { lang } = useLanguage();
+  const isPhone = typeof window !== 'undefined' && window.innerWidth < 768;
 
   const visible = !!node;
   const color = node?.clusterIdx != null && node.clusterIdx >= 0
@@ -35,11 +36,11 @@ export function NodeLightBand({ node, onTagClick, tagFilter }: NodeLightBandProp
     <div
       style={{
         position: 'fixed',
-        bottom: 0,
+        bottom: isPhone ? 64 : 0,
         left: 0,
         right: 0,
         zIndex: 15,
-        height: 88,
+        height: isPhone ? 72 : 88,
         background: 'linear-gradient(to top, rgba(4,5,8,0.96) 0%, rgba(4,5,8,0.75) 60%, rgba(4,5,8,0.0) 100%)',
         backdropFilter: visible ? 'blur(14px)' : 'none',
         WebkitBackdropFilter: visible ? 'blur(14px)' : 'none',
@@ -48,8 +49,8 @@ export function NodeLightBand({ node, onTagClick, tagFilter }: NodeLightBandProp
         transition: 'transform 0.22s cubic-bezier(0.4,0,0.2,1), border-color 0.22s, backdrop-filter 0.22s',
         display: 'flex',
         alignItems: 'center',
-        padding: '0 28px',
-        gap: 18,
+        padding: isPhone ? '0 16px' : '0 28px',
+        gap: isPhone ? 10 : 18,
         pointerEvents: visible ? 'auto' : 'none',
       }}
     >

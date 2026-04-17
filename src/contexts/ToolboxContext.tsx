@@ -230,14 +230,23 @@ export function ToolboxProvider({ children }: { children: React.ReactNode }) {
   }, [layoutConfig.globalFontScale]);
 
   // ── Pod actions ─────────────────────────────────────────────────────────
+  const isPhone = typeof window !== 'undefined' && window.innerWidth < 768;
+
   const openPod = useCallback((id: PodId) => {
+    setPods(prev => {
+      // On phone: close all other pods first (single-pod mode)
+      const base = isPhone
+        ? Object.fromEntries(Object.entries(prev).map(([k, v]) => [k, { ...v, open: k === id ? true : false, minimized: false }])) as typeof prev
+        : prev;
+      return { ...base, [id]: { ...base[id], open: true, minimized: false } };
+    });
     setTopZ(z => {
       const nz = z + 1;
-      setPods(prev => ({ ...prev, [id]: { ...prev[id], open: true, minimized: false, zIndex: nz } }));
+      setPods(prev => ({ ...prev, [id]: { ...prev[id], zIndex: nz } }));
       return nz;
     });
     setLastOpened(id);
-  }, []);
+  }, [isPhone]);
 
   const closePod = useCallback((id: PodId) => {
     setPods(prev => ({ ...prev, [id]: { ...prev[id], open: false, minimized: false } }));

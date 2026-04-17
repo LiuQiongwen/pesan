@@ -4,6 +4,8 @@ import { useToolbox, type PodId } from '@/contexts/ToolboxContext';
 import { ResizeHandles } from '@/components/window-manager/ResizeHandles';
 import { useWindowSnap } from '@/hooks/useWindowSnap';
 import { emitSnapGuides } from '@/components/window-manager/snap-utils';
+import { useDevice } from '@/hooks/useDevice';
+import { MobileBottomSheet } from '@/components/floating/MobileBottomSheet';
 
 const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
@@ -42,6 +44,28 @@ function clamp(v: number, lo: number, hi: number) {
 }
 
 export function FloatingPod({
+  id, title, subtitle, icon: Icon, accentColor, children,
+}: FloatingPodProps) {
+  const { isPhone } = useDevice();
+
+  // Phone: use bottom sheet
+  if (isPhone) {
+    return (
+      <MobileBottomSheet id={id} title={title} subtitle={subtitle} icon={Icon} accentColor={accentColor}>
+        {children}
+      </MobileBottomSheet>
+    );
+  }
+
+  // Desktop / Tablet: existing floating window
+  return (
+    <DesktopFloatingPod id={id} title={title} subtitle={subtitle} icon={Icon} accentColor={accentColor}>
+      {children}
+    </DesktopFloatingPod>
+  );
+}
+
+function DesktopFloatingPod({
   id, title, subtitle, icon: Icon, accentColor, children,
 }: FloatingPodProps) {
   const {
