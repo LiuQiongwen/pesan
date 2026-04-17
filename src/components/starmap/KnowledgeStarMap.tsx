@@ -42,6 +42,7 @@ interface KnowledgeStarMapProps {
   userId?:             string;
   onEmptyStateClick?:  () => void;
   onNodeDropToPod?:    (noteId: string, podId: string) => void;
+  onModeChange?:       (mode: 'browse' | 'connect', connectFromTitle?: string) => void;
 }
 
 // ── Loading fallback ──────────────────────────────────────────────────────────
@@ -89,6 +90,7 @@ export default function KnowledgeStarMap({
   userId,
   onEmptyStateClick,
   onNodeDropToPod,
+  onModeChange,
 }: KnowledgeStarMapProps) {
   const layout            = useMemo(() => buildCosmosLayout(notes), [notes]);
   const [openNodes,       setOpenNodes]        = useState<Set<string>>(new Set());
@@ -97,6 +99,56 @@ export default function KnowledgeStarMap({
   const [pendingGalaxy,   setPendingGalaxy]    = useState<PendingGalaxy | null>(null);
   const [galaxyStatus,    setGalaxyStatus]     = useState<'idle' | 'saved' | 'error'>('idle');
   const recenterActiveRef = useRef(false);
+
+  // ── Node interaction mode FSM ──────────────────────────────────────────
+  const [interactionMode,  setInteractionMode]  = useState<'browse' | 'connect'>('browse');
+  const [selectedNodeId,   setSelectedNodeId]   = useState<string | null>(null);
+  const [connectFromId,    setConnectFromId]    = useState<string | null>(null);
+
+  const handleSelectNode = useCallback((nodeId: string | null) => {
+    setSelectedNodeId(nodeId);
+  }, []);
+
+  const handleSetMode = useCallback((m: 'browse' | 'connect') => {
+    setInteractionMode(m);
+    if (m === 'browse') {
+      setConnectFromId(null);
+      setSelectedNodeId(null);
+    }
+  }, []);
+
+  const handleConnectPick = useCallback((nodeId: string) => {
+    if (!connectFromId) {
+      // First pick — set source
+      setConnectFromId(nodeId);
+    } else if (nodeId !== connectFromId) {
+      // Second pick — trigger connection
+      setPendingConn({ sourceId: connectFromId, targetId: nodeId });
+      // Reset to browse after connection initiated
+      setConnectFromId(null);
+      setInteractionMode('browse');
+      setSelectedNodeId(null);
+    }
+  }, [connectFromId]);
+
+  // Esc exits connect mode (handled in CosmosScene too, but also here for safety)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && interactionMode === 'connect') {
+        setInteractionMode('browse');
+        setConnectFromId(null);
+        setSelectedNodeId(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [interactionMode]);
+
+  // Notify parent when mode changes
+  useEffect(() => {
+    const title = connectFromId ? notes.find(n => n.id === connectFromId)?.title : undefined;
+    onModeChange?.(interactionMode, title ?? undefined);
+  }, [interactionMode, connectFromId, notes, onModeChange]);
 
   // ── Workbench multi-select state ─────────────────────────────────────────
   const [workbenchSelectedIds, setWorkbenchSelectedIds] = useState<string[]>([]);
@@ -358,6 +410,12 @@ export default function KnowledgeStarMap({
               onNodeDropToGalaxy={handleNodeDropToGalaxy}
               onNodeDropToPod={onNodeDropToPod}
               onNodeWorkbenchSelect={handleWorkbenchSelect}
+              mode={interactionMode}
+              selectedNodeId={selectedNodeId}
+              connectFromId={connectFromId}
+              onSelectNode={handleSelectNode}
+              onSetMode={handleSetMode}
+              onConnectPick={handleConnectPick}
             />
           )}
         </Suspense>
@@ -428,6 +486,12 @@ export default function KnowledgeStarMap({
           onDistill={id => { onNodeDropToPod?.(id, 'insight'); setCtxMenu(null); }}
           onSendToPod={(id, podId) => { onNodeDropToPod?.(id, podId); setCtxMenu(null); }}
           onFlash={id => { onFlashNote?.(id); setCtxMenu(null); }}
+          onConnect={id => {
+            setInteractionMode('connect');
+            setConnectFromId(id);
+            setSelectedNodeId(id);
+            setCtxMenu(null);
+          }}
         />
       )}
     </div>

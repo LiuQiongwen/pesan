@@ -70,6 +70,13 @@ export interface CosmosSceneProps {
   onNodeDropToGalaxy?: (noteId: string, galaxyTag: string | null) => void;
   onNodeDropToPod?:    (noteId: string, podId: string) => void;
   onNodeWorkbenchSelect?: (noteId: string) => void;
+  // ── Interaction mode FSM ────────────────────────────────────────────────
+  interactionMode?:    'browse' | 'connect';
+  selectedNodeId?:     string | null;
+  connectFromId?:      string | null;
+  onSetMode?:          (m: 'browse' | 'connect') => void;
+  onSetSelectedNodeId?: (id: string | null) => void;
+  onSetConnectFromId?:  (id: string | null) => void;
 }
 
 // ── ImperativeCore ────────────────────────────────────────────────────────────
@@ -92,6 +99,13 @@ interface CoreProps {
   onNodeDropToGalaxy?: (noteId: string, galaxyTag: string | null) => void;
   onNodeDropToPod?:    (noteId: string, podId: string) => void;
   onNodeWorkbenchSelect?: (noteId: string) => void;
+  // ── Interaction mode FSM ────────────────────────────────────────────────
+  interactionMode:    'browse' | 'connect';
+  selectedNodeId:     string | null;
+  connectFromId:      string | null;
+  onSetMode:          (m: 'browse' | 'connect') => void;
+  onSetSelectedNodeId: (id: string | null) => void;
+  onSetConnectFromId:  (id: string | null) => void;
 }
 
 function ImperativeCore({
@@ -100,6 +114,8 @@ function ImperativeCore({
   currentPosRef, recenterActiveRef, onLodChange,
   entranceNoteId, onEmptyStateClick, onNodeConnect, onNodeDropToGalaxy, onNodeDropToPod,
   onNodeWorkbenchSelect,
+  interactionMode, selectedNodeId, connectFromId,
+  onSetMode, onSetSelectedNodeId, onSetConnectFromId,
 }: CoreProps) {
   const { scene, camera, gl } = useThree();
 
@@ -181,6 +197,21 @@ function ImperativeCore({
   useEffect(() => { onNodeDropToGalaxyRef.current = onNodeDropToGalaxy; }, [onNodeDropToGalaxy]);
   useEffect(() => { onNodeDropToPodRef.current    = onNodeDropToPod;    }, [onNodeDropToPod]);
   useEffect(() => { onNodeWorkbenchSelectRef.current = onNodeWorkbenchSelect; }, [onNodeWorkbenchSelect]);
+
+  // ── Interaction-mode refs (avoid stale closures) ─────────────────────────
+  const modeRef            = useRef(interactionMode);
+  const selectedNodeIdRef  = useRef(selectedNodeId);
+  const connectFromIdRef   = useRef(connectFromId);
+  const onSetModeRef       = useRef(onSetMode);
+  const onSetSelectedRef   = useRef(onSetSelectedNodeId);
+  const onSetConnFromRef   = useRef(onSetConnectFromId);
+  const lastClickRef       = useRef<{ id: string; time: number } | null>(null);
+  useEffect(() => { modeRef.current            = interactionMode;      }, [interactionMode]);
+  useEffect(() => { selectedNodeIdRef.current  = selectedNodeId;       }, [selectedNodeId]);
+  useEffect(() => { connectFromIdRef.current   = connectFromId;        }, [connectFromId]);
+  useEffect(() => { onSetModeRef.current       = onSetMode;            }, [onSetMode]);
+  useEffect(() => { onSetSelectedRef.current   = onSetSelectedNodeId;  }, [onSetSelectedNodeId]);
+  useEffect(() => { onSetConnFromRef.current   = onSetConnectFromId;   }, [onSetConnectFromId]);
 
   // ── Build scene imperatively ───────────────────────────────────────────────
   useEffect(() => {
@@ -652,33 +683,89 @@ function ImperativeCore({
       if (emptyCTAMeshRef.current) allMeshes.push(emptyCTAMeshRef.current);
 
       const hits = rc.intersectObjects(allMeshes);
-      if (hits.length) {
-        const hitMesh = hits[0].object as THREE.Mesh;
-        if (hitMesh === emptyCTAMeshRef.current) {
-          const waveGeo = new THREE.RingGeometry(1.9, 2.3, 64);
-          const waveMat = new THREE.MeshBasicMaterial({
-            color: new THREE.Color('#00ff66'), transparent: true,
-            opacity: 0.85, side: THREE.DoubleSide, depthWrite: false,
-          });
-          const waveMesh = new THREE.Mesh(waveGeo, waveMat);
-          waveMesh.position.set(0, 0, 0);
-          scene.add(waveMesh);
-          waveRingsRef.current.push({ mesh: waveMesh, startT: performance.now() / 1000 });
-          flyTargetRef.current = new THREE.Vector3(0, 0, 0);
-          onEmptyStateClickRef.current?.();
-          return;
+      if (!hits.length) {
+        // Clicked empty space — deselect / exit connect mode
+        if (modeRef.current === 'connect') {
+          onSetModeRef.current('browse');
+          onSetConnFromRef.current(null);
         }
-        const id = meshToNoteId.current.get(hitMesh);
-        if (id) {
-          if (downShift) {
-            // Shift+click → workbench multi-select
-            onNodeWorkbenchSelectRef.current?.(id);
-          } else {
-            const worldPos = noteMeshes.current.get(id)?.position.clone();
-            if (worldPos) flyTargetRef.current = worldPos.clone();
-            onToggleRef.current(id);
-          }
+        onSetSelectedRef.current(null);
+        return;
+      }
+
+      const hitMesh = hits[0].object as THREE.Mesh;
+
+      // Handle empty-state CTA mesh
+      if (hitMesh === emptyCTAMeshRef.current) {
+        const waveGeo = new THREE.RingGeometry(1.9, 2.3, 64);
+        const waveMat = new THREE.MeshBasicMaterial({
+          color: new THREE.Color('#00ff66'), transparent: true,
+          opacity: 0.85, side: THREE.DoubleSide, depthWrite: false,
+        });
+        const waveMesh = new THREE.Mesh(waveGeo, waveMat);
+        waveMesh.position.set(0, 0, 0);
+        scene.add(waveMesh);
+        waveRingsRef.current.push({ mesh: waveMesh, startT: performance.now() / 1000 });
+        flyTargetRef.current = new THREE.Vector3(0, 0, 0);
+        onEmptyStateClickRef.current?.();
+        return;
+      }
+
+      const id = meshToNoteId.current.get(hitMesh);
+      if (!id) return;
+
+      // ── Mode: CONNECT ────────────────────────────────────────────────────
+      if (modeRef.current === 'connect') {
+        const from = connectFromIdRef.current;
+        if (!from) {
+          // First click in connect mode: pick source
+          onSetConnFromRef.current(id);
+          onSetSelectedRef.current(id);
+        } else if (id === from) {
+          // Re-clicked source → cancel connect
+          onSetModeRef.current('browse');
+          onSetConnFromRef.current(null);
+          onSetSelectedRef.current(null);
+        } else {
+          // Second click: complete connection
+          onNodeConnectRef.current?.(from, id);
+          // Flash both nodes as feedback
+          flashTimesRef.current.set(from, performance.now() / 1000);
+          flashTimesRef.current.set(id, performance.now() / 1000);
+          onSetModeRef.current('browse');
+          onSetConnFromRef.current(null);
+          onSetSelectedRef.current(null);
         }
+        return;
+      }
+
+      // ── Mode: BROWSE ─────────────────────────────────────────────────────
+      // Shift+click → enter connect mode with this node as source
+      if (downShift) {
+        onSetModeRef.current('connect');
+        onSetConnFromRef.current(id);
+        onSetSelectedRef.current(id);
+        navigator.vibrate?.(20);
+        return;
+      }
+
+      // Double-click detection (<300ms between clicks on same node)
+      const now = performance.now();
+      const last = lastClickRef.current;
+      const isDouble = last && last.id === id && (now - last.time) < 300;
+      lastClickRef.current = { id, time: now };
+
+      if (isDouble) {
+        // Double-click → open/close panel
+        const worldPos = noteMeshes.current.get(id)?.position.clone();
+        if (worldPos) flyTargetRef.current = worldPos.clone();
+        onToggleRef.current(id);
+        lastClickRef.current = null; // reset to avoid triple-click
+      } else {
+        // Single click → select/deselect
+        const worldPos = noteMeshes.current.get(id)?.position.clone();
+        if (worldPos) flyTargetRef.current = worldPos.clone();
+        onSetSelectedRef.current(selectedNodeIdRef.current === id ? null : id);
       }
     };
 
@@ -952,6 +1039,12 @@ function ImperativeCore({
         }
       } else if (hoveredId === noteId) {
         scale = 1.4; intensity = 2.2;
+      } else if (selectedNodeId === noteId || connectFromId === noteId) {
+        // Selected or connect-from node: distinct cyan/magenta glow
+        scale = 1.5; intensity = 2.8;
+        if (connectFromId === noteId) {
+          mat.emissive.set('#ff44ff');
+        }
       } else if (highlightSet.has(noteId)) {
         scale = 1.25; intensity = 2.0;
       } else if (openNodes.has(noteId)) {
@@ -980,6 +1073,17 @@ function ImperativeCore({
 
     // ── Hover raycasting (throttled: every 3rd frame) ───────────────────────
     if (frameCountRef.current % 3 !== 0) return;
+
+    // Suppress hover preview in connect mode
+    if (modeRef.current === 'connect') {
+      if (hoveredIdRef.current) {
+        hoveredIdRef.current = null;
+        setHoveredId(null);
+        onHoverRef.current?.(null);
+      }
+      return;
+    }
+
     raycaster.current.setFromCamera(pointer, camera);
     const allMeshes: THREE.Object3D[] = Array.from(meshToNoteId.current.keys());
     if (emptyCTAMeshRef.current) allMeshes.push(emptyCTAMeshRef.current);
@@ -1072,6 +1176,7 @@ export function CosmosScene({
   recenterActiveRef, onLodChange, onFlashNote, userId,
   entranceNoteId, onEmptyStateClick, onNodeConnect, onNodeDropToGalaxy, onNodeDropToPod,
   onNodeWorkbenchSelect,
+  mode = 'browse', selectedNodeId, connectFromId, onSelectNode, onSetMode, onConnectPick,
 }: CosmosSceneProps) {
   const highlightSet  = useMemo(() => new Set(highlightedNoteIds), [highlightedNoteIds]);
   const navigate      = useNavigate();
@@ -1120,14 +1225,20 @@ export function CosmosScene({
         onNodeDropToGalaxy={onNodeDropToGalaxy}
         onNodeDropToPod={onNodeDropToPod}
         onNodeWorkbenchSelect={onNodeWorkbenchSelect}
+        mode={mode}
+        selectedNodeId={selectedNodeId ?? null}
+        connectFromId={connectFromId ?? null}
+        onSelectNode={onSelectNode}
+        onSetMode={onSetMode}
+        onConnectPick={onConnectPick}
       />
       {lodLevel === 0 && layout.clusters.map(c => <ClusterLabel key={c.tag} cluster={c} />)}
 
       {/* Empty state CTA */}
       {notes.length === 0 && <EmptyCtaLabel onClick={onEmptyStateClick} />}
 
-      {/* Hover label — enhanced with type badge, 12px title, tags, time, CTA */}
-      {hoveredId && !openNodes.has(hoveredId) && (() => {
+      {/* Hover label — suppressed in connect mode */}
+      {mode !== 'connect' && hoveredId && !openNodes.has(hoveredId) && (() => {
         const pos  = currentPosRef.current.get(hoveredId);
         const note = notesMap.get(hoveredId);
         const np   = layout.positions[hoveredId];

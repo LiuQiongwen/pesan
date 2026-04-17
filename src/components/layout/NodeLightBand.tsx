@@ -13,17 +13,19 @@ interface NodeLightBandProps {
   node: HoveredNodeInfo | null;
   onTagClick?: (tag: string) => void;
   tagFilter?: string | null;
+  connectMode?: boolean;
+  connectFromTitle?: string;
 }
 
-export function NodeLightBand({ node, onTagClick, tagFilter }: NodeLightBandProps) {
+export function NodeLightBand({ node, onTagClick, tagFilter, connectMode, connectFromTitle }: NodeLightBandProps) {
   const navigate = useNavigate();
   const { lang } = useLanguage();
   const isPhone = typeof window !== 'undefined' && window.innerWidth < 768;
 
-  const visible = !!node;
+  const visible = !!node || !!connectMode;
   const color = node?.clusterIdx != null && node.clusterIdx >= 0
     ? PALETTE_COLORS[node.clusterIdx % PALETTE_COLORS.length]
-    : '#666e80';
+    : connectMode ? '#ff44ff' : '#666e80';
 
   const dateStr = node?.createdAt
     ? formatDistanceToNow(new Date(node.createdAt), {
@@ -54,7 +56,28 @@ export function NodeLightBand({ node, onTagClick, tagFilter }: NodeLightBandProp
         pointerEvents: visible ? 'auto' : 'none',
       }}
     >
+      {/* Connect mode banner */}
+      {connectMode && !node && (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            fontFamily: MONO, fontSize: 11, letterSpacing: '0.08em',
+            color: '#ff44ff', animation: 'pulse-glow 1.4s ease-in-out infinite',
+          }}>
+            CONNECT MODE
+          </div>
+          <div style={{ fontFamily: INTER, fontSize: 12, color: 'rgba(220,230,250,0.7)' }}>
+            {connectFromTitle
+              ? `From "${connectFromTitle}" — click target node`
+              : 'Shift+Click a node to begin'}
+          </div>
+          <div style={{ fontFamily: MONO, fontSize: 9, color: 'rgba(180,190,210,0.5)', marginLeft: 'auto' }}>
+            ESC to cancel
+          </div>
+        </div>
+      )}
+
       {/* Color dot */}
+      {node && <>
       <div style={{
         width: 8,
         height: 8,
@@ -162,6 +185,7 @@ export function NodeLightBand({ node, onTagClick, tagFilter }: NodeLightBandProp
           <ArrowRight size={10} />
         </button>
       )}
+      </>}
     </div>
   );
 }

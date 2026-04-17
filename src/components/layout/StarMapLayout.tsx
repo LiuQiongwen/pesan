@@ -115,6 +115,12 @@ function StarMapContents({ user, notes, loading, openPod, pods }: ContentsProps)
   }, [device, openPod, hoveredNode, flashNote]);
 
 
+  // ── Connect-mode state (lifted from KnowledgeStarMap) ─────────────────────
+  const [connectModeInfo, setConnectModeInfo] = useState<{ mode: 'browse' | 'connect'; fromTitle?: string }>({ mode: 'browse' });
+  const handleModeChange = useCallback((mode: 'browse' | 'connect', fromTitle?: string) => {
+    setConnectModeInfo({ mode, fromTitle });
+  }, []);
+
   // ── Drag-to-pod handler ───────────────────────────────────────────────────
   const handleNodeDropToPod = useCallback((noteId: string, podId: string) => {
     const note = notes.find(n => n.id === noteId);
@@ -190,6 +196,7 @@ function StarMapContents({ user, notes, loading, openPod, pods }: ContentsProps)
         userId={user.id}
         onEmptyStateClick={() => openPod('capture')}
         onNodeDropToPod={handleNodeDropToPod}
+        onModeChange={handleModeChange}
       />
 
       {/* Layer 1 — Agent Trail */}
@@ -263,7 +270,13 @@ function StarMapContents({ user, notes, loading, openPod, pods }: ContentsProps)
       <Outlet />
 
       {/* Layer 5 — Node hover light band */}
-      <NodeLightBand node={hoveredNode} onTagClick={handleTagClick} tagFilter={tagFilter} />
+      <NodeLightBand
+        node={hoveredNode}
+        onTagClick={handleTagClick}
+        tagFilter={tagFilter}
+        connectMode={connectModeInfo.mode === 'connect'}
+        connectFromTitle={connectModeInfo.fromTitle}
+      />
 
       {/* Layer 6 — Quick Capture Bar (desktop/tablet only) */}
       {device !== 'phone' && <QuickCaptureBar userId={user.id} onFlashNote={flashNote} hasNotes={notes.length > 0} />}
