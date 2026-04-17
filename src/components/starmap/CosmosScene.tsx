@@ -16,8 +16,6 @@ import { OrbitControls, Html }  from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import { useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
-import { formatDistanceToNow } from 'date-fns';
-import { zhCN } from 'date-fns/locale';
 
 import { type CosmosLayout, type CosmosNote } from './cosmos-layout';
 import { NodeWindow }  from './NodeWindow';
@@ -965,16 +963,15 @@ function ImperativeCore({
       lastClickRef.current = { id, time: now };
 
       if (isDouble) {
-        // Double-click → open/close panel
-        const worldPos = noteMeshes.current.get(id)?.position.clone();
-        if (worldPos) flyTargetRef.current = worldPos.clone();
-        onToggleRef.current(id);
-        lastClickRef.current = null; // reset to avoid triple-click
+        // Double-click → deselect (toggle off)
+        onSetSelectedRef.current(null);
+        lastClickRef.current = null;
       } else {
-        // Single click → select/deselect
+        // Single click → select node AND open its detail panel
         const worldPos = noteMeshes.current.get(id)?.position.clone();
         if (worldPos) flyTargetRef.current = worldPos.clone();
-        onSetSelectedRef.current(selectedNodeIdRef.current === id ? null : id);
+        onSetSelectedRef.current(id);
+        onToggleRef.current(id);
       }
     };
 
@@ -1347,15 +1344,11 @@ function ImperativeCore({
         const note = notesMapRef.current.get(hitId);
         if (note) onHoverRef.current?.({ noteId: hitId, title: note.title, tags: note.tags, summary: note.summary });
       } else {
-        // Debounce clear — give 120ms grace so cursor can reach the Html overlay buttons
-        if (!hoverClearTimerRef.current) {
-          hoverClearTimerRef.current = setTimeout(() => {
-            hoveredIdRef.current = null;
-            setHoveredId(null);
-            onHoverRef.current?.(null);
-            hoverClearTimerRef.current = null;
-          }, 120);
-        }
+        // Immediately clear hover — no debounce needed since tooltip is non-interactive
+        if (hoverClearTimerRef.current) { clearTimeout(hoverClearTimerRef.current); hoverClearTimerRef.current = null; }
+        hoveredIdRef.current = null;
+        setHoveredId(null);
+        onHoverRef.current?.(null);
       }
     }
 
@@ -1494,11 +1487,11 @@ export function CosmosScene({
   const [showButtons, setShowButtons] = useState(false);
   const btnTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Show action buttons 200ms after hover starts
+  // Delayed hover tooltip — only show after 350ms of continuous hover
   useEffect(() => {
     if (btnTimerRef.current) clearTimeout(btnTimerRef.current);
     if (hoveredId) {
-      btnTimerRef.current = setTimeout(() => setShowButtons(true), 200);
+      btnTimerRef.current = setTimeout(() => setShowButtons(true), 350);
     } else {
       setShowButtons(false);
     }
@@ -1548,18 +1541,14 @@ export function CosmosScene({
       {/* Empty state CTA */}
       {notes.length === 0 && <EmptyCtaLabel onClick={onEmptyStateClick} />}
 
-      {/* Hover label — suppressed in connect mode */}
-      {mode !== 'connect' && hoveredId && !openNodes.has(hoveredId) && (() => {
+      {/* Hover label — lightweight, never blocks clicks (pointerEvents: none) */}
+      {mode !== 'connect' && hoveredId && !openNodes.has(hoveredId) && showButtons && (() => {
         const pos  = currentPosRef.current.get(hoveredId);
         const note = notesMap.get(hoveredId);
         const np   = layout.positions[hoveredId];
         if (!pos || !note || !np) return null;
 
         const typeCfg = NODE_TYPE_CFG[note.node_type ?? 'capture'] ?? NODE_TYPE_CFG['capture'];
-        const timeAgo = note.created_at
-          ? formatDistanceToNow(new Date(note.created_at), { locale: zhCN, addSuffix: true })
-          : '';
-        const isEntrance = note.id === entranceNoteId;
 
         const r = parseInt(np.color.slice(1,3), 16);
         const g = parseInt(np.color.slice(3,5), 16);
@@ -1568,104 +1557,32 @@ export function CosmosScene({
         return createElement(Html,
           {
             key: `label-${hoveredId}`,
-            position: [pos.x, pos.y + 2.2, pos.z] as [number,number,number],
+            position: [pos.x, pos.y + 1.8, pos.z] as [number,number,number],
             center: true,
-            style: { pointerEvents: showButtons ? 'auto' : 'none', whiteSpace: 'nowrap' },
+            style: { pointerEvents: 'none', whiteSpace: 'nowrap' },
           },
           <div style={{
-            width: 220,
-            background: 'rgba(1,4,13,0.95)',
-            backdropFilter: 'blur(16px)',
-            border: `1px solid rgba(${r},${g},${b},0.38)`,
-            borderRadius: 8,
-            overflow: 'hidden',
-            boxShadow: `0 0 24px rgba(${r},${g},${b},0.18), 0 12px 40px rgba(0,0,0,0.70)`,
-            animation: 'cosmos-window-in 0.15s cubic-bezier(0.16,1,0.3,1)',
+            display: 'flex', alignItems: 'center', gap: 5,
+            background: 'rgba(1,4,13,0.88)',
+            backdropFilter: 'blur(12px)',
+            border: `1px solid rgba(${r},${g},${b},0.25)`,
+            borderRadius: 5,
+            padding: '4px 10px',
+            boxShadow: `0 0 14px rgba(${r},${g},${b},0.12), 0 6px 20px rgba(0,0,0,0.50)`,
+            animation: 'cosmos-window-in 0.12s cubic-bezier(0.16,1,0.3,1)',
+            maxWidth: 200,
           }}>
-            {/* Accent top bar */}
-            <div style={{ height: 1.5, background: `linear-gradient(90deg, transparent, ${np.color}, transparent)` }} />
-            <div style={{ padding: '8px 10px 8px' }}>
-              {/* Type badge row */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}>
-                <span style={{
-                  fontFamily: MONO, fontSize: 7.5, letterSpacing: '0.10em',
-                  color: typeCfg.color,
-                  background: `${typeCfg.color}15`,
-                  border: `1px solid ${typeCfg.color}35`,
-                  padding: '1px 5px', borderRadius: 3,
-                  textTransform: 'uppercase' as const,
-                }}>{typeCfg.label}</span>
-                {isEntrance && (
-                  <span style={{
-                    fontFamily: MONO, fontSize: 7, color: '#ffa040',
-                    background: 'rgba(255,160,64,0.12)',
-                    border: '1px solid rgba(255,160,64,0.28)',
-                    padding: '1px 5px', borderRadius: 3,
-                  }}>最近活跃</span>
-                )}
-              </div>
-              {/* Title */}
-              <div style={{
-                fontFamily: INTER, fontSize: 12, fontWeight: 600,
-                color: 'rgba(220,230,250,0.95)',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                marginBottom: 6,
-              }}>
-                {(note.title || '(未命名)').slice(0, 30)}{(note.title || '').length > 30 ? '…' : ''}
-              </div>
-              {/* Tags + time */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', marginBottom: 7 }}>
-                {note.tags?.slice(0, 2).map(tag => (
-                  <span key={tag} style={{
-                    fontFamily: MONO, fontSize: 8, color: `rgba(${r},${g},${b},0.70)`,
-                    background: `rgba(${r},${g},${b},0.09)`,
-                    border: `1px solid rgba(${r},${g},${b},0.20)`,
-                    padding: '1px 5px', borderRadius: 3,
-                  }}>#{tag}</span>
-                ))}
-                {timeAgo && (
-                  <span style={{
-                    marginLeft: 'auto', fontFamily: MONO, fontSize: 8,
-                    color: 'rgba(80,90,115,0.55)',
-                  }}>{timeAgo}</span>
-                )}
-              </div>
-              {/* CTA hint / quick action buttons */}
-              {showButtons && hoveredId ? (
-                <div style={{
-                  display: 'flex', gap: 4, paddingTop: 6,
-                  borderTop: `1px solid rgba(${r},${g},${b},0.10)`,
-                }}>
-                  {([
-                    { label: '→ 打开', act: () => onNodeToggle(hoveredId),                        bg: `rgba(${r},${g},${b},0.12)`, border: `rgba(${r},${g},${b},0.28)` },
-                    { label: '◇ 蒸馏', act: () => onNodeDropToPod?.(hoveredId, 'insight'),        bg: 'rgba(180,150,255,0.10)',    border: 'rgba(180,150,255,0.28)' },
-                    { label: '+ 捕获', act: () => onNodeDropToPod?.(hoveredId, 'capture'),        bg: 'rgba(0,255,102,0.08)',      border: 'rgba(0,255,102,0.25)' },
-                  ] as { label: string; act: () => void; bg: string; border: string }[]).map(btn => (
-                    <button
-                      key={btn.label}
-                      onClick={e => { e.stopPropagation(); btn.act(); }}
-                      style={{
-                        flex: 1, padding: '3px 0',
-                        fontFamily: MONO, fontSize: 8, letterSpacing: '0.04em',
-                        color: `rgba(${r},${g},${b},0.85)`,
-                        background: btn.bg,
-                        border: `1px solid ${btn.border}`,
-                        borderRadius: 4, cursor: 'pointer',
-                      }}
-                    >{btn.label}</button>
-                  ))}
-                </div>
-              ) : (
-                <div style={{
-                  fontFamily: MONO, fontSize: 8.5, letterSpacing: '0.05em',
-                  color: `rgba(${r},${g},${b},0.55)`,
-                  borderTop: `1px solid rgba(${r},${g},${b},0.10)`,
-                  paddingTop: 6,
-                }}>
-                  ▶ 点击展开
-                </div>
-              )}
-            </div>
+            <span style={{
+              fontFamily: MONO, fontSize: 7, letterSpacing: '0.08em',
+              color: typeCfg.color, opacity: 0.85,
+              textTransform: 'uppercase' as const,
+              flexShrink: 0,
+            }}>{typeCfg.label}</span>
+            <span style={{
+              fontFamily: INTER, fontSize: 11, fontWeight: 500,
+              color: 'rgba(220,230,250,0.90)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{(note.title || '(未命名)').slice(0, 24)}{(note.title || '').length > 24 ? '…' : ''}</span>
           </div>
         );
       })()}
