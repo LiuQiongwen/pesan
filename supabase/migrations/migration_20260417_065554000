@@ -1,0 +1,8 @@
+
+-- Expand thought_edges.edge_type to include manual relationship types
+ALTER TABLE thought_edges DROP CONSTRAINT IF EXISTS thought_edges_edge_type_check;
+ALTER TABLE thought_edges ADD CONSTRAINT thought_edges_edge_type_check
+  CHECK (edge_type = ANY (ARRAY[
+    'supports','contradicts','extends','inspires','related','wikilink',
+    'semantic','insight_of','drives_action','answers'
+  ]));

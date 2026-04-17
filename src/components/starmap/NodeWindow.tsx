@@ -1,11 +1,12 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { X, Edit3, Check, XCircle, Tag, Clock, ExternalLink,
-         RefreshCw, FlaskConical, Zap, HelpCircle, Bell } from 'lucide-react';
+         RefreshCw, FlaskConical, Zap, HelpCircle, Bell, GitBranch } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import type { NodeType } from '@/types';
+import { getEdgeTypeConfig } from './connect-types';
 
 const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
@@ -268,6 +269,9 @@ export function NodeWindow({ note, accentColor, onClose, onNavigate, onNewNode }
         )}
       </div>
 
+      {/* ── RELATIONS SECTION ────────────────────────────────────── */}
+      {!editing && <NodeRelationsBlock noteId={note.id} userId={note.user_id} accent={accent} onNavigate={onNavigate} />}
+
       {/* ── AGENT CONTINUE PANEL ──────────────────────────────────── */}
       {!editing && (
         <div style={{
@@ -395,3 +399,148 @@ const ghostBtn: React.CSSProperties = {
   border: '1px solid rgba(255,255,255,0.07)',
   borderRadius: 6, padding: '5px 0', cursor: 'pointer',
 };
+
+// ── Relations block inside NodeWindow ───────────────────────────────────────
+
+interface RelRow {
+  id: string;
+  edge_type: string;
+  description: string | null;
+  confidence: number | null;
+  peer_id: string;
+  peer_title: string;
+  direction: 'out' | 'in';
+}
+
+function NodeRelationsBlock({
+  noteId, userId, accent, onNavigate,
+}: {
+  noteId: string; userId: string; accent: string;
+  onNavigate?: (id: string) => void;
+}) {
+  const [rels, setRels] = useState<RelRow[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [outRes, inRes] = await Promise.all([
+        supabase.from('thought_edges')
+          .select('id, edge_type, description, confidence, target_id')
+          .eq('user_id', userId).eq('source_id', noteId),
+        supabase.from('thought_edges')
+          .select('id, edge_type, description, confidence, source_id')
+          .eq('user_id', userId).eq('target_id', noteId),
+      ]);
+
+      const peerIds = new Set<string>();
+      (outRes.data ?? []).forEach(e => peerIds.add(e.target_id));
+      (inRes.data ?? []).forEach(e => peerIds.add(e.source_id));
+
+      const titleMap = new Map<string, string>();
+      if (peerIds.size > 0) {
+        const { data: peerNotes } = await supabase.from('notes')
+          .select('id, title').in('id', [...peerIds]);
+        (peerNotes ?? []).forEach(n => titleMap.set(n.id, n.title ?? 'Untitled'));
+      }
+
+      if (cancelled) return;
+      const rows: RelRow[] = [];
+      (outRes.data ?? []).forEach(e => rows.push({
+        id: e.id, edge_type: e.edge_type,
+        description: e.description, confidence: e.confidence,
+        peer_id: e.target_id, peer_title: titleMap.get(e.target_id) ?? '?',
+        direction: 'out',
+      }));
+      (inRes.data ?? []).forEach(e => rows.push({
+        id: e.id, edge_type: e.edge_type,
+        description: e.description, confidence: e.confidence,
+        peer_id: e.source_id, peer_title: titleMap.get(e.source_id) ?? '?',
+        direction: 'in',
+      }));
+      setRels(rows);
+    })();
+    return () => { cancelled = true; };
+  }, [noteId, userId]);
+
+  if (rels.length === 0) return null;
+
+  return (
+    <div style={{
+      padding: '6px 10px 8px',
+      borderTop: '1px solid rgba(255,255,255,0.04)',
+      background: 'rgba(255,255,255,0.015)',
+    }}>
+      <div style={{
+        fontFamily: MONO, fontSize: 7, letterSpacing: '0.12em',
+        color: 'rgba(60,72,95,0.55)', marginBottom: 5, textTransform: 'uppercase',
+        display: 'flex', alignItems: 'center', gap: 4,
+      }}>
+        <GitBranch size={8} /> 关联 ({rels.length})
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        {rels.slice(0, 8).map(rel => {
+          const cfg = getEdgeTypeConfig(rel.edge_type);
+          const arrow = rel.direction === 'out' ? '\u2192' : '\u2190';
+          return (
+            <div
+              key={rel.id}
+              onClick={() => onNavigate?.(rel.peer_id)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '3px 6px', borderRadius: 5, cursor: 'pointer',
+                background: 'rgba(255,255,255,0.025)',
+                border: '1px solid rgba(255,255,255,0.04)',
+                transition: 'background 0.15s',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.025)')}
+            >
+              {/* type badge */}
+              <span style={{
+                fontFamily: MONO, fontSize: 7, letterSpacing: '0.08em',
+                color: cfg.color, padding: '1px 4px',
+                background: `${cfg.color}18`, borderRadius: 3,
+                whiteSpace: 'nowrap',
+              }}>
+                {cfg.icon} {cfg.label}
+              </span>
+
+              {/* arrow */}
+              <span style={{ fontFamily: MONO, fontSize: 9, color: 'rgba(160,175,200,0.35)' }}>
+                {arrow}
+              </span>
+
+              {/* peer title */}
+              <span style={{
+                fontFamily: INTER, fontSize: 10, color: accent,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                flex: 1,
+              }}>
+                {rel.peer_title}
+              </span>
+
+              {/* confidence */}
+              {rel.confidence != null && (
+                <span style={{
+                  fontFamily: MONO, fontSize: 7, color: 'rgba(120,135,160,0.4)',
+                }}>
+                  {Math.round(Number(rel.confidence) * 100)}%
+                </span>
+              )}
+            </div>
+          );
+        })}
+        {rels.length > 8 && (
+          <div style={{
+            fontFamily: MONO, fontSize: 8, color: 'rgba(120,135,160,0.4)',
+            textAlign: 'center', padding: 2,
+          }}>
+            +{rels.length - 8} more
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+

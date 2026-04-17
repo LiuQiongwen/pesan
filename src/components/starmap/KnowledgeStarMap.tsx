@@ -2,7 +2,7 @@ import { Suspense, useMemo, useState, useCallback, useRef, useEffect, createElem
 import { createPortal } from 'react-dom';
 import { Canvas } from '@react-three/fiber';
 import { CosmosScene } from './CosmosScene';
-import { buildCosmosLayout, type CosmosNote } from './cosmos-layout';
+import { buildCosmosLayout, type CosmosNote, type DbEdge } from './cosmos-layout';
 import { NodeContextMenu } from './NodeContextMenu';
 import { GalaxyJoinOverlay, type GalaxyOption } from './GalaxyJoinOverlay';
 import { ConnectConfirmOverlay } from './ConnectConfirmOverlay';
@@ -92,7 +92,18 @@ export default function KnowledgeStarMap({
   onNodeDropToPod,
   onModeChange,
 }: KnowledgeStarMapProps) {
-  const layout            = useMemo(() => buildCosmosLayout(notes), [notes]);
+  const [dbEdges, setDbEdges] = useState<DbEdge[]>([]);
+  const layout = useMemo(() => buildCosmosLayout(notes, dbEdges), [notes, dbEdges]);
+
+  // Fetch thought_edges from DB
+  useEffect(() => {
+    if (!userId) return;
+    supabase
+      .from('thought_edges')
+      .select('id, source_id, target_id, edge_type, description, confidence')
+      .eq('user_id', userId)
+      .then(({ data }) => { if (data) setDbEdges(data as DbEdge[]); });
+  }, [userId, notes]); // refetch when notes change (new connections may appear)
   const [openNodes,       setOpenNodes]        = useState<Set<string>>(new Set());
   const [pendingConn,     setPendingConn]      = useState<PendingConnection | null>(null);
   const [connectStatus,   setConnectStatus]    = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -213,28 +224,34 @@ export default function KnowledgeStarMap({
   }, [notesMap]);
 
   // ── Drag-to-connect: confirm ──────────────────────────────────────────────
-  const handleConnectionConfirm = useCallback(async (relType: RelationType) => {
+  const handleConnectionConfirm = useCallback(async (relType: RelationType, description?: string) => {
     if (!pendingConn) return;
     setConnectStatus('saving');
     const { sourceId, targetId } = pendingConn;
     setPendingConn(null);
 
-    const { error } = await supabase
-      .from('thought_relationships')
+    const { data, error } = await supabase
+      .from('thought_edges')
       .insert({
-        source_note_id:    sourceId,
-        target_note_id:    targetId,
-        relationship_type: relType,
-        strength:          0.8,
-        rationale:         `手动连接 via drag · ${new Date().toISOString()}`,
+        source_id:   sourceId,
+        target_id:   targetId,
+        edge_type:   relType,
+        description: description || null,
+        confidence:  0.8,
         ...(userId ? { user_id: userId } : {}),
-      });
+      })
+      .select()
+      .maybeSingle();
 
     if (error) {
       console.error('[KnowledgeStarMap] connect insert error:', error);
       setConnectStatus('error');
     } else {
       setConnectStatus('saved');
+      // Immediately add new edge to local state for instant feedback
+      if (data) {
+        setDbEdges(prev => [...prev, data as DbEdge]);
+      }
     }
     setTimeout(() => setConnectStatus('idle'), 2000);
   }, [pendingConn, userId]);

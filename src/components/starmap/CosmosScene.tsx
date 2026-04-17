@@ -21,6 +21,7 @@ import { zhCN } from 'date-fns/locale';
 
 import { type CosmosLayout, type CosmosNote } from './cosmos-layout';
 import { NodeWindow }  from './NodeWindow';
+import { getEdgeTypeConfig } from './connect-types';
 import type { HoveredNodeInfo } from './KnowledgeStarMap';
 import type { NodeType } from '@/types';
 
@@ -107,6 +108,7 @@ interface CoreProps {
   onSetMode:          (m: 'browse' | 'connect') => void;
   onSetSelectedNodeId: (id: string | null) => void;
   onSetConnectFromId:  (id: string | null) => void;
+  onEdgeHover?:       (meta: { fromNoteId: string; toNoteId: string; edgeType: string; description: string | null; midpoint: [number, number, number] } | null) => void;
 }
 
 function ImperativeCore({
@@ -117,6 +119,7 @@ function ImperativeCore({
   onNodeWorkbenchSelect,
   interactionMode, selectedNodeId, connectFromId,
   onSetMode, onSetSelectedNodeId, onSetConnectFromId,
+  onEdgeHover,
 }: CoreProps) {
   const { scene, camera, gl } = useThree();
 
@@ -133,6 +136,7 @@ function ImperativeCore({
   // Edge refs
   const edgesByNoteIdRef = useRef(new Map<string, THREE.Line[]>());
   const allEdgeLinesRef  = useRef<THREE.Line[]>([]);
+  const edgeMetaRef      = useRef(new Map<THREE.Line, { fromNoteId: string; toNoteId: string; edgeType: string; description: string | null; edgeId: string | null }>());
 
   // Halo/ring refs for LOD opacity
   const haloMeshesRef    = useRef<THREE.Mesh[]>([]);
@@ -214,6 +218,9 @@ function ImperativeCore({
   useEffect(() => { onSetSelectedRef.current   = onSetSelectedNodeId;  }, [onSetSelectedNodeId]);
   useEffect(() => { onSetConnFromRef.current   = onSetConnectFromId;   }, [onSetConnectFromId]);
 
+  const onEdgeHoverRef = useRef(onEdgeHover);
+  useEffect(() => { onEdgeHoverRef.current = onEdgeHover; }, [onEdgeHover]);
+
   // ── Build scene imperatively ───────────────────────────────────────────────
   useEffect(() => {
     const group = new THREE.Group();
@@ -225,6 +232,7 @@ function ImperativeCore({
     notesMapRef.current.clear();
     edgesByNoteIdRef.current.clear();
     allEdgeLinesRef.current  = [];
+    edgeMetaRef.current.clear();
     haloMeshesRef.current    = [];
     ringMeshesRef.current    = [];
     halosByTagRef.current.clear();
@@ -301,13 +309,51 @@ function ImperativeCore({
         new THREE.Vector3(...edge.from),
         new THREE.Vector3(...edge.to),
       ]);
+
+      // Visual style varies by edge type
+      const isManual = edge.edgeId !== null && edge.edgeType !== 'related' && edge.edgeType !== 'wikilink';
       const mat = new THREE.LineBasicMaterial({
         color: new THREE.Color(edge.color), transparent: true,
         opacity: 0, depthWrite: false,
       });
-      const line = new THREE.Line(geo, mat);
+
+      let line: THREE.Line;
+      if (edge.edgeType === 'wikilink') {
+        // Dashed line for wikilinks
+        const dashMat = new THREE.LineDashedMaterial({
+          color: new THREE.Color(edge.color), transparent: true,
+          opacity: 0, depthWrite: false,
+          dashSize: 0.5, gapSize: 0.3,
+        });
+        line = new THREE.Line(geo, dashMat);
+        line.computeLineDistances();
+      } else {
+        line = new THREE.Line(geo, mat);
+      }
+
+      // Manual edges start slightly visible so users can see them
+      if (isManual) {
+        (line.material as THREE.Material & { opacity: number }).opacity = 0.12;
+      }
+
+      line.userData = {
+        edgeType: edge.edgeType,
+        edgeId: edge.edgeId,
+        fromNoteId: edge.fromNoteId,
+        toNoteId: edge.toNoteId,
+        description: edge.description,
+        isManual,
+      };
+
       group.add(line);
       allEdgeLinesRef.current.push(line);
+      edgeMetaRef.current.set(line, {
+        fromNoteId: edge.fromNoteId,
+        toNoteId: edge.toNoteId,
+        edgeType: edge.edgeType,
+        description: edge.description,
+        edgeId: edge.edgeId,
+      });
       for (const id of [edge.fromNoteId, edge.toNoteId]) {
         if (!edgesByNoteIdRef.current.has(id)) edgesByNoteIdRef.current.set(id, []);
         edgesByNoteIdRef.current.get(id)!.push(line);
@@ -956,13 +1002,17 @@ function ImperativeCore({
       m.opacity = THREE.MathUtils.lerp(m.opacity, ringTarget, 0.04);
     });
 
-    // ── Hover-only edge reveal ───────────────────────────────────────────────
+    // ── Hover-only edge reveal + edge hover detection ──────────────────────
     if (hoveredId !== lastHoveredRef.current) {
       lastHoveredRef.current = hoveredId;
-      allEdgeLinesRef.current.forEach(l => { (l.material as THREE.LineBasicMaterial).opacity = 0; });
+      allEdgeLinesRef.current.forEach(l => {
+        const isManual = l.userData?.isManual;
+        const baseLine = l.material as THREE.Material & { opacity: number };
+        baseLine.opacity = isManual ? 0.12 : 0;
+      });
       if (hoveredId) {
         edgesByNoteIdRef.current.get(hoveredId)?.forEach(l => {
-          (l.material as THREE.LineBasicMaterial).opacity = 0.28;
+          (l.material as THREE.Material & { opacity: number }).opacity = 0.45;
         });
       }
     }
@@ -1104,6 +1154,7 @@ function ImperativeCore({
         if (hoverClearTimerRef.current) { clearTimeout(hoverClearTimerRef.current); hoverClearTimerRef.current = null; }
         hoveredIdRef.current = hitId;
         setHoveredId(hitId);
+        onEdgeHoverRef.current?.(null); // Clear edge hover when hovering a node
         const note = notesMapRef.current.get(hitId);
         if (note) onHoverRef.current?.({ noteId: hitId, title: note.title, tags: note.tags, summary: note.summary });
       } else {
@@ -1117,6 +1168,67 @@ function ImperativeCore({
           }, 120);
         }
       }
+    }
+
+    // ── Edge proximity hover (only when no node is hovered) ──────────────
+    if (!hitId && allEdgeLinesRef.current.length > 0) {
+      const ray = raycaster.current.ray;
+      let closestLine: THREE.Line | null = null;
+      let closestDist = 1.2; // threshold in world units
+
+      for (const line of allEdgeLinesRef.current) {
+        const posAttr = line.geometry.getAttribute('position');
+        if (!posAttr || posAttr.count < 2) continue;
+        const p0 = new THREE.Vector3(posAttr.getX(0), posAttr.getY(0), posAttr.getZ(0));
+        const p1 = new THREE.Vector3(posAttr.getX(1), posAttr.getY(1), posAttr.getZ(1));
+        // Distance from ray to line segment
+        const lineDir = p1.clone().sub(p0);
+        const lineLen = lineDir.length();
+        if (lineLen < 0.01) continue;
+        lineDir.divideScalar(lineLen);
+        const w0 = ray.origin.clone().sub(p0);
+        const a = ray.direction.dot(ray.direction);
+        const b2 = ray.direction.dot(lineDir);
+        const c = lineDir.dot(lineDir);
+        const d = ray.direction.dot(w0);
+        const e = lineDir.dot(w0);
+        const denom = a * c - b2 * b2;
+        if (Math.abs(denom) < 1e-8) continue;
+        let sc = (b2 * e - c * d) / denom;
+        let tc = (a * e - b2 * d) / denom;
+        tc = Math.max(0, Math.min(lineLen, tc));
+        sc = Math.max(0, sc);
+        const closest1 = ray.origin.clone().add(ray.direction.clone().multiplyScalar(sc));
+        const closest2 = p0.clone().add(lineDir.clone().multiplyScalar(tc));
+        const dist = closest1.distanceTo(closest2);
+        if (dist < closestDist) {
+          closestDist = dist;
+          closestLine = line;
+        }
+      }
+
+      if (closestLine) {
+        const meta = edgeMetaRef.current.get(closestLine);
+        if (meta) {
+          // Brighten hovered edge
+          (closestLine.material as THREE.Material & { opacity: number }).opacity = 0.85;
+          // Compute midpoint for tooltip
+          const posAttr = closestLine.geometry.getAttribute('position');
+          const mid: [number, number, number] = [
+            (posAttr.getX(0) + posAttr.getX(1)) / 2,
+            (posAttr.getY(0) + posAttr.getY(1)) / 2 + 1.2,
+            (posAttr.getZ(0) + posAttr.getZ(1)) / 2,
+          ];
+          onEdgeHoverRef.current?.({ ...meta, midpoint: mid });
+          gl.domElement.style.cursor = 'pointer';
+        }
+      } else {
+        onEdgeHoverRef.current?.(null);
+      }
+    } else if (hitId) {
+      // Node is hovered — edge hover already cleared above
+    } else {
+      onEdgeHoverRef.current?.(null);
     }
   });
 
@@ -1182,6 +1294,10 @@ export function CosmosScene({
   const highlightSet  = useMemo(() => new Set(highlightedNoteIds), [highlightedNoteIds]);
   const navigate      = useNavigate();
   const [hoveredId,   setHoveredId]  = useState<string | null>(null);
+  const [hoveredEdgeMeta, setHoveredEdgeMeta] = useState<{
+    fromNoteId: string; toNoteId: string; edgeType: string;
+    description: string | null; midpoint: [number, number, number];
+  } | null>(null);
   const currentPosRef = useRef(new Map<string, THREE.Vector3>());
   const notesMap      = useMemo(() => new Map(notes.map(n => [n.id, n])), [notes]);
   const [lodLevel,    setLodLevel]   = useState<0|1|2>(0);
@@ -1200,6 +1316,7 @@ export function CosmosScene({
   }, [hoveredId]);
 
   const handleSetHovered = useCallback((id: string | null) => setHoveredId(id), []);
+  const handleEdgeHover = useCallback((meta: typeof hoveredEdgeMeta) => setHoveredEdgeMeta(meta), []);
   const handleLodChange  = useCallback((lv: 0|1|2) => {
     setLodLevel(lv);
     onLodChange?.(lv);
@@ -1232,6 +1349,7 @@ export function CosmosScene({
         onSetMode={onSetMode!}
         onSetSelectedNodeId={onSetSelectedNodeId!}
         onSetConnectFromId={onSetConnectFromId!}
+        onEdgeHover={handleEdgeHover}
       />
       {lodLevel === 0 && layout.clusters.map(c => <ClusterLabel key={c.tag} cluster={c} />)}
 
@@ -1353,6 +1471,70 @@ export function CosmosScene({
                   paddingTop: 6,
                 }}>
                   ▶ 点击展开
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Edge hover tooltip */}
+      {hoveredEdgeMeta && !hoveredId && (() => {
+        const cfg = getEdgeTypeConfig(hoveredEdgeMeta.edgeType);
+        const srcNote = notesMap.get(hoveredEdgeMeta.fromNoteId);
+        const tgtNote = notesMap.get(hoveredEdgeMeta.toNoteId);
+        return createElement(Html,
+          {
+            key: 'edge-tooltip',
+            position: hoveredEdgeMeta.midpoint,
+            center: true,
+            style: { pointerEvents: 'none', whiteSpace: 'nowrap' },
+          },
+          <div style={{
+            minWidth: 180, maxWidth: 260,
+            background: 'rgba(1,4,13,0.96)',
+            backdropFilter: 'blur(16px)',
+            border: `1px solid ${cfg.color}44`,
+            borderRadius: 8,
+            overflow: 'hidden',
+            boxShadow: `0 0 20px ${cfg.color}20, 0 12px 40px rgba(0,0,0,0.70)`,
+            animation: 'cosmos-window-in 0.12s cubic-bezier(0.16,1,0.3,1)',
+          }}>
+            <div style={{ height: 1.5, background: `linear-gradient(90deg, transparent, ${cfg.color}, transparent)` }} />
+            <div style={{ padding: '7px 10px' }}>
+              {/* Type badge */}
+              <span style={{
+                fontFamily: MONO, fontSize: 7.5, letterSpacing: '0.10em',
+                color: cfg.color,
+                background: `${cfg.color}15`,
+                border: `1px solid ${cfg.color}35`,
+                padding: '1px 5px', borderRadius: 3,
+                textTransform: 'uppercase' as const,
+              }}>{cfg.label}</span>
+              {/* Node names */}
+              <div style={{
+                fontFamily: INTER, fontSize: 11, color: 'rgba(210,220,245,0.85)',
+                marginTop: 5, display: 'flex', alignItems: 'center', gap: 5,
+              }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 90 }}>
+                  {(srcNote?.title || '?').slice(0, 15)}
+                </span>
+                <span style={{ fontFamily: MONO, fontSize: 9, color: cfg.color, flexShrink: 0 }}>
+                  ---
+                </span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 90 }}>
+                  {(tgtNote?.title || '?').slice(0, 15)}
+                </span>
+              </div>
+              {/* Description */}
+              {hoveredEdgeMeta.description && (
+                <div style={{
+                  fontFamily: INTER, fontSize: 10, color: 'rgba(160,175,205,0.65)',
+                  marginTop: 4, lineHeight: 1.4,
+                  overflow: 'hidden', textOverflow: 'ellipsis',
+                  display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                }}>
+                  {hoveredEdgeMeta.description}
                 </div>
               )}
             </div>

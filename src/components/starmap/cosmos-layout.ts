@@ -36,12 +36,24 @@ export interface ClusterInfo {
   radius: number;
 }
 
+export interface DbEdge {
+  id: string;
+  source_id: string;
+  target_id: string;
+  edge_type: string;
+  description: string | null;
+  confidence: number | null;
+}
+
 export interface CosmosEdge {
   from: [number, number, number];
   to: [number, number, number];
   color: string;
   fromNoteId: string;
   toNoteId: string;
+  edgeType: string;
+  description: string | null;
+  edgeId: string | null; // DB id, null for tag-inferred edges
 }
 
 export interface CosmosLayout {
@@ -80,7 +92,7 @@ function fibonacciPoint(i: number, total: number, radius: number): [number, numb
 }
 
 // ── Main layout builder ───────────────────────────────────────────────────────
-export function buildCosmosLayout(notes: CosmosNote[]): CosmosLayout {
+export function buildCosmosLayout(notes: CosmosNote[], dbEdges: DbEdge[] = []): CosmosLayout {
   if (!notes.length) {
     return { positions: {}, clusters: [], edges: [] };
   }
@@ -137,8 +149,37 @@ export function buildCosmosLayout(notes: CosmosNote[]): CosmosLayout {
     });
   });
 
-  // Build edges: connect notes sharing ≥1 tag (cap at 120 for performance)
+  // Build edges: tag-inferred + DB edges (deduplicated)
   const edges: CosmosEdge[] = [];
+  const edgeKey = (a: string, b: string) => a < b ? `${a}:${b}` : `${b}:${a}`;
+  const seenPairs = new Set<string>();
+
+  // 1. DB edges first (higher priority — they carry semantic info)
+  for (const de of dbEdges) {
+    const pi = positions[de.source_id];
+    const pj = positions[de.target_id];
+    if (!pi || !pj) continue;
+    const key = edgeKey(de.source_id, de.target_id);
+    seenPairs.add(key);
+
+    const typeColors: Record<string, string> = {
+      semantic: '#00ff66', insight_of: '#cc88ff', drives_action: '#ffaa44',
+      answers: '#66c2ff', supports: '#44dd88', contradicts: '#ff4466',
+      extends: '#66f0ff', inspires: '#ffa0d0', wikilink: '#a855f7',
+      related: '#4a5068',
+    };
+
+    edges.push({
+      from: pi.pos, to: pj.pos,
+      color: typeColors[de.edge_type] ?? '#4a5068',
+      fromNoteId: de.source_id, toNoteId: de.target_id,
+      edgeType: de.edge_type,
+      description: de.description,
+      edgeId: de.id,
+    });
+  }
+
+  // 2. Tag-inferred edges (only if not already covered by DB edge)
   const noteList = notes.slice(0, 120);
   for (let i = 0; i < noteList.length; i++) {
     for (let j = i + 1; j < noteList.length; j++) {
@@ -149,13 +190,18 @@ export function buildCosmosLayout(notes: CosmosNote[]): CosmosLayout {
         const pi = positions[ni.id];
         const pj = positions[nj.id];
         if (pi && pj) {
-          edges.push({
-            from: pi.pos,
-            to: pj.pos,
-            color: pi.color,
-            fromNoteId: ni.id,
-            toNoteId: nj.id,
-          });
+          const key = edgeKey(ni.id, nj.id);
+          if (!seenPairs.has(key)) {
+            seenPairs.add(key);
+            edges.push({
+              from: pi.pos, to: pj.pos,
+              color: pi.color,
+              fromNoteId: ni.id, toNoteId: nj.id,
+              edgeType: 'related',
+              description: `共享标签: ${shared.join(', ')}`,
+              edgeId: null,
+            });
+          }
         }
       }
     }

@@ -19,7 +19,7 @@ interface Props {
   sourceTitle:   string;
   targetTitle:   string;
   suggestedType: RelationType;
-  onConfirm:     (relType: RelationType) => void;
+  onConfirm:     (relType: RelationType, description?: string) => void;
   onCancel:      () => void;
 }
 
@@ -27,14 +27,17 @@ export function ConnectConfirmOverlay({
   sourceTitle, targetTitle, suggestedType, onConfirm, onCancel,
 }: Props) {
   const [selected, setSelected]     = useState<RelationType>(suggestedType);
+  const [description, setDescription] = useState('');
   const [progress, setProgress]     = useState(0);
   const startRef     = useRef(Date.now());
   const rafRef       = useRef<number>();
   const confirmedRef = useRef(false);
   const selectedRef  = useRef<RelationType>(suggestedType);
+  const descRef      = useRef('');
 
-  // Keep selectedRef current so the RAF callback always reads latest value
+  // Keep refs current so the RAF callback always reads latest value
   useEffect(() => { selectedRef.current = selected; }, [selected]);
+  useEffect(() => { descRef.current = description; }, [description]);
 
   // Countdown + auto-confirm RAF loop
   useEffect(() => {
@@ -47,7 +50,7 @@ export function ConnectConfirmOverlay({
       setProgress(pct);
       if (pct >= 1 && !confirmedRef.current) {
         confirmedRef.current = true;
-        onConfirm(selectedRef.current);
+        onConfirm(selectedRef.current, descRef.current || undefined);
       } else if (pct < 1) {
         rafRef.current = requestAnimationFrame(tick);
       }
@@ -178,7 +181,7 @@ export function ConnectConfirmOverlay({
           display:       'flex',
           gap:           6,
           flexWrap:      'wrap' as const,
-          marginBottom:  10,
+          marginBottom:  8,
         }}>
           {RELATION_TYPES.map(r => {
             const isActive = selected === r.id;
@@ -205,6 +208,44 @@ export function ConnectConfirmOverlay({
             );
           })}
         </div>
+
+        {/* Impact hint */}
+        <div style={{
+          fontFamily:    INTER,
+          fontSize:      'clamp(9px,0.8vw,11px)',
+          color:         `${config.color}88`,
+          marginBottom:  8,
+          lineHeight:    1.5,
+        }}>
+          {config.desc}
+        </div>
+
+        {/* Description input */}
+        <input
+          type="text"
+          placeholder="描述这条关系（可选）..."
+          value={description}
+          onChange={e => {
+            setDescription(e.target.value);
+            // Reset countdown when user types
+            startRef.current = Date.now();
+            confirmedRef.current = false;
+            setProgress(0);
+          }}
+          style={{
+            width:         '100%',
+            boxSizing:     'border-box' as const,
+            fontFamily:    INTER,
+            fontSize:      'clamp(9px,0.82vw,11px)',
+            color:         'rgba(200,215,240,0.80)',
+            background:    'rgba(255,255,255,0.03)',
+            border:        `1px solid ${config.color}20`,
+            borderRadius:  5,
+            padding:       '5px 9px',
+            outline:       'none',
+            marginBottom:  8,
+          }}
+        />
 
         {/* Footer hint */}
         <div style={{
