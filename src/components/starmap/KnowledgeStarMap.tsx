@@ -5,6 +5,7 @@ import { CosmosScene } from './CosmosScene';
 import { buildCosmosLayout, type CosmosNote } from './cosmos-layout';
 import { NodeContextMenu } from './NodeContextMenu';
 import { GalaxyJoinOverlay, type GalaxyOption } from './GalaxyJoinOverlay';
+import { ConnectConfirmOverlay } from './ConnectConfirmOverlay';
 import { WorkbenchSummonBar } from './WorkbenchSummonBar';
 import { WorkbenchPanel } from './WorkbenchPanel';
 import { type RelationType } from './connect-types';
