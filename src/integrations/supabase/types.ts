@@ -3755,38 +3755,50 @@ export type Database = {
       obsidian_imports: {
         Row: {
           created_at: string | null
+          deleted: number
           error_msg: string | null
           file_name: string
           finished_at: string | null
           id: string
           imported: number
+          is_sync: boolean
+          renamed: number
           skipped: number
           status: string
           total_files: number
+          updated: number
           user_id: string
         }
         Insert: {
           created_at?: string | null
+          deleted?: number
           error_msg?: string | null
           file_name: string
           finished_at?: string | null
           id?: string
           imported?: number
+          is_sync?: boolean
+          renamed?: number
           skipped?: number
           status?: string
           total_files?: number
+          updated?: number
           user_id: string
         }
         Update: {
           created_at?: string | null
+          deleted?: number
           error_msg?: string | null
           file_name?: string
           finished_at?: string | null
           id?: string
           imported?: number
+          is_sync?: boolean
+          renamed?: number
           skipped?: number
           status?: string
           total_files?: number
+          updated?: number
           user_id?: string
         }
         Relationships: []

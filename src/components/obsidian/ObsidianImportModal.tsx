@@ -1,10 +1,8 @@
 /**
- * Obsidian Import Modal
- *
- * Three-step flow: Select ZIP → Preview stats → Import progress → Done
+ * Obsidian Import Modal — supports both first-time import and incremental re-sync
  */
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { X, Upload, FileArchive, CheckCircle2, AlertCircle, Loader2, Link2, Tag, FolderOpen, FileText } from 'lucide-react';
+import { X, Upload, FileArchive, CheckCircle2, AlertCircle, Loader2, Link2, Tag, FolderOpen, FileText, RefreshCw } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useObsidianImport } from '@/hooks/useObsidianImport';
@@ -12,7 +10,7 @@ import JSZip from 'jszip';
 
 const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
-const ACCENT = '#a855f7'; // purple for Obsidian
+const ACCENT = '#a855f7';
 
 interface PreviewStats {
   fileCount: number;
@@ -39,18 +37,18 @@ export function ObsidianImportModal({ open, onClose, onImportDone }: Props) {
   const [preview, setPreview] = useState<PreviewStats | null>(null);
   const [scanning, setScanning] = useState(false);
 
-  // Reset when modal opens
+  // Reset + detect sync mode when modal opens
   useEffect(() => {
     if (open) {
       setStep('select');
       setZipFile(null);
       setPreview(null);
       importer.reset();
+      importer.detectSyncMode();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Scan ZIP for preview stats
   const scanZip = useCallback(async (file: File) => {
     setScanning(true);
     try {
@@ -60,35 +58,25 @@ export function ObsidianImportModal({ open, onClose, onImportDone }: Props) {
       let linkCount = 0;
       let fileCount = 0;
       let totalBytes = 0;
-
       const SKIP = ['.obsidian', '.trash', '.git', '__macosx'];
 
       for (const [path, entry] of Object.entries(zip.files)) {
-        if (entry.dir) continue;
-        if (!path.endsWith('.md')) continue;
+        if (entry.dir || !path.endsWith('.md')) continue;
         if (SKIP.some(d => path.toLowerCase().startsWith(d + '/'))) continue;
 
         fileCount++;
         const text = await entry.async('string');
         totalBytes += text.length;
 
-        // Folder
         const parts = path.split('/');
         if (parts.length > 2) folders.add(parts[1] || parts[0]);
         else if (parts.length > 1) folders.add(parts[0]);
 
-        // Wikilinks
         const links = text.match(/\[\[([^\]]+?)\]\]/g);
         if (links) linkCount += links.length;
 
-        // Tags (inline + frontmatter)
         const inlineTags = text.match(/(?:^|\s)#([a-zA-Z\u4e00-\u9fff][\w\u4e00-\u9fff/-]*)/g);
         if (inlineTags) inlineTags.forEach(t => tags.add(t.trim().slice(1)));
-
-        const fmMatch = text.match(/^---\r?\n[\s\S]*?tags:\s*\[?([^\]}\n]+)\]?/m);
-        if (fmMatch) {
-          fmMatch[1].split(',').map(t => t.trim().replace(/^['"-]+|['"-]+$/g, '')).filter(Boolean).forEach(t => tags.add(t));
-        }
       }
 
       const sizeStr = totalBytes > 1024 * 1024
@@ -133,21 +121,25 @@ export function ObsidianImportModal({ open, onClose, onImportDone }: Props) {
   };
 
   const handleClose = () => {
-    if (importer.running) return; // Don't close during import
+    if (importer.running) return;
     onClose();
   };
 
   if (!open) return null;
 
+  const isSyncMode = importer.syncMode;
+
   const phaseLabel: Record<string, string> = {
     unzip: '解压文件...',
     parse: '解析 Markdown...',
-    dedup: '检查重复...',
-    insert: '写入知识节点...',
-    index: 'RAG 索引...',
-    edges: '建立关系边...',
-    done: '完成',
-    error: '出错',
+    diff:  '比对变化...',
+    delete: '清理已删除笔记...',
+    insert: '写入新笔记...',
+    update: '更新修改笔记...',
+    index:  'RAG 索引...',
+    edges:  '建立关系边...',
+    done:   '完成',
+    error:  '出错',
   };
 
   const p = importer.progress;
@@ -167,7 +159,6 @@ export function ObsidianImportModal({ open, onClose, onImportDone }: Props) {
           boxShadow: `0 0 60px ${ACCENT}18`,
         }}
       >
-        {/* Close button */}
         <button
           onClick={handleClose}
           disabled={importer.running}
@@ -179,11 +170,17 @@ export function ObsidianImportModal({ open, onClose, onImportDone }: Props) {
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
           <div style={{ width: 32, height: 32, borderRadius: 8, background: `${ACCENT}22`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <FileArchive size={18} color={ACCENT} />
+            {isSyncMode ? <RefreshCw size={18} color={ACCENT} /> : <FileArchive size={18} color={ACCENT} />}
           </div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 15 }}>Import Obsidian Vault</div>
-            <div style={{ fontSize: 11, color: '#888fa8', fontFamily: MONO }}>ZIP archive import</div>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>
+              {isSyncMode ? 'Re-sync Obsidian Vault' : 'Import Obsidian Vault'}
+            </div>
+            <div style={{ fontSize: 11, color: '#888fa8', fontFamily: MONO }}>
+              {isSyncMode
+                ? `${importer.existingCount} existing notes · incremental sync`
+                : 'ZIP archive import'}
+            </div>
           </div>
         </div>
 
@@ -209,7 +206,9 @@ export function ObsidianImportModal({ open, onClose, onImportDone }: Props) {
               {scanning ? 'Scanning...' : 'Drop .zip file here or click to select'}
             </div>
             <div style={{ fontSize: 11, color: '#888fa8' }}>
-              In Obsidian: select your vault folder, compress to .zip, and upload
+              {isSyncMode
+                ? 'Upload updated vault — only changes will be processed'
+                : 'In Obsidian: select your vault folder, compress to .zip, and upload'}
             </div>
             <input
               ref={fileRef}
@@ -224,6 +223,16 @@ export function ObsidianImportModal({ open, onClose, onImportDone }: Props) {
         {/* Step: Preview */}
         {step === 'preview' && preview && (
           <div>
+            {isSyncMode && (
+              <div style={{
+                marginBottom: 14, padding: '8px 12px', borderRadius: 8,
+                background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.20)',
+                fontSize: 11, color: 'rgba(195,170,255,0.85)', fontFamily: MONO,
+              }}>
+                <RefreshCw size={11} style={{ display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />
+                Sync mode: will detect new, changed, deleted, and renamed files
+              </div>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
               {[
                 { icon: FileText, label: 'Markdown files', value: preview.fileCount },
@@ -254,7 +263,7 @@ export function ObsidianImportModal({ open, onClose, onImportDone }: Props) {
                 onClick={handleStartImport}
                 style={{ flex: 2, padding: '10px 0', borderRadius: 8, border: 'none', background: ACCENT, color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: INTER }}
               >
-                Start Import
+                {isSyncMode ? 'Start Sync' : 'Start Import'}
               </button>
             </div>
           </div>
@@ -284,12 +293,17 @@ export function ObsidianImportModal({ open, onClose, onImportDone }: Props) {
         {step === 'done' && importer.result && (
           <div style={{ textAlign: 'center' }}>
             <CheckCircle2 size={40} color="#00ff66" style={{ margin: '0 auto 12px' }} />
-            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Import Complete</div>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>
+              {importer.result.isSyncMode ? 'Sync Complete' : 'Import Complete'}
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 20 }}>
               {[
-                { label: 'Imported', value: importer.result.imported, color: '#00ff66' },
-                { label: 'Skipped', value: importer.result.skipped, color: '#888fa8' },
-                { label: 'Edges', value: importer.result.edgesCreated, color: ACCENT },
+                { label: 'New',      value: importer.result.imported, color: '#00ff66' },
+                { label: 'Updated',  value: importer.result.updated,  color: '#66f0ff' },
+                { label: 'Unchanged',value: importer.result.skipped,  color: '#888fa8' },
+                { label: 'Deleted',  value: importer.result.deleted,  color: '#ff4466' },
+                { label: 'Renamed',  value: importer.result.renamed,  color: '#ffa040' },
+                { label: 'Edges',    value: importer.result.edgesCreated, color: ACCENT },
               ].map(({ label, value, color }) => (
                 <div key={label} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: 10 }}>
                   <div style={{ fontSize: 20, fontWeight: 700, fontFamily: MONO, color }}>{value}</div>
@@ -310,7 +324,9 @@ export function ObsidianImportModal({ open, onClose, onImportDone }: Props) {
         {step === 'error' && (
           <div style={{ textAlign: 'center' }}>
             <AlertCircle size={40} color="#ff4466" style={{ margin: '0 auto 12px' }} />
-            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>Import Failed</div>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>
+              {isSyncMode ? 'Sync Failed' : 'Import Failed'}
+            </div>
             <div style={{ fontSize: 12, color: '#ff4466', marginBottom: 16, fontFamily: MONO }}>
               {importer.error || 'Unknown error'}
             </div>
