@@ -121,6 +121,24 @@ function StarMapContents({ user, notes, loading, openPod, pods }: ContentsProps)
     setConnectModeInfo({ mode, fromTitle });
   }, []);
 
+  // ── Obsidian import-done listener: refresh notes + highlight cluster ──────
+  useEffect(() => {
+    const onImportDone = () => {
+      fetchNotes();
+      // Highlight obsidian nodes for 6 seconds after import
+      setTimeout(() => {
+        const obsNotes = notes.filter(n => n.node_type === 'obsidian');
+        if (obsNotes.length > 0) {
+          setTagFilter('node:obsidian');
+          setHighlightedIds(obsNotes.map(n => n.id));
+          setTimeout(() => { setTagFilter(null); setHighlightedIds([]); }, 6000);
+        }
+      }, 500);
+    };
+    window.addEventListener('obsidian-import-done', onImportDone);
+    return () => window.removeEventListener('obsidian-import-done', onImportDone);
+  }, [notes]);
+
   // ── Drag-to-pod handler ───────────────────────────────────────────────────
   const handleNodeDropToPod = useCallback((noteId: string, podId: string) => {
     const note = notes.find(n => n.id === noteId);
@@ -180,6 +198,7 @@ function StarMapContents({ user, notes, loading, openPod, pods }: ContentsProps)
   const thisWeek  = notes.filter(n =>
     n.created_at && Date.now() - new Date(n.created_at).getTime() < 7 * 86400000
   ).length;
+  const obsidianCount = notes.filter(n => n.node_type === 'obsidian').length;
 
   return (
     <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', background: '#040508' }}>
@@ -213,7 +232,7 @@ function StarMapContents({ user, notes, loading, openPod, pods }: ContentsProps)
           {user.email?.split('@')[0]}
         </div>
         <div style={{ fontFamily: MONO, fontSize: 'clamp(7px,0.7vw,9px)', color: 'rgba(60,72,95,0.60)', letterSpacing: '0.08em', marginBottom: 'clamp(7px,0.8vh,12px)' }}>
-          {notes.length} nodes · {totalTags} clusters · +{thisWeek} this week
+          {notes.length} nodes · {totalTags} clusters · +{thisWeek} this week{obsidianCount > 0 ? ` · ${obsidianCount} obsidian` : ''}
         </div>
         <button
           onClick={() => setRecenterTrigger(t => t + 1)}
