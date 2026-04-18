@@ -1,45 +1,42 @@
-# Capture 输入提示
+# Drag-to-Pod Hint
 
 ## Context
+New users open a node detail (NodeWindow) but don't know they can also **drag** nodes to Pod docks for further processing. We need a one-time, non-blocking hint when a NodeWindow opens for the first time AND `drag_to_pod` hasn't been completed yet.
 
-新用户首次打开 Capture Pod 或宇宙为空时，需要一个明确的引导提示告诉他们"输入内容可以生成知识星"。提示在首次成功提交后永久消失。
+## Approach — Two-sided hint
 
-## 方案：内嵌引导区（非气泡）
+### A. NodeWindow side — inline hint banner (NodeWindow.tsx)
+- Below the "继续委托 Agent" button section, add a subtle hint banner:
+  - Short text: **拖到洞察舱试试**
+  - Sub text: **把这颗星送进功能舱，继续检索、提炼或转成行动**
+- Gate: `useHintState().shouldShowHint('drag_to_pod')`
+- Style: same glassmorphic pattern as CaptureBox hint — `pointerEvents: 'none'`, no z-index issues
+- Disappears reactively when `drag_to_pod` is completed
 
-选择在 textarea 上方、routing preview 下方插入一个内嵌的引导区块，而非外部气泡。理由：
-- Capture Pod 内部空间紧凑，内嵌引导和输入区在同一视觉流中更自然
-- placeholder 只有聚焦才能看到，引导区块始终可见且更醒目
-- `pointerEvents: none` 不阻塞任何交互
+### B. CommandDock side — glow ring on Pod buttons (CommandDock.tsx)
+- When `drag_to_pod` hint is active AND a NodeWindow is open, add a subtle border-glow to all pod dock buttons
+- Reuse the existing `hint-pulse-ring` CSS class (already in index.css)
+- Gate: listen to `cosmos:drag-hint-active` custom event dispatched from StarMapLayout
+- Simpler approach: use `useHintState().shouldShowHint('drag_to_pod')` directly + check `nodeWindowOpen` state via a new CustomEvent
 
-## 修改文件
+### C. Completion — already wired
+`StarMapLayout.tsx` line 280 already calls `hints.markCompleted('drag_to_pod')` inside `handleNodeDropToPod`. No changes needed.
 
-### 1. `src/components/pods/CaptureBox.tsx`
-- 导入 `useHintState`
-- 在组件内调用 `hints.shouldShowHint('first_create_star')` 判断是否展示
-- 在 `{!showPipeline && (` 输入区域块（line 174）的 `<div>` 内，textarea 之前，插入引导区块：
-  ```
-  {showCaptureHint && (
-    <div style={{ ... 无边框淡绿引导样式 ... pointerEvents: 'none' }}>
-      <p>输入一句想法，生成第一颗知识星</p>
-      <p>你的输入不会只是被保存，而会被编译成知识节点</p>
-    </div>
-  )}
-  ```
-- 样式：淡绿背景 `rgba(0,255,102,0.04)`，绿色主文案 + 更淡的副文案，圆角 6px，8px 内边距
-- `pointerEvents: 'none'` 确保不遮挡
+## Files to modify
 
-### 2. 消失条件
-- 已有逻辑：StarMapLayout 在 noteCount 从 0→1+ 时调用 `hints.markCompleted('first_create_star')`
-- CaptureBox 读取 `shouldShowHint('first_create_star')` — 当 completed 后自动返回 false → 区块消失
-- 无需新增任何 hint key 或 action_feedback 联动
+### 1. `src/components/starmap/NodeWindow.tsx`
+- Import `useHintState`, `GripVertical` (or `Move`) icon from lucide
+- After the agent actions `</div>`, before closing style tag, add hint banner
+- Gated by `shouldShowHint('drag_to_pod')`
 
-### 3. 不需修改的文件
-- `useHintState.ts` — `first_create_star` key 已存在，`noteCount === 0` 的上下文判断已正确
-- `StarMapLayout.tsx` — `markCompleted('first_create_star')` 已在 noteCount 变化时触发
-- `PodWelcomeHint.tsx` — 保留不变，它是通用 pod 欢迎语；新引导区块是 Capture 专属的更醒目版本
+### 2. `src/components/floating/CommandDock.tsx`
+- Already imports `useHintState`
+- Add: `const showDragHint = hints.shouldShowHint('drag_to_pod');`
+- On each pod step button, add conditional glow class when `showDragHint && nodeWindowOpen`
+- `nodeWindowOpen` state: listen to `tour-node-opened` / `node-window-closed` events
 
 ## Verification
-1. 新用户（无节点）→ 打开 Capture Pod → 看到绿色引导区块
-2. 输入内容提交成功 → noteCount 变为 1 → 引导区块消失
-3. 再次打开 Capture Pod → 引导区块不再出现
-4. 引导区块不遮挡 textarea 的点击/输入
+1. Fresh user (clear localStorage) — open a node → see hint in NodeWindow + dock buttons glow
+2. Drag a node to any pod → hint disappears from both NodeWindow and dock
+3. Hint never reappears after completion
+4. Hint does NOT block any click/drag interactions
