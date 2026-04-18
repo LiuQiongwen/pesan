@@ -9,11 +9,12 @@
  * - Agent pipeline visualization
  */
 import { useState, useRef, useCallback } from 'react';
-import { Globe, Type, FileIcon, Send, RotateCcw, ArrowRight } from 'lucide-react';
+import { Globe, Type, FileIcon, Send, RotateCcw, ArrowRight, Sparkles } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useAgentPipeline } from '@/hooks/useAgentPipeline';
 import { useAgentWorkflow } from '@/contexts/AgentWorkflowContext';
 import { useActiveUniverse } from '@/contexts/UniverseContext';
+import { useHintState } from '@/hooks/useHintState';
 import { AgentPipeline } from './AgentPipeline';
 import type { SourceType } from '@/types';
 
@@ -49,6 +50,8 @@ export default function CaptureBox({ onFlashNote, onAgentStart, onAgentEnd }: Pr
   const { activeUniverseId } = useActiveUniverse();
   const pipeline    = useAgentPipeline(user?.id, activeUniverseId);
   const workflow    = useAgentWorkflow();
+  const hints       = useHintState();
+  const showCaptureHint = hints.shouldShowHint('first_create_star');
 
   const [mode,     setMode]     = useState<Mode>('text');
   const [intent,   setIntent]   = useState<Intent>('raw');
@@ -173,6 +176,29 @@ export default function CaptureBox({ onFlashNote, onAgentStart, onAgentEnd }: Pr
       {/* ── INPUT AREA ── */}
       {!showPipeline && (
         <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+
+          {/* ── FIRST-TIME CAPTURE HINT ── */}
+          {showCaptureHint && (
+            <div style={{
+              padding: '8px 10px',
+              background: 'rgba(0,255,102,0.04)',
+              border: '1px solid rgba(0,255,102,0.10)',
+              borderRadius: 6,
+              pointerEvents: 'none',
+              display: 'flex', alignItems: 'flex-start', gap: 7,
+            }}>
+              <Sparkles size={13} color={`${G}70`} style={{ marginTop: 1, flexShrink: 0 }} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <span style={{ fontFamily: INTER, fontSize: 11.5, fontWeight: 500, color: `${G}cc`, letterSpacing: '0.01em' }}>
+                  输入一句想法，生成第一颗知识星
+                </span>
+                <span style={{ fontFamily: INTER, fontSize: 10, color: 'rgba(0,255,102,0.38)', letterSpacing: '0.01em' }}>
+                  你的输入不会只是被保存，而会被编译成知识节点
+                </span>
+              </div>
+            </div>
+          )}
+
           {mode === 'text' && (
             <textarea value={text} onChange={e => setText(e.target.value)}
               placeholder="委托任何内容——想法、文章片段、问题、笔记…"
