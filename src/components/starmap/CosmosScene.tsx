@@ -1712,10 +1712,8 @@ export function CosmosScene({
         minDistance: 8, maxDistance: 180,
         makeDefault: true,
         onChange: () => {
-          // Dispatch once per user-initiated orbit for onboarding tour
-          if (!orbitAutoRotate.current) {
-            window.dispatchEvent(new CustomEvent('tour-camera-moved'));
-          }
+          // Dispatch for onboarding tour (deduplicated by useTourTrigger)
+          window.dispatchEvent(new CustomEvent('tour-camera-moved'));
         },
       })}
 
