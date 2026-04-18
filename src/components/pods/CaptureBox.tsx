@@ -9,20 +9,21 @@
  * - Agent pipeline visualization
  */
 import { useState, useRef, useCallback } from 'react';
-import { Globe, Type, FileIcon, Send, RotateCcw, ArrowRight, Sparkles } from 'lucide-react';
+import { Globe, Type, FileIcon, Send, RotateCcw, ArrowRight, Sparkles, ScanLine } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useAgentPipeline } from '@/hooks/useAgentPipeline';
 import { useAgentWorkflow } from '@/contexts/AgentWorkflowContext';
 import { useActiveUniverse } from '@/contexts/UniverseContext';
 import { useHintState } from '@/hooks/useHintState';
 import { AgentPipeline } from './AgentPipeline';
+import { OcrCaptureModal } from '@/components/ocr/OcrCaptureModal';
 import type { SourceType } from '@/types';
 
 const G     = '#00ff66';
 const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
 
-type Mode   = 'text' | 'url' | 'file';
+type Mode   = 'text' | 'url' | 'file' | 'ocr';
 type Intent = 'raw' | 'idea' | 'question' | 'analyze' | 'act';
 
 const INTENTS: { key: Intent; label: string; hint: string; chain: string }[] = [
@@ -37,6 +38,7 @@ const MODES: { key: Mode; label: string; icon: typeof Type }[] = [
   { key: 'text', label: 'TEXT', icon: Type    },
   { key: 'url',  label: 'URL',  icon: Globe   },
   { key: 'file', label: 'FILE', icon: FileIcon },
+  { key: 'ocr',  label: 'OCR',  icon: ScanLine },
 ];
 
 interface Props {
@@ -59,6 +61,7 @@ export default function CaptureBox({ onFlashNote, onAgentStart, onAgentEnd }: Pr
   const [url,      setUrl]      = useState('');
   const [fileName, setFileName] = useState('');
   const [fileText, setFileText] = useState('');
+  const [ocrOpen,  setOcrOpen]  = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -123,7 +126,11 @@ export default function CaptureBox({ onFlashNote, onAgentStart, onAgentEnd }: Pr
         </div>
         <div style={{ display: 'flex', gap: 2 }}>
           {MODES.map(({ key, label, icon: MIcon }) => (
-            <button key={key} onClick={() => !pipeline.running && setMode(key)} style={{
+            <button key={key} onClick={() => {
+              if (pipeline.running) return;
+              if (key === 'ocr') { setOcrOpen(true); return; }
+              setMode(key);
+            }} style={{
               display: 'flex', alignItems: 'center', gap: 3,
               fontFamily: MONO, fontSize: 8, letterSpacing: '0.07em',
               color: mode === key ? '#040508' : 'rgba(80,95,120,0.55)',
@@ -303,6 +310,14 @@ export default function CaptureBox({ onFlashNote, onAgentStart, onAgentEnd }: Pr
             </div>
           )}
         </>
+      )}
+
+      {/* OCR Modal */}
+      {ocrOpen && (
+        <OcrCaptureModal
+          onClose={() => setOcrOpen(false)}
+          onFlashNote={onFlashNote}
+        />
       )}
     </div>
   );
