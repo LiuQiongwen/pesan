@@ -8,6 +8,7 @@ import {
   Move, Sparkles, MousePointerClick,
   ArrowRightToLine, Link2, Layers3, Crosshair, Navigation,
   Keyboard, LayoutGrid, Download, FileArchive,
+  Smartphone, Hand, Send, ChevronsUp,
 } from 'lucide-react';
 import { useTour } from './TourProvider';
 import { useHintState, HINT_KEYS } from '@/hooks/useHintState';
@@ -109,6 +110,31 @@ const SECTIONS: Section[] = [
         icon: FileArchive, color: '#a855f7',
         title: 'Obsidian 导入',
         desc: '设置 → Import Obsidian → 上传 vault.zip，支持增量同步',
+      },
+    ],
+  },
+  {
+    label: '移动端操作', tag: 'MOBILE',
+    items: [
+      {
+        icon: Hand, color: '#66f0ff',
+        title: '轻点查看',
+        desc: '轻点星球查看内容，长按打开更多操作菜单',
+      },
+      {
+        icon: Send, color: '#b496ff',
+        title: '发送到功能舱',
+        desc: '长按节点 → 选择目标舱，替代桌面端拖拽操作',
+      },
+      {
+        icon: Link2, color: '#00ff66',
+        title: '连接节点',
+        desc: '长按选择「建立连接」→ 轻点第二个节点完成关联',
+      },
+      {
+        icon: ChevronsUp, color: '#ffa040',
+        title: '上拉展开舱页',
+        desc: '舱页底部上拉可展开更多空间，下滑可关闭',
       },
     ],
   },

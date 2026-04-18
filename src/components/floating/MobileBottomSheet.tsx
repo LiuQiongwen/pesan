@@ -87,7 +87,7 @@ export function MobileBottomSheet({
           position: 'fixed',
           bottom: 0, left: 0, right: 0,
           zIndex: 51,
-          maxHeight: '78vh',
+          maxHeight: 'calc(90vh - env(safe-area-inset-bottom, 0px))',
           transform: `translateY(${dragY}px)`,
           transition: dragging ? 'none' : 'transform 0.28s cubic-bezier(0.22,1,0.36,1)',
           display: 'flex', flexDirection: 'column',
@@ -180,7 +180,7 @@ export function MobileBottomSheet({
           overflowY: 'auto',
           overscrollBehavior: 'contain',
           WebkitOverflowScrolling: 'touch',
-          padding: '0 0 env(safe-area-inset-bottom, 0px)',
+          paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)',
         }}>
           {children}
         </div>

@@ -29,6 +29,10 @@ function hexA(hex: string, a: number) {
 export function MobileTabBar() {
   const { pods, togglePod } = useToolbox();
 
+  // Hide tab bar when any pod sheet is open
+  const anyPodOpen = Object.values(pods).some(p => p?.open);
+  if (anyPodOpen) return null;
+
   return (
     <div style={{
       position: 'fixed',

@@ -1,8 +1,10 @@
 /**
  * InteractionHints — contextual bottom-left HUD showing interaction shortcuts.
  * Ultra-subtle, auto-fades after 8s idle, reappears on mouse move.
+ * Shows touch-specific hints on mobile.
  */
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { useDevice } from '@/hooks/useDevice';
 
 const MONO = "'IBM Plex Mono','Roboto Mono',monospace";
 
@@ -21,8 +23,9 @@ interface Hint {
 export function InteractionHints({ noteCount, hoveredNode, connectMode, nodeWindowOpen }: Props) {
   const [visible, setVisible] = useState(true);
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const { isPhone } = useDevice();
 
-  // Auto-hide after 8s, reshow on mouse move
+  // Auto-hide after 8s, reshow on interaction
   useEffect(() => {
     const reset = () => {
       setVisible(true);
@@ -31,15 +34,36 @@ export function InteractionHints({ noteCount, hoveredNode, connectMode, nodeWind
     };
     reset();
     window.addEventListener('mousemove', reset, { passive: true });
+    window.addEventListener('touchstart', reset, { passive: true });
     window.addEventListener('keydown', reset, { passive: true });
     return () => {
       window.removeEventListener('mousemove', reset);
+      window.removeEventListener('touchstart', reset);
       window.removeEventListener('keydown', reset);
       clearTimeout(timerRef.current);
     };
   }, []);
 
   const hints = useMemo((): Hint[] => {
+    // ── Mobile hints ──
+    if (isPhone) {
+      if (connectMode) {
+        return [
+          { key: '轻点', action: '选择第二颗星完成连接' },
+        ];
+      }
+      if (noteCount === 0) {
+        return [
+          { key: '底栏', action: '点「捕获」输入第一条知识' },
+        ];
+      }
+      return [
+        { key: '轻点', action: '查看星球' },
+        { key: '长按', action: '更多操作' },
+      ];
+    }
+
+    // ── Desktop hints ──
     if (connectMode) {
       return [
         { key: '点击', action: '选择目标星建立连接' },
@@ -74,17 +98,17 @@ export function InteractionHints({ noteCount, hoveredNode, connectMode, nodeWind
       { key: 'N', action: '新笔记' },
       { key: 'G', action: '回到中心' },
     ];
-  }, [noteCount, hoveredNode, connectMode, nodeWindowOpen]);
+  }, [noteCount, hoveredNode, connectMode, nodeWindowOpen, isPhone]);
 
   return (
     <div style={{
       position: 'fixed',
-      bottom: 'clamp(12px, 1.5vh, 20px)',
-      left: 'clamp(14px, 1.5vw, 22px)',
+      bottom: isPhone ? 'calc(12px + env(safe-area-inset-bottom, 0px))' : 'clamp(12px, 1.5vh, 20px)',
+      left: isPhone ? 12 : 'clamp(14px, 1.5vw, 22px)',
       zIndex: 8,
       pointerEvents: 'none',
       display: 'flex',
-      gap: 12,
+      gap: isPhone ? 8 : 12,
       opacity: visible ? 0.6 : 0,
       transition: 'opacity 0.6s ease',
     }}>
@@ -92,19 +116,19 @@ export function InteractionHints({ noteCount, hoveredNode, connectMode, nodeWind
         <div key={h.key} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <span style={{
             fontFamily: MONO,
-            fontSize: 8,
+            fontSize: isPhone ? 9 : 8,
             letterSpacing: '0.06em',
             color: 'rgba(102,240,255,0.65)',
             background: 'rgba(102,240,255,0.08)',
             border: '1px solid rgba(102,240,255,0.15)',
-            padding: '1px 5px',
+            padding: isPhone ? '2px 6px' : '1px 5px',
             borderRadius: 3,
           }}>
             {h.key}
           </span>
           <span style={{
             fontFamily: MONO,
-            fontSize: 8,
+            fontSize: isPhone ? 9 : 8,
             letterSpacing: '0.04em',
             color: 'rgba(160,175,205,0.45)',
           }}>
