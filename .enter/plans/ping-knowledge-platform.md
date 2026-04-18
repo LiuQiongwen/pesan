@@ -1,34 +1,31 @@
-# Retrieval Scope + Trace Source Hints
+# Workbench Empty-State Hint
 
 ## Context
-User wants two interaction hints inside RetrievalBox that convey the "private cloud RAG" value through experience, not text. Both hint keys (`retrieval_scope`, `trace_source`) already exist in `useHintState` with `shouldShowHint` context gating returning `true`.
+WorkbenchPanel has two redundant empty states (lines 244-253 and 437-443). Both are plain text with no "knowledge workspace" feel. The user wants a richer, cosmos-flavored empty state with clear CTA text.
 
-## File: `src/components/pods/RetrievalBox.tsx`
+## Approach — Single file change in `WorkbenchPanel.tsx`
 
-### Change 1 — retrieval_scope hint (above search bar, inside empty state)
-- Import `useHintState` + `Crosshair` icon
-- Call `hints.shouldShowHint('retrieval_scope')` + `hints.markCompleted`
-- In the **empty hint** section (line 382-393), when `shouldShowHint('retrieval_scope')` is true, replace the generic text with a styled "scope awareness" hint:
-  - Icon: Crosshair
-  - Main: "先选知识范围，再提问"
-  - Sub: "这次回答只会基于你选中的知识范围"
-  - Style: subtle cyan-tinted bar, `pointerEvents: 'none'`
-- **Completion**: Call `hints.markCompleted('retrieval_scope')` inside `handleSearch` after a successful search returns results
+### 1. Merge two empty blocks into one
+- Remove the first empty block (lines 244-253) — it's inside `!minimized` but before the card row conditional
+- Enhance the second empty block (lines 437-443, the `orderedNotes.length === 0` fallback) with:
+  - A subtle orbit ring icon (`Orbit` from lucide-react) replacing `MousePointerClick`
+  - **Primary text**: "拖入 2–5 个节点，开始整理"
+  - **Secondary text**: "这里适合比较、合并、提炼，再把结果发布回宇宙"
+  - Dashed border zone hinting at drag target
+  - `workbench_empty` hint key check — show the hint text only when `shouldShowHint('workbench_empty')`, otherwise show a shorter "从星图拖入节点" fallback
+  - Mark `workbench_empty` completed when first node arrives (already handled by the note count change in `useEffect`)
 
-### Change 2 — trace_source hint (on first citation appearance)
-- Call `hints.shouldShowHint('trace_source')`
-- When citations first render AND hint is active, show a one-line hint above the source cards:
-  - Icon: Star
-  - Main: "点击引用，飞回来源节点"
-  - Sub: "每个答案都可以回到你的原始资料"
-- **Completion**: In `handleFlyTo`, call `hints.markCompleted('trace_source')`
+### 2. Mark completion
+Add `useHintState` import and call `markCompleted('workbench_empty')` inside the existing `useEffect` that syncs `noteOrder` — when `notes.length > 0` and hint is still active.
 
-### Change 3 — trace_source completion in StarMapLayout
-- In the existing `onTraceSource` handler (line 125-128), add `hints.markCompleted('trace_source')` so it's also completed from the layout side
+### 3. Responsive
+- Desktop: centered icon + text column layout (already works with flex column)
+- Mobile: same layout, narrower width is fine since it's just text + icon
+
+## Files Modified
+- `src/components/starmap/WorkbenchPanel.tsx`
 
 ## Verification
-1. New user opens Retrieval pod → sees scope hint in empty state
-2. Performs first search → scope hint disappears permanently
-3. Results with citations appear → sees trace hint above source cards
-4. Clicks any "定位" button → trace hint disappears, star is highlighted
-5. Neither hint reappears on refresh
+1. Open workbench with 0 nodes → see orbit icon + "拖入 2–5 个节点" + secondary text
+2. Add a node → empty state disappears, hint marked completed
+3. Remove all nodes → empty state returns but with shorter fallback text (hint already completed)
