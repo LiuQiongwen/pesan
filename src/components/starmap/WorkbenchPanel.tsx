@@ -5,10 +5,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   X, Minus, Layers3, Radar, FlaskConical, Zap,
-  GripVertical, Sparkles, ChevronRight,
+  GripVertical, Sparkles, ChevronRight, Orbit,
 } from 'lucide-react';
 import type { CosmosNote } from './cosmos-layout';
 import { supabase } from '@/integrations/supabase/client';
+import { useHintState } from '@/hooks/useHintState';
 
 const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
@@ -55,6 +56,8 @@ export function WorkbenchPanel({
   const [combining,    setCombining]    = useState(false);
   const [combineDone,  setCombineDone]  = useState(false);
   const [noteOrder,    setNoteOrder]    = useState<string[]>(() => notes.map(n => n.id));
+  const hints = useHintState();
+  const showEmptyHint = hints.shouldShowHint('workbench_empty');
   const [position,     setPosition]     = useState(() => ({
     x: Math.round(window.innerWidth * 0.55),
     y: Math.round(window.innerHeight * 0.18),
@@ -68,6 +71,8 @@ export function WorkbenchPanel({
       const added   = newIds.filter(id => !prev.includes(id));
       return [...kept, ...added];
     });
+    if (notes.length > 0) hints.markCompleted('workbench_empty');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notes]);
 
   // Ordered notes for display
@@ -239,18 +244,6 @@ export function WorkbenchPanel({
       {/* Body — hidden when minimized */}
       {!minimized && (
         <div style={{ position: 'relative', zIndex: 1, padding: '12px 14px 14px' }}>
-
-          {/* Empty state */}
-          {orderedNotes.length === 0 && (
-            <div style={{ padding: '14px 4px', textAlign: 'center' }}>
-              <div style={{ fontFamily: INTER, fontSize: 11, color: 'rgba(140,155,185,0.55)', marginBottom: 4 }}>
-                工作台为空
-              </div>
-              <div style={{ fontFamily: MONO, fontSize: 8.5, letterSpacing: '0.04em', color: 'rgba(100,115,145,0.40)', lineHeight: 1.7 }}>
-                右键星球「加入工作台」或拖拽节点至此
-              </div>
-            </div>
-          )}
 
           {/* Node cards row */}
           {orderedNotes.length > 0 ? (<>
@@ -435,10 +428,36 @@ export function WorkbenchPanel({
             )}
           </div>
           </>) : (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '32px 16px', color: 'rgba(255,255,255,0.35)', fontSize: 13 }}>
-              <MousePointerClick size={28} strokeWidth={1.2} style={{ opacity: 0.4 }} />
-              <span>右键选中星球添加到工作台</span>
-              <span style={{ fontSize: 11, opacity: 0.6 }}>或从星图拖拽节点到此处</span>
+            <div style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              gap: 8, padding: '28px 16px',
+              border: '1px dashed rgba(102,240,255,0.12)',
+              borderRadius: 10,
+              background: 'rgba(102,240,255,0.02)',
+            }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: '50%',
+                background: 'rgba(102,240,255,0.05)',
+                border: '1px solid rgba(102,240,255,0.12)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Orbit size={16} color="rgba(102,240,255,0.40)" strokeWidth={1.3} />
+              </div>
+              <span style={{
+                fontFamily: INTER, fontSize: 12, fontWeight: 500,
+                color: 'rgba(140,200,230,0.70)',
+              }}>
+                {showEmptyHint ? '拖入 2–5 个节点，开始整理' : '从星图拖入节点'}
+              </span>
+              {showEmptyHint && (
+                <span style={{
+                  fontFamily: INTER, fontSize: 10,
+                  color: 'rgba(102,240,255,0.30)', lineHeight: 1.6, textAlign: 'center',
+                  maxWidth: 220,
+                }}>
+                  这里适合比较、合并、提炼，再把结果发布回宇宙
+                </span>
+              )}
             </div>
           )}
         </div>
