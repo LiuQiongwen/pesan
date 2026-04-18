@@ -20,6 +20,7 @@ import * as THREE from 'three';
 import { type CosmosLayout, type CosmosNote } from './cosmos-layout';
 import { NodeWindow }  from './NodeWindow';
 import { getEdgeTypeConfig } from './connect-types';
+import { useHintState } from '@/hooks/useHintState';
 import type { HoveredNodeInfo } from './KnowledgeStarMap';
 import type { NodeType } from '@/types';
 
@@ -1504,6 +1505,8 @@ export function CosmosScene({
 }: CosmosSceneProps) {
   const highlightSet  = useMemo(() => new Set(highlightedNoteIds), [highlightedNoteIds]);
   const navigate      = useNavigate();
+  const hints         = useHintState();
+  const showClickHint = hints.shouldShowHint('first_click_node', { noteCount: notes.length });
   const [hoveredId,   setHoveredId]  = useState<string | null>(null);
   const [hoveredEdgeMeta, setHoveredEdgeMeta] = useState<{
     fromNoteId: string; toNoteId: string; edgeType: string;
@@ -1611,6 +1614,15 @@ export function CosmosScene({
               color: 'rgba(220,230,250,0.90)',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>{(note.title || '(未命名)').slice(0, 24)}{(note.title || '').length > 24 ? '…' : ''}</span>
+            {showClickHint && (
+              <span style={{
+                fontFamily: INTER, fontSize: 9, fontWeight: 400,
+                color: 'rgba(102,240,255,0.60)',
+                letterSpacing: '0.02em',
+                marginLeft: 2,
+                flexShrink: 0,
+              }}>· 点击查看详情</span>
+            )}
           </div>
         );
       })()}
