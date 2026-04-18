@@ -15,19 +15,29 @@ Deno.serve(async (req) => {
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     if (!AI_TOKEN) throw new Error("AI token missing");
 
-    const { query, user_id, project_id, top_k = 5 } = await req.json();
+    const { query, user_id, project_id, universe_id, top_k = 5 } = await req.json();
     if (!query || !user_id) throw new Error("query and user_id required");
 
     const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const searchTerms = query.replace(/[^\w\s\u4e00-\u9fff]/g, " ").trim();
 
+    // Resolve universe_id if not provided
+    let uniId = universe_id;
+    if (!uniId) {
+      const { data: defUni } = await db.from("universes")
+        .select("id").eq("user_id", user_id).eq("is_default", true).limit(1).maybeSingle();
+      uniId = defUni?.id;
+    }
+
     // ── 1. Wiki-first: search wiki_pages ──────────────────────────────
     let wikiHits: Array<{ id: string; title: string; summary: string; content_markdown: string; page_type: string }> = [];
     try {
-      const { data: wikiResults } = await db
+      let wikiQuery = db
         .from("wiki_pages")
         .select("id, title, summary, content_markdown, page_type")
-        .eq("user_id", user_id)
+        .eq("user_id", user_id);
+      if (uniId) wikiQuery = wikiQuery.eq("universe_id", uniId);
+      const { data: wikiResults } = await wikiQuery
         .textSearch("search_vector", searchTerms, { type: "plain", config: "simple" })
         .limit(3);
       wikiHits = wikiResults || [];
@@ -36,19 +46,23 @@ Deno.serve(async (req) => {
     }
 
     // ── 2. Chunk search (existing logic) ──────────────────────────────
-    const { data: ftsResults } = await db
+    let chunkQuery = db
       .from("knowledge_chunks")
       .select("id, note_id, content, source_title, source_type, chunk_index")
-      .eq("user_id", user_id)
+      .eq("user_id", user_id);
+    if (uniId) chunkQuery = chunkQuery.eq("universe_id", uniId);
+    const { data: ftsResults } = await chunkQuery
       .textSearch("search_vector", searchTerms, { type: "plain", config: "simple" })
       .limit(20);
 
     let candidates = ftsResults || [];
     if (candidates.length < 3) {
-      const { data: recent } = await db
+      let recentQuery = db
         .from("knowledge_chunks")
         .select("id, note_id, content, source_title, source_type, chunk_index")
-        .eq("user_id", user_id)
+        .eq("user_id", user_id);
+      if (uniId) recentQuery = recentQuery.eq("universe_id", uniId);
+      const { data: recent } = await recentQuery
         .order("created_at", { ascending: false })
         .limit(10);
       const ids = new Set(candidates.map((c: { id: string }) => c.id));
@@ -81,7 +95,6 @@ Deno.serve(async (req) => {
     }
 
     // ── 3. Build context for LLM ──────────────────────────────────────
-    // Wiki context first (higher priority)
     const wikiBlocks = wikiHits.map((w, i) =>
       `[WIKI-${i + 1}] "${w.title}" (${w.page_type})\n${(w.summary || "").slice(0, 200)}\n${(w.content_markdown || "").slice(0, 500)}`
     ).join("\n\n");
@@ -190,6 +203,7 @@ Rules:
       .insert({
         user_id,
         project_id: project_id || "default",
+        universe_id: uniId,
         query,
         answer,
         citations: [...wiki_citations.map(w => ({ ...w, type: "wiki" })), ...citations.map(c => ({ ...c, type: "chunk" }))],

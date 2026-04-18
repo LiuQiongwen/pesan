@@ -3121,6 +3121,7 @@ export type Database = {
           priority: string | null
           source_context: string | null
           status: string | null
+          universe_id: string
           updated_at: string | null
           user_id: string
         }
@@ -3135,6 +3136,7 @@ export type Database = {
           priority?: string | null
           source_context?: string | null
           status?: string | null
+          universe_id: string
           updated_at?: string | null
           user_id: string
         }
@@ -3149,6 +3151,7 @@ export type Database = {
           priority?: string | null
           source_context?: string | null
           status?: string | null
+          universe_id?: string
           updated_at?: string | null
           user_id?: string
         }
@@ -3163,6 +3166,12 @@ export type Database = {
             foreignKeyName: "actions_note_id_fkey"
             columns: ["note_id"]
             referencedRelation: "notes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "actions_universe_id_fkey"
+            columns: ["universe_id"]
+            referencedRelation: "universes"
             referencedColumns: ["id"]
           },
         ]
@@ -3390,6 +3399,7 @@ export type Database = {
           source_text: string | null
           tags: string[] | null
           title: string | null
+          universe_id: string
           updated_at: string | null
           user_id: string
         }
@@ -3408,6 +3418,7 @@ export type Database = {
           source_text?: string | null
           tags?: string[] | null
           title?: string | null
+          universe_id: string
           updated_at?: string | null
           user_id: string
         }
@@ -3426,6 +3437,7 @@ export type Database = {
           source_text?: string | null
           tags?: string[] | null
           title?: string | null
+          universe_id?: string
           updated_at?: string | null
           user_id?: string
         }
@@ -3434,6 +3446,12 @@ export type Database = {
             foreignKeyName: "distillations_note_id_fkey"
             columns: ["note_id"]
             referencedRelation: "notes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "distillations_universe_id_fkey"
+            columns: ["universe_id"]
+            referencedRelation: "universes"
             referencedColumns: ["id"]
           },
         ]
@@ -3446,6 +3464,7 @@ export type Database = {
           id: string
           is_manual: boolean
           tag: string
+          universe_id: string
           updated_at: string | null
           user_id: string
         }
@@ -3456,6 +3475,7 @@ export type Database = {
           id?: string
           is_manual?: boolean
           tag: string
+          universe_id: string
           updated_at?: string | null
           user_id: string
         }
@@ -3466,10 +3486,18 @@ export type Database = {
           id?: string
           is_manual?: boolean
           tag?: string
+          universe_id?: string
           updated_at?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "galaxy_positions_universe_id_fkey"
+            columns: ["universe_id"]
+            referencedRelation: "universes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       knowledge_chunks: {
         Row: {
@@ -3484,6 +3512,7 @@ export type Database = {
           source_title: string | null
           source_type: string | null
           tokens_estimate: number | null
+          universe_id: string
           user_id: string
         }
         Insert: {
@@ -3498,6 +3527,7 @@ export type Database = {
           source_title?: string | null
           source_type?: string | null
           tokens_estimate?: number | null
+          universe_id: string
           user_id: string
         }
         Update: {
@@ -3512,6 +3542,7 @@ export type Database = {
           source_title?: string | null
           source_type?: string | null
           tokens_estimate?: number | null
+          universe_id?: string
           user_id?: string
         }
         Relationships: [
@@ -3519,6 +3550,12 @@ export type Database = {
             foreignKeyName: "knowledge_chunks_note_id_fkey"
             columns: ["note_id"]
             referencedRelation: "notes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "knowledge_chunks_universe_id_fkey"
+            columns: ["universe_id"]
+            referencedRelation: "universes"
             referencedColumns: ["id"]
           },
         ]
@@ -3708,6 +3745,7 @@ export type Database = {
           id: string
           is_manual: boolean
           note_id: string
+          universe_id: string
           updated_at: string | null
           user_id: string
           x: number
@@ -3718,6 +3756,7 @@ export type Database = {
           id?: string
           is_manual?: boolean
           note_id: string
+          universe_id: string
           updated_at?: string | null
           user_id: string
           x: number
@@ -3728,6 +3767,7 @@ export type Database = {
           id?: string
           is_manual?: boolean
           note_id?: string
+          universe_id?: string
           updated_at?: string | null
           user_id?: string
           x?: number
@@ -3739,6 +3779,12 @@ export type Database = {
             foreignKeyName: "node_positions_note_id_fkey"
             columns: ["note_id"]
             referencedRelation: "notes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "node_positions_universe_id_fkey"
+            columns: ["universe_id"]
+            referencedRelation: "universes"
             referencedColumns: ["id"]
           },
         ]
@@ -3764,6 +3810,7 @@ export type Database = {
           summary_markdown: string | null
           tags: string[] | null
           title: string | null
+          universe_id: string
           updated_at: string | null
           user_id: string
         }
@@ -3787,6 +3834,7 @@ export type Database = {
           summary_markdown?: string | null
           tags?: string[] | null
           title?: string | null
+          universe_id: string
           updated_at?: string | null
           user_id: string
         }
@@ -3810,6 +3858,7 @@ export type Database = {
           summary_markdown?: string | null
           tags?: string[] | null
           title?: string | null
+          universe_id?: string
           updated_at?: string | null
           user_id?: string
         }
@@ -3824,6 +3873,12 @@ export type Database = {
             foreignKeyName: "notes_obsidian_import_id_fkey"
             columns: ["obsidian_import_id"]
             referencedRelation: "obsidian_imports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notes_universe_id_fkey"
+            columns: ["universe_id"]
+            referencedRelation: "universes"
             referencedColumns: ["id"]
           },
         ]
@@ -3965,6 +4020,7 @@ export type Database = {
           id: string
           project_id: string
           query: string
+          universe_id: string
           user_id: string
         }
         Insert: {
@@ -3974,6 +4030,7 @@ export type Database = {
           id?: string
           project_id?: string
           query: string
+          universe_id: string
           user_id: string
         }
         Update: {
@@ -3983,9 +4040,17 @@ export type Database = {
           id?: string
           project_id?: string
           query?: string
+          universe_id?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "rag_conversations_universe_id_fkey"
+            columns: ["universe_id"]
+            referencedRelation: "universes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       subscriptions: {
         Row: {
@@ -4059,6 +4124,7 @@ export type Database = {
           id: string
           source_id: string
           target_id: string
+          universe_id: string
           user_id: string
         }
         Insert: {
@@ -4069,6 +4135,7 @@ export type Database = {
           id?: string
           source_id: string
           target_id: string
+          universe_id: string
           user_id: string
         }
         Update: {
@@ -4079,6 +4146,7 @@ export type Database = {
           id?: string
           source_id?: string
           target_id?: string
+          universe_id?: string
           user_id?: string
         }
         Relationships: [
@@ -4092,6 +4160,12 @@ export type Database = {
             foreignKeyName: "thought_edges_target_id_fkey"
             columns: ["target_id"]
             referencedRelation: "notes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "thought_edges_universe_id_fkey"
+            columns: ["universe_id"]
+            referencedRelation: "universes"
             referencedColumns: ["id"]
           },
         ]
@@ -4141,6 +4215,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      universes: {
+        Row: {
+          color_seed: string | null
+          created_at: string | null
+          description: string | null
+          icon: string | null
+          id: string
+          is_default: boolean
+          name: string
+          sort_order: number
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          color_seed?: string | null
+          created_at?: string | null
+          description?: string | null
+          icon?: string | null
+          id?: string
+          is_default?: boolean
+          name: string
+          sort_order?: number
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          color_seed?: string | null
+          created_at?: string | null
+          description?: string | null
+          icon?: string | null
+          id?: string
+          is_default?: boolean
+          name?: string
+          sort_order?: number
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       usage_events: {
         Row: {
@@ -4217,6 +4330,7 @@ export type Database = {
           summary: string | null
           tags: string[] | null
           title: string
+          universe_id: string
           updated_at: string | null
           user_id: string
           version: number
@@ -4235,6 +4349,7 @@ export type Database = {
           summary?: string | null
           tags?: string[] | null
           title: string
+          universe_id: string
           updated_at?: string | null
           user_id: string
           version?: number
@@ -4253,11 +4368,19 @@ export type Database = {
           summary?: string | null
           tags?: string[] | null
           title?: string
+          universe_id?: string
           updated_at?: string | null
           user_id?: string
           version?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "wiki_pages_universe_id_fkey"
+            columns: ["universe_id"]
+            referencedRelation: "universes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       wiki_source_refs: {
         Row: {
@@ -4370,39 +4493,6 @@ export type Database = {
   realtime: {
     Tables: {
       messages: {
-        Row: {
-          event: string | null
-          extension: string
-          id: string
-          inserted_at: string
-          payload: Json | null
-          private: boolean | null
-          topic: string
-          updated_at: string
-        }
-        Insert: {
-          event?: string | null
-          extension: string
-          id?: string
-          inserted_at?: string
-          payload?: Json | null
-          private?: boolean | null
-          topic: string
-          updated_at?: string
-        }
-        Update: {
-          event?: string | null
-          extension?: string
-          id?: string
-          inserted_at?: string
-          payload?: Json | null
-          private?: boolean | null
-          topic?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      messages_2026_04_14: {
         Row: {
           event: string | null
           extension: string
@@ -4601,6 +4691,39 @@ export type Database = {
         Relationships: []
       }
       messages_2026_04_20: {
+        Row: {
+          event: string | null
+          extension: string
+          id: string
+          inserted_at: string
+          payload: Json | null
+          private: boolean | null
+          topic: string
+          updated_at: string
+        }
+        Insert: {
+          event?: string | null
+          extension: string
+          id?: string
+          inserted_at?: string
+          payload?: Json | null
+          private?: boolean | null
+          topic: string
+          updated_at?: string
+        }
+        Update: {
+          event?: string | null
+          extension?: string
+          id?: string
+          inserted_at?: string
+          payload?: Json | null
+          private?: boolean | null
+          topic?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      messages_2026_04_21: {
         Row: {
           event: string | null
           extension: string

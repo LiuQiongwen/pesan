@@ -1,0 +1,4 @@
+
+UPDATE notes SET universe_id = (
+  SELECT id FROM universes WHERE user_id = notes.user_id AND is_default = true LIMIT 1
+) WHERE universe_id IS NULL;

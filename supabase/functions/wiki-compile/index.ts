@@ -8,6 +8,7 @@ const cors = {
 
 interface CompileRequest {
   user_id: string;
+  universe_id?: string;
   trigger: "new_note" | "manual" | "batch";
   note_ids?: string[];
 }
@@ -22,18 +23,27 @@ Deno.serve(async (req) => {
     if (!AI_TOKEN) throw new Error("AI token missing");
 
     const body: CompileRequest = await req.json();
-    const { user_id, trigger, note_ids } = body;
+    const { user_id, universe_id, trigger, note_ids } = body;
     if (!user_id) throw new Error("user_id required");
 
     const db = createClient(SUPABASE_URL, SERVICE_KEY);
 
+    // Resolve universe_id
+    let uniId = universe_id;
+    if (!uniId) {
+      const { data: defUni } = await db.from("universes")
+        .select("id").eq("user_id", user_id).eq("is_default", true).limit(1).maybeSingle();
+      uniId = defUni?.id;
+    }
+
     // 1. Gather source material
-    const notesQuery = db.from("notes")
+    let notesQuery = db.from("notes")
       .select("id, title, tags, summary, content_markdown, summary_markdown, analysis_markdown, node_type, created_at")
       .eq("user_id", user_id)
       .is("deleted_at", null)
       .not("node_type", "like", "wiki_%")
       .order("created_at", { ascending: false });
+    if (uniId) notesQuery = notesQuery.eq("universe_id", uniId);
 
     if (trigger === "new_note" && note_ids?.length) {
       const { data: targetNotes } = await db.from("notes")
@@ -44,11 +54,11 @@ Deno.serve(async (req) => {
       const allNotes = [...(targetNotes || []), ...(recentNotes || [])];
       const seen = new Set<string>();
       const deduped = allNotes.filter(n => { if (seen.has(n.id)) return false; seen.add(n.id); return true; });
-      return await compileFromNotes(db, AI_TOKEN, user_id, deduped, note_ids || []);
+      return await compileFromNotes(db, AI_TOKEN, user_id, uniId, deduped, note_ids || []);
     }
 
     const { data: allNotes } = await notesQuery.limit(50);
-    return await compileFromNotes(db, AI_TOKEN, user_id, allNotes || [], []);
+    return await compileFromNotes(db, AI_TOKEN, user_id, uniId, allNotes || [], []);
 
   } catch (e) {
     console.error("wiki-compile error:", e.message);
@@ -62,6 +72,7 @@ async function compileFromNotes(
   db: ReturnType<typeof createClient>,
   aiToken: string,
   userId: string,
+  universeId: string | undefined,
   notes: Array<Record<string, unknown>>,
   targetNoteIds: string[],
 ) {
@@ -80,9 +91,11 @@ async function compileFromNotes(
     return `[NOTE-${i}] id=${n.id} title="${n.title || "Untitled"}" tags=[${tags}]\n${content.slice(0, 500)}`;
   }).join("\n---\n");
 
-  const { data: existingPages } = await db.from("wiki_pages")
+  let existingQuery = db.from("wiki_pages")
     .select("id, slug, title, page_type, summary, version, tags, source_note_ids")
     .eq("user_id", userId);
+  if (universeId) existingQuery = existingQuery.eq("universe_id", universeId);
+  const { data: existingPages } = await existingQuery;
 
   const existingContext = (existingPages || []).map(p =>
     `[WIKI:${p.slug}] type=${p.page_type} title="${p.title}" tags=[${(p.tags || []).join(",")}] v${p.version}`
@@ -200,6 +213,7 @@ Output: JSON array of page objects. Max 3 pages per call.`;
 
     const { data: newPage } = await db.from("wiki_pages").insert({
       user_id: userId,
+      universe_id: universeId,
       slug,
       title: String(page.title || slug),
       page_type: pageType,
@@ -214,6 +228,7 @@ Output: JSON array of page objects. Max 3 pages per call.`;
     const nodeType = `wiki_${pageType}`;
     const { data: mirrorNote } = await db.from("notes").insert({
       user_id: userId,
+      universe_id: universeId,
       analysis_id: null,
       title: String(page.title || slug),
       summary: String(page.summary || ""),
@@ -228,6 +243,7 @@ Output: JSON array of page objects. Max 3 pages per call.`;
     if (mirrorNote && sourceNoteIds.length > 0) {
       const edges = sourceNoteIds.slice(0, 10).map(srcId => ({
         user_id: userId,
+        universe_id: universeId,
         source_id: srcId,
         target_id: mirrorNote.id,
         edge_type: "compiled_from",
@@ -260,6 +276,7 @@ Output: JSON array of page objects. Max 3 pages per call.`;
         body: JSON.stringify({
           note_id: mirrorNote.id,
           user_id: userId,
+          universe_id: universeId,
           content: content.slice(0, 6000),
           title: `[WIKI] ${String(page.title || slug)}`,
           source_type: "wiki",

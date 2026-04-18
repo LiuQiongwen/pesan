@@ -1,0 +1,1 @@
+ALTER TABLE notes ALTER COLUMN universe_id SET NOT NULL;

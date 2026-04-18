@@ -1,0 +1,5 @@
+
+ALTER TABLE rag_conversations ADD COLUMN IF NOT EXISTS universe_id uuid REFERENCES universes(id);
+UPDATE rag_conversations SET universe_id = (SELECT id FROM universes WHERE user_id = rag_conversations.user_id AND is_default = true LIMIT 1) WHERE universe_id IS NULL;
+ALTER TABLE rag_conversations ALTER COLUMN universe_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_rag_conversations_universe ON rag_conversations(universe_id);

@@ -13,6 +13,7 @@ import { Globe, Type, FileIcon, Send, RotateCcw, ArrowRight } from 'lucide-react
 import { useAuth } from '@/hooks/useAuth';
 import { useAgentPipeline } from '@/hooks/useAgentPipeline';
 import { useAgentWorkflow } from '@/contexts/AgentWorkflowContext';
+import { useActiveUniverse } from '@/contexts/UniverseContext';
 import { AgentPipeline } from './AgentPipeline';
 import type { SourceType } from '@/types';
 
@@ -45,7 +46,8 @@ interface Props {
 
 export default function CaptureBox({ onFlashNote, onAgentStart, onAgentEnd }: Props) {
   const { user }    = useAuth();
-  const pipeline    = useAgentPipeline(user?.id);
+  const { activeUniverseId } = useActiveUniverse();
+  const pipeline    = useAgentPipeline(user?.id, activeUniverseId);
   const workflow    = useAgentWorkflow();
 
   const [mode,     setMode]     = useState<Mode>('text');

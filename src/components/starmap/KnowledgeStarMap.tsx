@@ -43,6 +43,7 @@ interface KnowledgeStarMapProps {
   recenterTrigger?:    number;
   onFlashNote?:        (id: string) => void;
   userId?:             string;
+  universeId?:         string | null;
   onEmptyStateClick?:  () => void;
   onNodeDropToPod?:    (noteId: string, podId: string) => void;
   onModeChange?:       (mode: 'browse' | 'connect', connectFromTitle?: string) => void;
@@ -93,6 +94,7 @@ export default function KnowledgeStarMap({
   recenterTrigger = 0,
   onFlashNote,
   userId,
+  universeId,
   onEmptyStateClick,
   onNodeDropToPod,
   onModeChange,
@@ -114,18 +116,19 @@ export default function KnowledgeStarMap({
 
   // Fetch thought_edges from DB
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !universeId) return;
     supabase
       .from('thought_edges')
       .select('id, source_id, target_id, edge_type, description, confidence')
       .eq('user_id', userId)
+      .eq('universe_id', universeId)
       .then(({ data }) => { if (data) setDbEdges(data as DbEdge[]); });
-  }, [userId, notes]); // refetch when notes change (new connections may appear)
+  }, [userId, universeId, notes]); // refetch when notes change (new connections may appear)
 
   // ── Fetch manual positions ───────────────────────────────────────────────
   useEffect(() => {
-    if (!userId) return;
-    supabase.from('node_positions').select('note_id, x, y, z').eq('user_id', userId)
+    if (!userId || !universeId) return;
+    supabase.from('node_positions').select('note_id, x, y, z').eq('user_id', userId).eq('universe_id', universeId)
       .then(({ data }) => {
         if (data) {
           const map: Record<string, [number, number, number]> = {};
@@ -133,7 +136,7 @@ export default function KnowledgeStarMap({
           setManualNodePos(map);
         }
       });
-    supabase.from('galaxy_positions').select('tag, cx, cy, cz').eq('user_id', userId)
+    supabase.from('galaxy_positions').select('tag, cx, cy, cz').eq('user_id', userId).eq('universe_id', universeId)
       .then(({ data }) => {
         if (data) {
           const map: Record<string, [number, number, number]> = {};
@@ -141,7 +144,7 @@ export default function KnowledgeStarMap({
           setManualGalaxyPos(map);
         }
       });
-  }, [userId]);
+  }, [userId, universeId]);
 
   const [openNodes,       setOpenNodes]        = useState<Set<string>>(new Set());
   const [pendingConn,     setPendingConn]      = useState<PendingConnection | null>(null);
@@ -287,6 +290,7 @@ export default function KnowledgeStarMap({
         description: description || null,
         confidence:  0.8,
         ...(userId ? { user_id: userId } : {}),
+        ...(universeId ? { universe_id: universeId } : {}),
       })
       .select()
       .maybeSingle();
@@ -302,7 +306,7 @@ export default function KnowledgeStarMap({
       }
     }
     setTimeout(() => setConnectStatus('idle'), 2000);
-  }, [pendingConn, userId]);
+  }, [pendingConn, userId, universeId]);
 
   const handleConnectionCancel = useCallback(() => setPendingConn(null), []);
 
@@ -381,9 +385,10 @@ export default function KnowledgeStarMap({
       title, content_markdown: content, summary: `合并自：${combinedNotes.map(n => n.title).join('、')}`,
       tags: allTags, node_type: 'insight',
       ...(userId ? { user_id: userId } : {}),
+      ...(universeId ? { universe_id: universeId } : {}),
     });
     if (error) console.error('[Workbench] combine error:', error);
-  }, [notesMap, userId]);
+  }, [notesMap, userId, universeId]);
 
   // Keyboard shortcut: Escape clears workbench selection too
   useEffect(() => {
@@ -422,13 +427,13 @@ export default function KnowledgeStarMap({
   // ── Node move: save position to DB ─────────────────────────────────────
   const handleNodeMove = useCallback(async (noteId: string, pos: [number, number, number]) => {
     setManualNodePos(prev => ({ ...prev, [noteId]: pos }));
-    if (!userId) return;
+    if (!userId || !universeId) return;
     await supabase.from('node_positions').upsert({
-      user_id: userId, note_id: noteId,
+      user_id: userId, note_id: noteId, universe_id: universeId,
       x: pos[0], y: pos[1], z: pos[2],
       is_manual: true, updated_at: new Date().toISOString(),
     }, { onConflict: 'user_id,note_id' });
-  }, [userId]);
+  }, [userId, universeId]);
 
   // ── Reset manual position ──────────────────────────────────────────────
   const handleResetPosition = useCallback(async (noteId: string) => {
@@ -510,20 +515,20 @@ export default function KnowledgeStarMap({
   ) => {
     setManualGalaxyPos(prev => ({ ...prev, [tag]: center }));
     setManualNodePos(prev => ({ ...prev, ...memberPositions }));
-    if (!userId) return;
+    if (!userId || !universeId) return;
     await supabase.from('galaxy_positions').upsert({
-      user_id: userId, tag,
+      user_id: userId, tag, universe_id: universeId,
       cx: center[0], cy: center[1], cz: center[2],
       is_manual: true, updated_at: new Date().toISOString(),
     }, { onConflict: 'user_id,tag' });
     for (const [nId, pos] of Object.entries(memberPositions)) {
       await supabase.from('node_positions').upsert({
-        user_id: userId, note_id: nId,
+        user_id: userId, note_id: nId, universe_id: universeId,
         x: pos[0], y: pos[1], z: pos[2],
         is_manual: true, updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id,note_id' });
     }
-  }, [userId]);
+  }, [userId, universeId]);
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {

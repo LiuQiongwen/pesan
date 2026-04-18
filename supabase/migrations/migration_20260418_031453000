@@ -1,0 +1,3 @@
+
+ALTER TABLE thought_edges ALTER COLUMN universe_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_thought_edges_universe ON thought_edges(universe_id);

@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useActiveUniverse } from "@/contexts/UniverseContext";
 
 export interface Citation {
   id: number;
@@ -29,6 +30,7 @@ export interface RAGConversation {
 
 export function useRAG() {
   const { user } = useAuth();
+  const { activeUniverseId } = useActiveUniverse();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [conversations, setConversations] = useState<RAGConversation[]>([]);
@@ -40,7 +42,7 @@ export function useRAG() {
       setError(null);
       try {
         const { data, error: fnError } = await supabase.functions.invoke("rag-search", {
-          body: { query: query.trim(), user_id: user.id, project_id: "default", top_k: 5 },
+          body: { query: query.trim(), user_id: user.id, universe_id: activeUniverseId, project_id: activeUniverseId ?? "default", top_k: 5 },
         });
         if (fnError) throw new Error(fnError.message);
         if (!data?.success) throw new Error(data?.error || "Search failed");
@@ -62,7 +64,7 @@ export function useRAG() {
         setLoading(false);
       }
     },
-    [user?.id]
+    [user?.id, activeUniverseId]
   );
 
   const indexNote = useCallback(
@@ -75,11 +77,12 @@ export function useRAG() {
           content,
           title,
           source_type: sourceType || "text",
-          project_id: "default",
+          universe_id: activeUniverseId,
+          project_id: activeUniverseId ?? "default",
         },
       });
     },
-    [user?.id]
+    [user?.id, activeUniverseId]
   );
 
   const clearConversations = useCallback(() => setConversations([]), []);

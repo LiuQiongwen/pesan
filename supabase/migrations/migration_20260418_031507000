@@ -1,0 +1,5 @@
+
+ALTER TABLE wiki_pages ADD COLUMN IF NOT EXISTS universe_id uuid REFERENCES universes(id);
+UPDATE wiki_pages SET universe_id = (SELECT id FROM universes WHERE user_id = wiki_pages.user_id AND is_default = true LIMIT 1) WHERE universe_id IS NULL;
+ALTER TABLE wiki_pages ALTER COLUMN universe_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_wiki_pages_universe ON wiki_pages(universe_id);

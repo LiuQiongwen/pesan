@@ -34,13 +34,13 @@ const INITIAL_STEPS: PipelineStep[] = [
 
 function wait(ms: number) { return new Promise(res => setTimeout(res, ms)); }
 
-export function useAgentPipeline(userId: string | undefined) {
+export function useAgentPipeline(userId: string | undefined, universeId: string | null | undefined) {
   const [steps, setSteps] = useState<PipelineStep[]>(INITIAL_STEPS.map(s => ({ ...s })));
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<PipelineResult | null>(null);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
 
-  const { createAnalysis, updateAnalysisStatus, saveNote, insertDerivedNode } = useAnalysis(userId);
+  const { createAnalysis, updateAnalysisStatus, saveNote, insertDerivedNode } = useAnalysis(userId, universeId);
 
   const setStepStatus = useCallback((id: string, status: StepStatus) => {
     setSteps(prev => prev.map(s => s.id === id ? { ...s, status } : s));
@@ -117,10 +117,11 @@ export function useAgentPipeline(userId: string | undefined) {
           content: [d.summary || '', d.analysis_markdown || ''].join('\n\n').slice(0, 4000),
           title: d.title || '',
           source_type: params.sourceType,
+          universe_id: universeId,
         },
       }).then(() => wait(2000)).then(() =>
         supabase.functions.invoke('wiki-compile', {
-          body: { user_id: userId, trigger: 'new_note', note_ids: [mainNote.id] },
+          body: { user_id: userId, universe_id: universeId, trigger: 'new_note', note_ids: [mainNote.id] },
         })
       ).catch(() => {});
 
@@ -141,6 +142,7 @@ export function useAgentPipeline(userId: string | undefined) {
       if (d.summary_markdown || d.summary) {
         const n = await insertDerivedNode({
           userId,
+          universeId: universeId!,
           node_type: 'summary',
           title: `摘要 · ${d.title || '未命名'}`,
           summary: d.summary_markdown || d.summary || '',
@@ -154,6 +156,7 @@ export function useAgentPipeline(userId: string | undefined) {
       for (const insight of insights) {
         const n = await insertDerivedNode({
           userId,
+          universeId: universeId!,
           node_type: 'insight',
           title: `洞见 · ${insight.slice(0, 40)}`,
           summary: insight,
@@ -185,7 +188,7 @@ export function useAgentPipeline(userId: string | undefined) {
     } finally {
       setRunning(false);
     }
-  }, [userId, reset, setStepStatus, createAnalysis, updateAnalysisStatus, saveNote, insertDerivedNode]);
+  }, [userId, universeId, reset, setStepStatus, createAnalysis, updateAnalysisStatus, saveNote, insertDerivedNode]);
 
   return { steps, running, result, pipelineError, run, reset };
 }

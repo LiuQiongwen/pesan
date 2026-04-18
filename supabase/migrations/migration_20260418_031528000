@@ -1,0 +1,5 @@
+
+ALTER TABLE actions ADD COLUMN IF NOT EXISTS universe_id uuid REFERENCES universes(id);
+UPDATE actions SET universe_id = (SELECT id FROM universes WHERE user_id = actions.user_id AND is_default = true LIMIT 1) WHERE universe_id IS NULL;
+ALTER TABLE actions ALTER COLUMN universe_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_actions_universe ON actions(universe_id);

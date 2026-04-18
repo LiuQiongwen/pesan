@@ -12,6 +12,7 @@ import { useNotes } from '@/hooks/useNotes';
 import { useToolbox, type PodId } from '@/contexts/ToolboxContext';
 import { useDevice } from '@/hooks/useDevice';
 import { AgentWorkflowProvider, useAgentWorkflow } from '@/contexts/AgentWorkflowContext';
+import { UniverseProvider, useActiveUniverse } from '@/contexts/UniverseContext';
 import { PestaLogo } from '@/components/brand/PestaLogo';
 
 import KnowledgeStarMap, { type HoveredNodeInfo } from '@/components/starmap/KnowledgeStarMap';
@@ -23,6 +24,7 @@ import { SettingsCapsule } from '@/components/floating/SettingsCapsule';
 import { QuickCaptureBar } from '@/components/starmap/QuickCaptureBar';
 import { LayoutEditBar }   from '@/components/window-manager/LayoutEditBar';
 import { AlignmentGuides } from '@/components/window-manager/AlignmentGuides';
+import { UniverseSwitcher } from '@/components/universe/UniverseSwitcher';
 
 import { Feather, Radar, FlaskConical, Layers, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -63,12 +65,14 @@ interface ContentsProps {
   pods:    Record<PodId, { open: boolean }>;
   deleteNote:     (id: string) => Promise<{ error: unknown }>;
   undoDeleteNote: (id: string) => Promise<{ error: unknown }>;
+  fetchNotes:     () => Promise<void>;
 }
 
-function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undoDeleteNote }: ContentsProps) {
+function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undoDeleteNote, fetchNotes }: ContentsProps) {
   const navigate = useNavigate();
   const workflow = useAgentWorkflow();
   const device = useDevice();
+  const { activeUniverseId } = useActiveUniverse();
 
   const [hoveredNode,     setHoveredNode]     = useState<HoveredNodeInfo | null>(null);
   const [highlightedIds,  setHighlightedIds]  = useState<string[]>([]);
@@ -139,7 +143,7 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
     };
     window.addEventListener('obsidian-import-done', onImportDone);
     return () => window.removeEventListener('obsidian-import-done', onImportDone);
-  }, [notes]);
+  }, [notes, fetchNotes]);
 
   // ── Drag-to-pod handler ───────────────────────────────────────────────────
   const handleNodeDropToPod = useCallback((noteId: string, podId: string) => {
@@ -216,6 +220,7 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
         recenterTrigger={recenterTrigger}
         onFlashNote={flashNote}
         userId={user.id}
+        universeId={activeUniverseId}
         onEmptyStateClick={() => openPod('capture')}
         onNodeDropToPod={handleNodeDropToPod}
         onModeChange={handleModeChange}
@@ -235,6 +240,9 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
       }}>
         <div style={{ fontFamily: INTER, fontWeight: 700, fontSize: 'clamp(11px,1.0vw,14px)', color: 'rgba(230,238,255,0.75)', marginBottom: 'clamp(1px,0.2vh,3px)' }}>
           {user.email?.split('@')[0]}
+        </div>
+        <div style={{ marginBottom: 'clamp(4px,0.5vh,7px)' }}>
+          <UniverseSwitcher userId={user.id} />
         </div>
         <div style={{ fontFamily: MONO, fontSize: 'clamp(7px,0.7vw,9px)', color: 'rgba(60,72,95,0.60)', letterSpacing: '0.08em', marginBottom: 'clamp(7px,0.8vh,12px)' }}>
           {notes.length} nodes · {totalTags} clusters · +{thisWeek} this week{obsidianCount > 0 ? ` · ${obsidianCount} obsidian` : ''}{wikiCount > 0 ? ` · ${wikiCount} wiki` : ''}
@@ -319,27 +327,44 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
   );
 }
 
-// ── StarMapOuter — provides AgentWorkflowProvider with wired openPod ─────────
+// ── StarMapOuter — provides UniverseProvider, then AgentWorkflowProvider ─────
 function StarMapOuter() {
   const { user, loading } = useAuth();
-  const { notes, fetchNotes, deleteNote, undoDeleteNote } = useNotes(user?.id);
+
+  return (
+    <UniverseProvider userId={user?.id}>
+      {user ? <StarMapWithUniverse user={user} loading={loading} /> : (
+        loading ? (
+          <div style={{
+            width: '100vw', height: '100vh', background: '#040508',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 14,
+          }}>
+            <PestaLogo size={44} iconOnly style={{ animation: 'pulse-glow 2s ease-in-out infinite' }} />
+            <p style={{ fontFamily: MONO, fontSize: 10, color: 'rgba(80,90,110,0.60)', letterSpacing: '0.08em' }}>LOADING…</p>
+          </div>
+        ) : <div style={{ width: '100vw', height: '100vh', background: '#040508' }} />
+      )}
+    </UniverseProvider>
+  );
+}
+
+function StarMapWithUniverse({ user, loading }: { user: { id: string; email?: string }; loading: boolean }) {
+  const { activeUniverseId } = useActiveUniverse();
+  const { notes, fetchNotes, deleteNote, undoDeleteNote } = useNotes(user.id, activeUniverseId);
   const { pods, openPod } = useToolbox();
 
   return (
     <AgentWorkflowProvider onOpenPod={openPod}>
-      {user ? (
-        <StarMapContents
-          user={user}
-          notes={notes as CosmosNote[]}
-          loading={loading}
-          openPod={openPod}
-          pods={pods as Record<PodId, { open: boolean }>}
-          deleteNote={deleteNote}
-          undoDeleteNote={undoDeleteNote}
-        />
-      ) : (
-        <div style={{ width: '100vw', height: '100vh', background: '#040508' }} />
-      )}
+      <StarMapContents
+        user={user}
+        notes={notes as CosmosNote[]}
+        loading={loading || !activeUniverseId}
+        openPod={openPod}
+        pods={pods as Record<PodId, { open: boolean }>}
+        deleteNote={deleteNote}
+        undoDeleteNote={undoDeleteNote}
+        fetchNotes={fetchNotes}
+      />
     </AgentWorkflowProvider>
   );
 }

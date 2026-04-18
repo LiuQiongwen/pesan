@@ -1,0 +1,5 @@
+
+INSERT INTO universes (user_id, name, is_default)
+SELECT DISTINCT n.user_id, '默认宇宙', true
+FROM notes n
+WHERE NOT EXISTS (SELECT 1 FROM universes u WHERE u.user_id = n.user_id);

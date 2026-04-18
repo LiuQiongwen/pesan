@@ -1,0 +1,3 @@
+
+ALTER TABLE thought_edges ADD COLUMN IF NOT EXISTS universe_id uuid REFERENCES universes(id);
+UPDATE thought_edges SET universe_id = (SELECT id FROM universes WHERE user_id = thought_edges.user_id AND is_default = true LIMIT 1) WHERE universe_id IS NULL;

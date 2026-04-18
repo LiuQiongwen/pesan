@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS idx_universes_user ON universes(user_id);

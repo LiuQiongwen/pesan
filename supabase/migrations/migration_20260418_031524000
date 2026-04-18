@@ -1,0 +1,5 @@
+
+ALTER TABLE distillations ADD COLUMN IF NOT EXISTS universe_id uuid REFERENCES universes(id);
+UPDATE distillations SET universe_id = (SELECT id FROM universes WHERE user_id = distillations.user_id AND is_default = true LIMIT 1) WHERE universe_id IS NULL;
+ALTER TABLE distillations ALTER COLUMN universe_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_distillations_universe ON distillations(universe_id);

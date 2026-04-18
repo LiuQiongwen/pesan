@@ -16,23 +16,24 @@ function normalizeNote(n: Record<string, unknown>): Note {
   };
 }
 
-export function useNotes(userId?: string) {
+export function useNotes(userId?: string, universeId?: string | null) {
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchNotes = useCallback(async () => {
-    if (!userId) return;
+    if (!userId || !universeId) return;
     setLoading(true);
     const { data, error } = await supabase
       .from('notes')
       .select('*')
       .eq('user_id', userId)
+      .eq('universe_id', universeId)
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
     if (!error && data) setNotes(data.map(n => normalizeNote(n as Record<string, unknown>)));
     setLoading(false);
-  }, [userId]);
+  }, [userId, universeId]);
 
   // Initial load
   useEffect(() => { fetchNotes(); }, [fetchNotes]);
@@ -109,7 +110,7 @@ export function useNotes(userId?: string) {
   return { notes, loading, fetchNotes, getNote, updateNote, deleteNote, undoDeleteNote };
 }
 
-export function useAnalysis(userId?: string) {
+export function useAnalysis(userId?: string, universeId?: string | null) {
   const createAnalysis = async (
     sourceType: SourceType,
     sourceContent: string,
@@ -144,6 +145,7 @@ export function useAnalysis(userId?: string) {
       .insert({
         analysis_id: analysisId,
         user_id: userId,
+        universe_id: universeId,
         title: noteData.title || null,
         summary: noteData.summary || null,
         key_points: noteData.key_points || [],
@@ -165,6 +167,7 @@ export function useAnalysis(userId?: string) {
   // Create a standalone derived node (no analysis record required)
   const insertDerivedNode = async (params: {
     userId: string;
+    universeId: string;
     node_type: NodeType;
     title: string;
     summary: string;
@@ -176,6 +179,7 @@ export function useAnalysis(userId?: string) {
       .insert({
         analysis_id: null,
         user_id: params.userId,
+        universe_id: params.universeId,
         title: params.title,
         summary: params.summary,
         key_points: [],

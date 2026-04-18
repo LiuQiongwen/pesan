@@ -1,0 +1,5 @@
+
+ALTER TABLE node_positions ADD COLUMN IF NOT EXISTS universe_id uuid REFERENCES universes(id);
+UPDATE node_positions SET universe_id = (SELECT id FROM universes WHERE user_id = node_positions.user_id AND is_default = true LIMIT 1) WHERE universe_id IS NULL;
+ALTER TABLE node_positions ALTER COLUMN universe_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_node_positions_universe ON node_positions(universe_id);

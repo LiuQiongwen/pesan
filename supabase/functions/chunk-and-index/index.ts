@@ -1,3 +1,4 @@
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const cors = {
@@ -9,7 +10,6 @@ const cors = {
 function chunkText(text: string, maxChars = 400, overlap = 80): string[] {
   if (!text || text.trim().length < 20) return [];
 
-  // Split on sentence-ending punctuation + line breaks
   const sentences: string[] = [];
   let current = "";
   for (let i = 0; i < text.length; i++) {
@@ -30,7 +30,6 @@ function chunkText(text: string, maxChars = 400, overlap = 80): string[] {
   }
   if (current.trim()) sentences.push(current.trim());
 
-  // Accumulate sentences into chunks
   const chunks: string[] = [];
   let buf = "";
   let overlapBuf = "";
@@ -38,7 +37,6 @@ function chunkText(text: string, maxChars = 400, overlap = 80): string[] {
   for (const sentence of sentences) {
     if (buf.length + sentence.length > maxChars && buf.length > 0) {
       chunks.push(buf.trim());
-      // Keep tail as overlap for next chunk
       buf = overlapBuf + " " + sentence;
       overlapBuf = sentence.slice(-overlap);
     } else {
@@ -57,15 +55,22 @@ Deno.serve(async (req) => {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    const { note_id, user_id, content, title, source_type, project_id } = await req.json();
+    const { note_id, user_id, content, title, source_type, project_id, universe_id } = await req.json();
     if (!note_id || !user_id || !content) throw new Error("note_id, user_id, content required");
 
     const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+    // Resolve universe_id if not provided
+    let resolvedUniverseId = universe_id;
+    if (!resolvedUniverseId) {
+      const { data: defUni } = await db.from("universes")
+        .select("id").eq("user_id", user_id).eq("is_default", true).limit(1).maybeSingle();
+      resolvedUniverseId = defUni?.id;
+    }
+
     // Idempotent: delete existing chunks for this note
     await db.from("knowledge_chunks").delete().eq("note_id", note_id);
 
-    // Build full text to chunk (cap at 6000 chars)
     const fullText = (content || "").slice(0, 6000);
     const chunks = chunkText(fullText);
 
@@ -78,6 +83,7 @@ Deno.serve(async (req) => {
     const rows = chunks.map((chunk, idx) => ({
       user_id,
       project_id: project_id || "default",
+      universe_id: resolvedUniverseId,
       note_id,
       chunk_index: idx,
       content: chunk,
