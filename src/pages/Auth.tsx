@@ -47,9 +47,16 @@ export default function Auth() {
       } else if (mode === 'register') {
         if (password !== confirmPassword) { toast.error('两次密码不一致 / Passwords do not match'); return; }
         if (password.length < 6) { toast.error('密码至少6位 / Password must be at least 6 chars'); return; }
-        const { error } = await signUp(email, password);
-        if (error) { toast.error(t('auth.error.signUp')); return; }
-        toast.success(t('auth.success.signUp'));
+        const { data, error } = await signUp(email, password);
+        if (error) { toast.error(error.message || t('auth.error.signUp')); return; }
+        // If session exists → auto-confirmed, navigate directly
+        if (data?.session) {
+          toast.success('注册成功 / Registration successful');
+          navigate('/app');
+          return;
+        }
+        // No session → email confirmation required
+        toast.success('注册成功！请查收邮件完成验证 / Please check your email to confirm');
         setMode('login');
       } else if (mode === 'forgot') {
         const { error } = await resetPassword(email);

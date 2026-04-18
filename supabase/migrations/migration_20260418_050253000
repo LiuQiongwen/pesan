@@ -1,0 +1,14 @@
+
+-- Backfill: create missing subscriptions for existing users
+INSERT INTO subscriptions (user_id, plan, status)
+SELECT p.id, 'free', 'active'
+FROM profiles p
+WHERE NOT EXISTS (SELECT 1 FROM subscriptions s WHERE s.user_id = p.id)
+ON CONFLICT (user_id) DO NOTHING;
+
+-- Backfill: create missing user_credits for existing users
+INSERT INTO user_credits (user_id, balance)
+SELECT p.id, 0
+FROM profiles p
+WHERE NOT EXISTS (SELECT 1 FROM user_credits c WHERE c.user_id = p.id)
+ON CONFLICT (user_id) DO NOTHING;
