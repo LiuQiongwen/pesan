@@ -1,170 +1,96 @@
-# 3D 星图性能诊断面板
+# React 重渲染诊断 + 修复方案
 
 ## Context
 
-星图场景（CosmosScene.tsx）包含多个性能敏感子系统：
-- **9000 粒子星场** — Points + BufferGeometry
-- **N 个节点 mesh** — 每个独立几何体 + 共享材质 clone，每帧 `position.set()` + `scale.setScalar()` + `emissiveIntensity` 更新
-- **N 条连线** — Line/LineDashedMaterial，每帧 lerp opacity
-- **Galaxy halos/rings** — 每帧 lerp opacity
-- **Raycasting** — 每 3 帧对所有 mesh + 所有 edge 线段做 intersect
-- **EffectComposer + Bloom** — 后处理 pass (mipmapBlur)
-- **Html 组件** — ClusterLabel × K + HoverTooltip + NodeWindow × 3（drei Html → DOM overlay）
-- **OrbitControls + Camera tween** — 每帧 lerp
+星图场景中 hover 节点、切 Pod、弹窗等操作会触发整树 re-render，原因是：
+1. **ToolboxContext** 每次 `setPods` 都生成新的 `value` 对象，所有 consumer 全部 re-render
+2. **StarMapContents** 持有 ~15 个 useState，任意一个变化都会重绘整个 Layer 0-12 树
+3. 几乎 **零 memo** — 全项目仅 AgentPipeline.tsx 用了 `React.memo`
+4. **KnowledgeStarMap** 接收的 props 含内联函数 (`() => openPod(...)`)，每次父 render 都创建新引用
 
-当前无法区分帧率下降来自哪个子系统。需要 **非侵入** 诊断面板。
+## 方案总览（3 个层级）
 
----
+### A. 轻量诊断工具 — RenderTracer（开发模式 HUD）
 
-## 方案：自建轻量级 PerfMonitor（不引入 r3f-perf 库）
+在不引入 why-did-you-render 第三方包的情况下，内建一个 `useRenderTracer` hook + `RenderTracerOverlay` 面板：
 
-### 为什么不直接 `npm install r3f-perf`
+- hook: 每次 render 记录 `组件名 + props diff + 时间戳` 到共享 ref 环形缓冲区
+- overlay: Shift+R 切换，展示最近 50 条 render 记录，按频率/时间排序，高亮异常频率组件
+- 零生产成本：`import.meta.env.DEV` 条件编译
 
-r3f-perf 库依赖 R3F 的 JSX reconciler 来注册 `<Perf>` 组件。但本项目的 CosmosScene 使用 **全命令式构建**（`createElement` + imperative Three.js），是为了避免 Enter.pro babel 插件注入 `data-source-*` 到 Three 对象上导致崩溃。直接 `<Perf />` 同样会踩到这个问题。
+### B. Top-5 重渲染热点组件 memo 化
 
-**因此**：借鉴 r3f-perf 的思路，自建一个轻量级 `usePerfMonitor` hook + `PerfOverlay` HUD，直接在 useFrame 中采集指标，零外部依赖。
+| # | 组件 | 根因 | 修复 |
+|---|------|------|------|
+| 1 | **FloatingPod** (×5) | 父 `StarMapContents` 任意 state 变化 → 5 个 Pod 全部 re-render | `React.memo` + children 提取为 memoized 变量 |
+| 2 | **CommandDock / DesktopCommandDock** | `useToolbox()` 消费整个 context → 任何 pod position/size 变化都触发 | `React.memo` + `useMemo` 选择性消费 |
+| 3 | **NodeLightBand** | 接收 `hoveredNode` 对象 → 每次 hover 创建新对象引用 | `React.memo` + 比较 noteId |
+| 4 | **InteractionHints** | 4 个 props 每次父 render 都传新值 | `React.memo` |
+| 5 | **SettingsCapsule** | `useToolbox()` 全量消费 | `React.memo` |
 
----
+### C. ToolboxContext 拆分（阻止级联）
 
-## 监控指标
+当前 `ToolboxContext.Provider value={value}` 每次 `setPods` 都创建新对象 → 所有 `useToolbox()` consumer re-render。
 
-| 指标 | 采集方式 | 瓶颈信号 |
-|------|----------|----------|
-| **FPS** | `useFrame` delta 计算，1s 窗口平均 | < 45 fps |
-| **Frame time (ms)** | `performance.now()` 帧间隔 | > 22ms |
-| **Draw calls** | `gl.info.render.calls` (每帧读) | > 150 |
-| **Triangles** | `gl.info.render.triangles` | > 200K |
-| **Geometries** | `gl.info.memory.geometries` | 持续增长 = 泄漏 |
-| **Textures** | `gl.info.memory.textures` | 同上 |
-| **Node count** | `notes.length` | > 200 需要 LOD 策略 |
-| **Edge count** | `layout.edges.length` | > 500 需要 frustum cull |
-| **Raycast time** | `performance.now()` 包裹 raycast 区域 | > 2ms |
-| **Bloom pass** | 有/无对比帧率 | 差值 > 10fps = 瓶颈 |
+修复：将 `value` 用 `useMemo` 包裹，仅在真正变化的 deps 改变时更新引用。
 
 ---
 
-## 需要修改的文件
+## 新建文件
 
-### 1. `src/hooks/usePerfMonitor.ts` (NEW)
+### 1. `src/hooks/useRenderTracer.ts`
+- `useRenderTracer(name: string, props: Record<string, unknown>)` — 在 DEV 模式下追踪每次 render
+- 记录到共享环形缓冲区 `renderLog`（全局 ref，不触发 re-render）
+- 对比上一次 props，记录哪些 key 发生变化
+- 暴露 `getRenderLog()` 供 overlay 读取
 
-轻量级性能采集 hook，在 R3F Canvas 内部使用：
-
-```
-export interface PerfSnapshot {
-  fps: number;
-  frameMs: number;
-  drawCalls: number;
-  triangles: number;
-  geometries: number;
-  textures: number;
-  raycastMs: number;
-  nodeCount: number;
-  edgeCount: number;
-}
-```
-
-- 使用 `useFrame` 每帧采集 `gl.info`
-- 每 60 帧计算一次平均值 → 写入 `ref` 供 overlay 读
-- 暴露 `raycastStart()` / `raycastEnd()` 方法供 ImperativeCore 打点
-- 暴露 `snapshot: PerfSnapshot` 供 overlay 读取
-- 暴露 `history: PerfSnapshot[]`（最近 120 条，约 2 秒）用于 sparkline
-
-### 2. `src/components/starmap/PerfOverlay.tsx` (NEW)
-
-HUD 面板，渲染为普通 React DOM（不在 Canvas 内）：
-
-- 固定在右上角，半透明深色背景
-- 实时显示：FPS (大字 + 颜色编码)、Frame ms、Draw Calls、Tri count
-- Mini sparkline（最近 2s FPS 折线，canvas 2D 绘制）
-- 子系统开关面板：
-  - **Bloom**: 切换 EffectComposer 启/禁
-  - **星场**: 切换星场 Points visible
-  - **连线**: 切换 edge lines visible
-  - **标签**: 切换 Html labels 渲染
-  - **Raycast**: 切换 raycast 频率 (3帧 → 6帧 → off)
-- 每个开关切换后观察 FPS 变化 → 直接定位瓶颈
-
-### 3. `src/components/starmap/CosmosScene.tsx` (MODIFY)
-
-- 在 `ImperativeCore` 的 `useFrame` 中：
-  - 帧头调用 `perfMonitor.frameStart()`
-  - raycast 区块前后调用 `perfMonitor.raycastStart()` / `perfMonitor.raycastEnd()`
-  - 帧尾调用 `perfMonitor.frameEnd()`
-- 在外层 `CosmosScene` 函数中：
-  - 接收 `perfEnabled` prop
-  - 条件性调用 `usePerfMonitor()`
-  - 通过 ref 暴露 snapshot 给外部
-- 将 `EffectComposer + Bloom`、星场 Points name、edge lines 添加 `visible` 控制
-  - 通过 `useRef` flag 接收 PerfOverlay 的开关信号
-
-### 4. `src/components/starmap/KnowledgeStarMap.tsx` (MODIFY)
-
-- 添加 `perfEnabled` state（默认 false，仅开发时启用）
-- 传递给 CosmosScene
-- 条件渲染 `<PerfOverlay />`
-- 监听键盘快捷键 `Shift+P` 切换 perf panel
-
-### 5. `src/components/layout/StarMapLayout.tsx` (MODIFY - minor)
-
-- 无直接修改，perf panel 完全封装在 KnowledgeStarMap 内部
+### 2. `src/components/starmap/RenderTracerOverlay.tsx`
+- Shift+R 切换的右下角浮动面板
+- 每 500ms 轮询 `getRenderLog()` 展示最近 50 条
+- 每行：`[时间] 组件名 (changedProps: [...])` + 频率色标
+- 表头显示总 render 数和 top-3 频率组件
 
 ---
 
-## 接入层级图
+## 修改文件
 
-```
-StarMapLayout
-  └── KnowledgeStarMap
-        ├── Canvas
-        │     └── CosmosScene
-        │           ├── ImperativeCore  ← usePerfMonitor() 在这里采集
-        │           ├── ClusterLabel (Html)  ← toggleable
-        │           ├── HoverTooltip (Html)  ← toggleable
-        │           ├── NodeWindow (Html)
-        │           ├── OrbitControls
-        │           └── EffectComposer+Bloom  ← toggleable
-        │
-        └── PerfOverlay (DOM)  ← 浮在 Canvas 上方，读 perf ref
-```
+### 3. `src/components/floating/FloatingPod.tsx`
+- 在 `DesktopFloatingPod` 外包 `React.memo`
+- 对比 `id, title, subtitle, accentColor` 浅比较即可
+- 接入 `useRenderTracer` (DEV)
 
----
+### 4. `src/components/floating/CommandDock.tsx`
+- `DesktopCommandDock` 包 `React.memo`
+- 提取 `pods` 中仅需要的 open 状态，避免 position/size 变化触发
+- 接入 `useRenderTracer` (DEV)
 
-## 诊断 → 优化映射表
+### 5. `src/components/layout/NodeLightBand.tsx`
+- 包 `React.memo` + 自定义 areEqual：仅比较 `node?.noteId`, `tagFilter`, `connectMode`
+- 接入 `useRenderTracer` (DEV)
 
-| 诊断结论 | 优化动作 |
-|----------|----------|
-| Bloom 关闭 FPS 提升 >10 | 降低 Bloom intensity/分辨率，或 LOD>1 时禁用 |
-| Draw calls > 200 | InstancedMesh 合并同色节点 |
-| Triangles > 300K | 降低 SphereGeometry segments (18→10)，远处用 billboard |
-| Raycast > 3ms | 增大 throttle 间隔，BVH 空间索引，frustum pre-filter |
-| Edge lines 关闭 FPS 提升 >5 | 远处 edge 全部隐藏，近处分批渲染 |
-| Html labels 关闭 FPS 提升 >5 | LOD>0 已隐藏，检查 hover tooltip 开销 |
-| Node count > 200 | LOD2 只渲染 billboard sprites，LOD1 低段数几何 |
-| Geometries 持续增长 | 检查 dispose 遗漏（layout 变化时） |
-| FPS 拖动时 <30 | OrbitControls damping 回调触发过多重渲染 |
+### 6. `src/components/starmap/InteractionHints.tsx`
+- 包 `React.memo` — props 都是原始类型，浅比较即可
+- 接入 `useRenderTracer` (DEV)
 
----
+### 7. `src/components/floating/SettingsCapsule.tsx`
+- 包 `React.memo`
+- 接入 `useRenderTracer` (DEV)
 
-## MVP 最小接入
+### 8. `src/contexts/ToolboxContext.tsx`
+- `value` 对象用 `useMemo` 包裹，deps 为 `[pods, lastOpened, topZ, layoutConfig, presets, ...]`
+- 这不改变行为，但避免每次 render 都创建新的 value 引用传递给无关组件
 
-**Phase 1（本次实施）**：
-1. 创建 `usePerfMonitor.ts` — 纯采集，无副作用
-2. 创建 `PerfOverlay.tsx` — 只读 HUD + sparkline + 子系统开关
-3. 修改 `CosmosScene.tsx` — 插入采集点 + visible 控制 ref
-4. 修改 `KnowledgeStarMap.tsx` — `Shift+P` 开关 + state 传递
-5. 开关面板的每次切换自动记录 FPS 差值 → 在面板中显示 "Bloom: -12fps" 格式的影响标注
+### 9. `src/components/layout/StarMapLayout.tsx`
+- 在 `StarMapContents` 渲染 `<RenderTracerOverlay />` (仅 DEV 模式)
+- memo 化 pod children 变量（CaptureBox / RetrievalBox 等的 props 用 useCallback）
 
-**Phase 2（后续按需）**：
-- 导出 perf 快照为 JSON（一键复制到剪贴板）
-- Timeline 录制模式：记录 10s 操作 → 帧级回放
-- 自动建议：当某子系统 FPS 影响 > 阈值时，面板自动高亮推荐优化
+### 10. `src/components/starmap/KnowledgeStarMap.tsx`
+- 接入 `useRenderTracer` (DEV)，和 PerfOverlay 互补（GPU vs React）
 
 ---
 
 ## 验证方式
 
-1. 打开星图页面，按 `Shift+P` → PerfOverlay 出现
-2. 确认 FPS / Draw Calls / Triangles 实时更新
-3. 逐个关闭子系统开关，观察 FPS 变化
-4. 拖动/缩放/聚焦节点时观察帧率曲线
-5. 再次 `Shift+P` → 面板隐藏，零性能开销
+1. **Shift+R** 打开 RenderTracerOverlay → hover 节点 → 面板中只应看到 `CosmosScene`、`NodeLightBand` render，而非 `FloatingPod`、`CommandDock`
+2. 打开/关闭 Pod → 面板中不应出现其他 Pod 的 render 记录
+3. **Shift+P** (GPU perf) + **Shift+R** (React perf) 可同时使用
