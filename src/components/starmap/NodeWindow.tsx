@@ -36,15 +36,16 @@ interface NodeWindowProps {
   accentColor: string;
   onClose: () => void;
   onNavigate?: (noteId: string) => void;
-  onNewNode?: (noteId: string) => void;   // flash a newly created derived node
+  onNewNode?: (noteId: string) => void;
+  onDropToPod?: (noteId: string, podId: string) => void;
 }
 
-export function NodeWindow({ note, accentColor, onClose, onNavigate, onNewNode }: NodeWindowProps) {
+export function NodeWindow({ note, accentColor, onClose, onNavigate, onNewNode, onDropToPod }: NodeWindowProps) {
   const [editing,  setEditing]  = useState(false);
   const [title,    setTitle]    = useState(note.title    ?? '');
   const [summary,  setSummary]  = useState(note.summary  ?? '');
   const [saving,   setSaving]   = useState(false);
-  const [delegating, setDelegating] = useState<string | null>(null); // which action is running
+  const [delegating, setDelegating] = useState<string | null>(null);
 
   const nodeType = note.node_type ?? 'capture';
   const isWiki = nodeType.startsWith('wiki_');
@@ -297,22 +298,22 @@ export function NodeWindow({ note, accentColor, onClose, onNavigate, onNewNode }
               icon={<RefreshCw size={8} />}
               label="再检索"
               color="#66f0ff"
-              loading={delegating === 'retrieve-hint'}
-              onClick={() => toast.info('请在 Retrieval Pod 中输入: ' + (note.title || ''), { duration: 3000 })}
+              loading={false}
+              onClick={() => { onDropToPod?.(note.id, 'retrieval'); onClose(); }}
             />
             <AgentActionBtn
               icon={<FlaskConical size={8} />}
               label="再蒸馏"
               color="#b496ff"
-              loading={delegating === 'insight'}
-              onClick={() => createDerived('insight', '洞见', note.summary || '提炼自: ' + (note.title || ''))}
+              loading={false}
+              onClick={() => { onDropToPod?.(note.id, 'insight'); onClose(); }}
             />
             <AgentActionBtn
               icon={<Zap size={8} />}
               label="转行动"
               color="#ff4466"
-              loading={delegating === 'action'}
-              onClick={() => createDerived('action', '行动', '基于「' + (note.title || '此节点') + '」的后续行动')}
+              loading={false}
+              onClick={() => { onDropToPod?.(note.id, 'action'); onClose(); }}
             />
             <AgentActionBtn
               icon={<HelpCircle size={8} />}
@@ -326,7 +327,7 @@ export function NodeWindow({ note, accentColor, onClose, onNavigate, onNewNode }
               label="标记唤醒"
               color="#c0c8d8"
               loading={false}
-              onClick={() => toast.success('已加入唤醒队列', { description: 'Memory Pod 将在适当时机召回此节点' })}
+              onClick={() => { onDropToPod?.(note.id, 'memory'); onClose(); }}
             />
           </div>
         </div>

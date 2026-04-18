@@ -25,6 +25,7 @@ import { QuickCaptureBar } from '@/components/starmap/QuickCaptureBar';
 import { LayoutEditBar }   from '@/components/window-manager/LayoutEditBar';
 import { AlignmentGuides } from '@/components/window-manager/AlignmentGuides';
 import { UniverseSwitcher } from '@/components/universe/UniverseSwitcher';
+import { InteractionHints } from '@/components/starmap/InteractionHints';
 import { TourProvider, useTour } from '@/components/tour/TourProvider';
 import { TourOverlay } from '@/components/tour/TourOverlay';
 import { useTourTrigger } from '@/hooks/useTourTrigger';
@@ -337,7 +338,14 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
       {device !== 'phone' && <AlignmentGuides />}
       {device !== 'phone' && <LayoutEditBar />}
 
-      {/* Layer 9 — Tour Overlay */}
+      {/* Layer 9 — Interaction Hints */}
+      <InteractionHints
+        noteCount={notes.length}
+        hoveredNode={!!hoveredNode}
+        connectMode={connectModeInfo.mode === 'connect'}
+      />
+
+      {/* Layer 10 — Tour Overlay */}
       <TourOverlay />
 
     </div>

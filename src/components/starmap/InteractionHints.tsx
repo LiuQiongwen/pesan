@@ -1,0 +1,109 @@
+/**
+ * InteractionHints — contextual bottom-left HUD showing interaction shortcuts.
+ * Ultra-subtle, auto-fades after 8s idle, reappears on mouse move.
+ */
+import { useState, useEffect, useRef, useMemo } from 'react';
+
+const MONO = "'IBM Plex Mono','Roboto Mono',monospace";
+
+interface Props {
+  noteCount: number;
+  hoveredNode: boolean;
+  connectMode: boolean;
+}
+
+interface Hint {
+  key: string;
+  action: string;
+}
+
+export function InteractionHints({ noteCount, hoveredNode, connectMode }: Props) {
+  const [visible, setVisible] = useState(true);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // Auto-hide after 8s, reshow on mouse move
+  useEffect(() => {
+    const reset = () => {
+      setVisible(true);
+      clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setVisible(false), 8000);
+    };
+    reset();
+    window.addEventListener('mousemove', reset, { passive: true });
+    window.addEventListener('keydown', reset, { passive: true });
+    return () => {
+      window.removeEventListener('mousemove', reset);
+      window.removeEventListener('keydown', reset);
+      clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  const hints = useMemo((): Hint[] => {
+    if (connectMode) {
+      return [
+        { key: '点击', action: '选择目标星建立连接' },
+        { key: 'Esc', action: '取消连接' },
+      ];
+    }
+    if (hoveredNode) {
+      return [
+        { key: '点击', action: '打开节点' },
+        { key: '右键', action: '更多操作' },
+        { key: '拖拽', action: '移动位置' },
+        { key: 'F', action: '闪烁定位' },
+      ];
+    }
+    if (noteCount === 0) {
+      return [
+        { key: 'N', action: '开始输入第一条知识' },
+        { key: '点击中心', action: '开始创作' },
+      ];
+    }
+    return [
+      { key: '点击', action: '打开节点' },
+      { key: '拖拽', action: '转动视角' },
+      { key: '右键', action: '更多操作' },
+      { key: 'N', action: '新笔记' },
+      { key: 'G', action: '回到中心' },
+    ];
+  }, [noteCount, hoveredNode, connectMode]);
+
+  return (
+    <div style={{
+      position: 'fixed',
+      bottom: 'clamp(12px, 1.5vh, 20px)',
+      left: 'clamp(14px, 1.5vw, 22px)',
+      zIndex: 8,
+      pointerEvents: 'none',
+      display: 'flex',
+      gap: 12,
+      opacity: visible ? 0.6 : 0,
+      transition: 'opacity 0.6s ease',
+    }}>
+      {hints.map(h => (
+        <div key={h.key} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{
+            fontFamily: MONO,
+            fontSize: 8,
+            letterSpacing: '0.06em',
+            color: 'rgba(102,240,255,0.65)',
+            background: 'rgba(102,240,255,0.08)',
+            border: '1px solid rgba(102,240,255,0.15)',
+            padding: '1px 5px',
+            borderRadius: 3,
+          }}>
+            {h.key}
+          </span>
+          <span style={{
+            fontFamily: MONO,
+            fontSize: 8,
+            letterSpacing: '0.04em',
+            color: 'rgba(160,175,205,0.45)',
+          }}>
+            {h.action}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}

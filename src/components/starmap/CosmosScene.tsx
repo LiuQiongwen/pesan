@@ -1694,12 +1694,12 @@ export function CosmosScene({
             style: { pointerEvents: 'all' },
           },
           <NodeWindow
-            note={{ id: note.id, title: note.title, summary: note.summary, tags: note.tags, created_at: note.created_at }}
+            note={{ id: note.id, user_id: userId, title: note.title, summary: note.summary, tags: note.tags, created_at: note.created_at }}
             accentColor={np.color}
             onClose={() => onNodeToggle(noteId)}
             onNavigate={(id) => navigate(`/app/note/${id}`)}
             onNewNode={onFlashNote}
-            userId={userId}
+            onDropToPod={onNodeDropToPodRef.current}
           />
         );
       })}
