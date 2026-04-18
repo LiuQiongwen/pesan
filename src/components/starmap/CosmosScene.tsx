@@ -1699,7 +1699,7 @@ export function CosmosScene({
             onClose={() => onNodeToggle(noteId)}
             onNavigate={(id) => navigate(`/app/note/${id}`)}
             onNewNode={onFlashNote}
-            onDropToPod={onNodeDropToPodRef.current}
+            onDropToPod={onNodeDropToPod}
           />
         );
       })}
