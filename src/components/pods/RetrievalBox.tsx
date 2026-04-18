@@ -1,23 +1,25 @@
 /**
- * Retrieval Pod — 检索舱
+ * Retrieval Pod — 检索舱 (Private Cloud RAG)
  * Accent: #66f0ff (cyan)
  *
- * Features:
- * - SEARCH mode: semantic keyword search returning note cards
- * - ASK mode: RAG question-answering with citations
- * - Results convertible to star-map nodes or relayed to Insight
- * - Auto-receives content from CaptureBox via AgentWorkflowContext
+ * Three-layer result structure:
+ *   1. Answer Layer — AI synthesis with inline citations
+ *   2. Citation Layer — expandable source cards with fly-to-star
+ *   3. Scope Layer — search statistics
  */
 import { useState, useRef, useEffect } from 'react';
-import { Search, MessageCircle, Loader2, ChevronDown, ChevronUp, Circle, ArrowRight, Star } from 'lucide-react';
-import { useRAG, type Citation } from '@/hooks/useRAG';
+import {
+  Search, MessageCircle, Loader2, ChevronDown, ChevronUp,
+  ArrowRight, Star, Feather, Database,
+} from 'lucide-react';
+import { useRAG, type Citation, type ScopeMeta } from '@/hooks/useRAG';
 import { useAgentWorkflow } from '@/contexts/AgentWorkflowContext';
 import { useToolbox } from '@/contexts/ToolboxContext';
 
 const C    = '#66f0ff';
 const MONO = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
-const SUPS = ['¹','²','³','⁴','⁵','⁶'];
+const SUPS = ['\u00b9','\u00b2','\u00b3','\u2074','\u2075','\u2076'];
 
 type Mode = 'search' | 'ask';
 
@@ -34,7 +36,31 @@ function renderCited(text: string) {
   return parts;
 }
 
-function SourceCard({ c, idx, onHighlight }: { c: Citation; idx: number; onHighlight?: (id: string) => void }) {
+/* ── Scope Bar ─────────────────────────────────────────────────────────── */
+function ScopeBar({ meta }: { meta?: ScopeMeta }) {
+  if (!meta) return null;
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 6,
+      padding: '5px 12px',
+      borderBottom: '1px solid rgba(102,240,255,0.06)',
+    }}>
+      <Database size={9} color={`${C}50`} />
+      <span style={{
+        fontFamily: MONO, fontSize: 8, letterSpacing: '0.05em',
+        color: `${C}55`,
+      }}>
+        {meta.universe_name} · {meta.note_count} 篇笔记 · {meta.chunk_count} 知识片段
+      </span>
+    </div>
+  );
+}
+
+/* ── Source Card ────────────────────────────────────────────────────────── */
+function SourceCard({ c, idx, onFlyTo }: {
+  c: Citation; idx: number;
+  onFlyTo?: (id: string, title: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <div style={{
@@ -52,12 +78,17 @@ function SourceCard({ c, idx, onHighlight }: { c: Citation; idx: number; onHighl
           </span>
           {open ? <ChevronUp size={9} color="rgba(140,155,180,0.45)" /> : <ChevronDown size={9} color="rgba(140,155,180,0.45)" />}
         </button>
-        {/* Highlight in star map */}
-        {onHighlight && (
-          <button onClick={() => onHighlight(c.note_id)} title="在星图中高亮" style={{
-            display: 'flex', padding: '6px 8px', background: 'none', border: 'none', cursor: 'pointer',
-          }}>
-            <Star size={9} color={`${C}50`} />
+        {onFlyTo && (
+          <button
+            onClick={() => onFlyTo(c.note_id, c.note_title)}
+            title="在星图中定位"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 3,
+              padding: '5px 8px', background: 'none', border: 'none', cursor: 'pointer',
+            }}
+          >
+            <Star size={9} color={`${C}70`} />
+            <span style={{ fontFamily: MONO, fontSize: 7, color: `${C}45`, letterSpacing: '0.05em' }}>定位</span>
           </button>
         )}
       </div>
@@ -72,6 +103,42 @@ function SourceCard({ c, idx, onHighlight }: { c: Citation; idx: number; onHighl
   );
 }
 
+/* ── No Evidence State ─────────────────────────────────────────────────── */
+function NoEvidenceState({ meta, onOpenCapture }: { meta?: ScopeMeta; onOpenCapture: () => void }) {
+  return (
+    <div style={{ padding: '20px 16px', textAlign: 'center' }}>
+      <div style={{
+        width: 32, height: 32, borderRadius: '50%',
+        background: 'rgba(102,240,255,0.06)',
+        border: '1px solid rgba(102,240,255,0.12)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        margin: '0 auto 10px',
+      }}>
+        <Search size={14} color={`${C}45`} />
+      </div>
+      <div style={{ fontFamily: INTER, fontSize: 12, color: 'rgba(200,215,235,0.75)', marginBottom: 6 }}>
+        知识库中未找到相关依据
+      </div>
+      <div style={{ fontFamily: INTER, fontSize: 10, color: 'rgba(130,145,175,0.55)', lineHeight: 1.65, marginBottom: 12 }}>
+        {meta ? `你的「${meta.universe_name}」中有 ${meta.note_count} 篇笔记，但未涵盖此主题。` : '知识库暂无内容。'}
+        <br />导入更多相关资料后，答案会自动更新。
+      </div>
+      <button onClick={onOpenCapture} style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        fontFamily: MONO, fontSize: 9, letterSpacing: '0.06em',
+        color: '#00ff66', background: 'rgba(0,255,102,0.06)',
+        border: '1px solid rgba(0,255,102,0.20)',
+        borderRadius: 6, padding: '6px 14px', cursor: 'pointer',
+        transition: 'all 0.15s',
+      }}>
+        <Feather size={10} />
+        打开 Capture 舱导入资料
+      </button>
+    </div>
+  );
+}
+
+/* ── Main Component ────────────────────────────────────────────────────── */
 interface Props { onHighlight?: (ids: string[]) => void }
 
 export default function RetrievalBox({ onHighlight }: Props) {
@@ -83,20 +150,21 @@ export default function RetrievalBox({ onHighlight }: Props) {
   const [query,     setQuery]     = useState('');
   const [answer,    setAnswer]    = useState<string | null>(null);
   const [citations, setCitations] = useState<Citation[]>([]);
-  const [showSrc,   setShowSrc]   = useState(false);
+  const [scopeMeta, setScopeMeta] = useState<ScopeMeta | undefined>();
+  const [noEvidence, setNoEvidence] = useState(false);
+  const [showSrc,   setShowSrc]   = useState(true); // default open
   const inputRef       = useRef<HTMLInputElement>(null);
   const autoSearchRef  = useRef(false);
 
-  // Auto-receive from workflow relay (e.g. drag-to-pod from star map)
+  // Auto-receive from workflow relay
   useEffect(() => {
     const relayed = workflow.consumeRelay('retrieval');
     if (relayed) {
       setQuery(relayed.slice(0, 200));
-      autoSearchRef.current = true;  // trigger auto-search on next query change
+      autoSearchRef.current = true;
       workflow.setActiveStep('retrieval');
       inputRef.current?.focus();
     }
-  // Only run when relay changes (timestamp-based)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflow.relay?.timestamp]);
 
@@ -104,7 +172,7 @@ export default function RetrievalBox({ onHighlight }: Props) {
   useEffect(() => {
     if (autoSearchRef.current && query.trim() && !loading) {
       autoSearchRef.current = false;
-      handleSearch();  // defined below — safe because useEffect runs after render
+      handleSearch();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
@@ -112,14 +180,23 @@ export default function RetrievalBox({ onHighlight }: Props) {
   const handleSearch = async () => {
     if (!query.trim() || loading) return;
     workflow.setActiveStep('retrieval');
+    setNoEvidence(false);
     const res = await search(query);
     if (res) {
       setAnswer(res.answer);
       setCitations(res.citations);
-      setShowSrc(false);
+      setScopeMeta(res.scope_meta);
+      setNoEvidence(res.no_evidence ?? false);
+      setShowSrc(true);
       onHighlight?.(res.citations.map(c => c.note_id));
       workflow.markStepComplete('retrieval');
     }
+  };
+
+  const handleFlyTo = (noteId: string, noteTitle: string) => {
+    onHighlight?.([noteId]);
+    // Dispatch event so StarMapLayout can show trace toast
+    window.dispatchEvent(new CustomEvent('hint-trace-source', { detail: { noteTitle } }));
   };
 
   const handleSendToInsight = () => {
@@ -130,10 +207,13 @@ export default function RetrievalBox({ onHighlight }: Props) {
     openPod('insight');
   };
 
-  const hasResults = answer || citations.length > 0;
+  const hasResults = (answer && !noEvidence) || citations.length > 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+
+      {/* Scope bar */}
+      <ScopeBar meta={scopeMeta} />
 
       {/* Mode toggle + relay indicator */}
       <div style={{
@@ -141,7 +221,6 @@ export default function RetrievalBox({ onHighlight }: Props) {
         padding: '8px 12px 6px',
         borderBottom: '1px solid rgba(102,240,255,0.08)',
       }}>
-        {/* Search / Ask toggle */}
         <div style={{
           display: 'flex', gap: 2,
           background: 'rgba(102,240,255,0.05)',
@@ -163,7 +242,6 @@ export default function RetrievalBox({ onHighlight }: Props) {
           ))}
         </div>
 
-        {/* Relay indicator */}
         {workflow.relay?.targetPod === 'retrieval' && (
           <div style={{
             fontFamily: MONO, fontSize: 7, letterSpacing: '0.06em',
@@ -172,7 +250,7 @@ export default function RetrievalBox({ onHighlight }: Props) {
             border: '1px solid rgba(102,240,255,0.15)',
             borderRadius: 4, padding: '2px 7px',
           }}>
-            ← 来自捕获舱
+            \u2190 来自捕获舱
           </div>
         )}
       </div>
@@ -189,13 +267,13 @@ export default function RetrievalBox({ onHighlight }: Props) {
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSearch()}
-            placeholder={mode === 'search' ? '关键词语义检索…' : '直接提问，获取引用式回答…'}
+            placeholder={mode === 'search' ? '关键词语义检索...' : '直接提问，获取引用式回答...'}
             disabled={loading}
             style={{
               width: '100%', boxSizing: 'border-box',
               padding: '8px 10px 8px 30px',
               background: 'rgba(102,240,255,0.04)',
-              border: `1px solid rgba(102,240,255,0.18)`,
+              border: '1px solid rgba(102,240,255,0.18)',
               borderRight: 'none', borderRadius: '7px 0 0 7px',
               fontFamily: INTER, fontSize: 12,
               color: 'rgba(210,225,245,0.88)', outline: 'none',
@@ -216,11 +294,16 @@ export default function RetrievalBox({ onHighlight }: Props) {
         </button>
       </div>
 
-      {/* Results */}
+      {/* No evidence state */}
+      {noEvidence && !loading && (
+        <NoEvidenceState meta={scopeMeta} onOpenCapture={() => openPod('capture')} />
+      )}
+
+      {/* Results — three-layer structure */}
       {hasResults && (
         <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
 
-          {/* Answer block */}
+          {/* Layer 1: Answer */}
           {answer && (
             <div style={{
               background: 'rgba(102,240,255,0.04)',
@@ -233,10 +316,20 @@ export default function RetrievalBox({ onHighlight }: Props) {
               <p style={{ fontFamily: INTER, fontSize: 12, color: 'rgba(210,225,245,0.88)', lineHeight: 1.78, margin: 0 }}>
                 {renderCited(answer)}
               </p>
+              {/* Scope stamp */}
+              {scopeMeta && (
+                <div style={{
+                  fontFamily: MONO, fontSize: 7.5, letterSpacing: '0.05em',
+                  color: `${C}35`, marginTop: 8, paddingTop: 6,
+                  borderTop: '1px solid rgba(102,240,255,0.06)',
+                }}>
+                  仅基于你的 {scopeMeta.note_count} 篇笔记生成 · 非通用 AI 回答
+                </div>
+              )}
             </div>
           )}
 
-          {/* Sources */}
+          {/* Layer 2: Citations (default open) */}
           {citations.length > 0 && (
             <div>
               <button onClick={() => setShowSrc(o => !o)} style={{
@@ -245,19 +338,28 @@ export default function RetrievalBox({ onHighlight }: Props) {
                 background: 'none', border: 'none', cursor: 'pointer', letterSpacing: '0.05em',
                 marginBottom: showSrc ? 6 : 0,
               }}>
-                <Circle size={6} color={C} fill={C} />
-                {citations.length} 来源节点
+                <Star size={7} color={C} fill={showSrc ? C : 'transparent'} />
+                来源引用 · {citations.length} 个知识节点
                 {showSrc ? <ChevronUp size={9} /> : <ChevronDown size={9} />}
               </button>
               {showSrc && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {citations.map((c, i) => (
-                    <SourceCard key={c.chunk_id} c={c} idx={i}
-                      onHighlight={id => onHighlight?.([id])}
-                    />
+                    <SourceCard key={c.chunk_id} c={c} idx={i} onFlyTo={handleFlyTo} />
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Layer 3: Scope stats (collapsed) */}
+          {scopeMeta && (
+            <div style={{
+              fontFamily: MONO, fontSize: 7.5, letterSpacing: '0.05em',
+              color: 'rgba(80,95,125,0.45)', lineHeight: 1.6,
+              padding: '4px 0',
+            }}>
+              检索范围: {scopeMeta.universe_name} · 扫描 {scopeMeta.chunk_count} 个知识片段 · 匹配 {citations.length} 个来源
             </div>
           )}
 
@@ -271,16 +373,21 @@ export default function RetrievalBox({ onHighlight }: Props) {
             transition: 'all 0.15s',
           }}>
             <ArrowRight size={10} />
-            → 发送至洞察舱
+            \u2192 发送至洞察舱
           </button>
         </div>
       )}
 
-      {/* Empty hint */}
-      {!hasResults && !loading && (
+      {/* Empty hint (no search yet) */}
+      {!hasResults && !noEvidence && !loading && (
         <div style={{ padding: '20px 16px', textAlign: 'center' }}>
+          <div style={{ fontFamily: INTER, fontSize: 11, color: 'rgba(102,240,255,0.40)', marginBottom: 4 }}>
+            你的私人知识库
+          </div>
           <div style={{ fontFamily: MONO, fontSize: 9, color: 'rgba(60,72,95,0.55)', letterSpacing: '0.05em', lineHeight: 1.8 }}>
-            {mode === 'search' ? '关键词语义检索 · 定位知识节点' : '直接提问 · 支持引用式问答'}
+            {mode === 'search'
+              ? '只从你的笔记中检索 · 每个回答都有来源'
+              : '直接提问 · AI 仅基于你导入的资料回答'}
           </div>
         </div>
       )}

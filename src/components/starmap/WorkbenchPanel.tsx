@@ -240,7 +240,20 @@ export function WorkbenchPanel({
       {!minimized && (
         <div style={{ position: 'relative', zIndex: 1, padding: '12px 14px 14px' }}>
 
+          {/* Empty state */}
+          {orderedNotes.length === 0 && (
+            <div style={{ padding: '14px 4px', textAlign: 'center' }}>
+              <div style={{ fontFamily: INTER, fontSize: 11, color: 'rgba(140,155,185,0.55)', marginBottom: 4 }}>
+                工作台为空
+              </div>
+              <div style={{ fontFamily: MONO, fontSize: 8.5, letterSpacing: '0.04em', color: 'rgba(100,115,145,0.40)', lineHeight: 1.7 }}>
+                右键星球「加入工作台」或拖拽节点至此
+              </div>
+            </div>
+          )}
+
           {/* Node cards row */}
+          {orderedNotes.length > 0 ? (<>
           <div style={{
             display: 'flex', gap: 10,
             overflowX: 'auto',
@@ -421,6 +434,13 @@ export function WorkbenchPanel({
               </button>
             )}
           </div>
+          </>) : (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '32px 16px', color: 'rgba(255,255,255,0.35)', fontSize: 13 }}>
+              <MousePointerClick size={28} strokeWidth={1.2} style={{ opacity: 0.4 }} />
+              <span>右键选中星球添加到工作台</span>
+              <span style={{ fontSize: 11, opacity: 0.6 }}>或从星图拖拽节点到此处</span>
+            </div>
+          )}
         </div>
       )}
 

@@ -19,12 +19,20 @@ export interface WikiCitation {
   excerpt: string;
 }
 
+export interface ScopeMeta {
+  note_count: number;
+  chunk_count: number;
+  universe_name: string;
+}
+
 export interface RAGConversation {
   id: string | null;
   query: string;
-  answer: string;
+  answer: string | null;
   citations: Citation[];
   wiki_citations: WikiCitation[];
+  scope_meta?: ScopeMeta;
+  no_evidence?: boolean;
   created_at: string;
 }
 
@@ -50,9 +58,11 @@ export function useRAG() {
         const convo: RAGConversation = {
           id: data.conversation_id || null,
           query: query.trim(),
-          answer: data.answer,
+          answer: data.answer ?? null,
           citations: data.citations || [],
           wiki_citations: data.wiki_citations || [],
+          scope_meta: data.scope_meta,
+          no_evidence: data.no_evidence ?? false,
           created_at: new Date().toISOString(),
         };
         setConversations((prev) => [convo, ...prev]);

@@ -32,7 +32,7 @@ import { TourProvider, useTour } from '@/components/tour/TourProvider';
 import { TourOverlay } from '@/components/tour/TourOverlay';
 import { useTourTrigger } from '@/hooks/useTourTrigger';
 
-import { Feather, Radar, FlaskConical, Layers, Zap, Sparkles, Link2, Send } from 'lucide-react';
+import { Feather, Radar, FlaskConical, Layers, Zap, Sparkles, Link2, Send, Star } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 import CaptureBox   from '@/components/pods/CaptureBox';
@@ -112,11 +112,30 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
       }
     };
     const onClose = () => setNodeWindowOpen(false);
+
+    // First-time camera move hint
+    const onCameraMove = () => {
+      if (hints.shouldShow('first-move')) {
+        pushToast({ message: '视角已旋转 — 滚轮缩放，双指平移', icon: Sparkles, duration: 3000 });
+        hints.dismiss('first-move');
+      }
+    };
+
+    // Trace source: fly to star from Retrieval Pod
+    const onTraceSource = (e: Event) => {
+      const title = (e as CustomEvent).detail?.noteTitle ?? '';
+      pushToast({ message: `已在星图中高亮「${title}」`, icon: Star, duration: 2500 });
+    };
+
     window.addEventListener('tour-node-opened', onOpen);
     window.addEventListener('node-window-closed', onClose);
+    window.addEventListener('tour-camera-moved', onCameraMove);
+    window.addEventListener('hint-trace-source', onTraceSource);
     return () => {
       window.removeEventListener('tour-node-opened', onOpen);
       window.removeEventListener('node-window-closed', onClose);
+      window.removeEventListener('tour-camera-moved', onCameraMove);
+      window.removeEventListener('hint-trace-source', onTraceSource);
     };
   }, [hints, pushToast]);
 

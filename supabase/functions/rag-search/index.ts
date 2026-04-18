@@ -29,6 +29,18 @@ Deno.serve(async (req) => {
       uniId = defUni?.id;
     }
 
+    // ── 0. Scope metadata ─────────────────────────────────────────────
+    const [{ count: noteCount }, { count: chunkCount }, uniRow] = await Promise.all([
+      db.from("notes").select("*", { count: "exact", head: true }).eq("user_id", user_id).eq("universe_id", uniId),
+      db.from("knowledge_chunks").select("*", { count: "exact", head: true }).eq("user_id", user_id).eq("universe_id", uniId),
+      db.from("universes").select("name").eq("id", uniId).maybeSingle(),
+    ]);
+    const scope_meta = {
+      note_count: noteCount ?? 0,
+      chunk_count: chunkCount ?? 0,
+      universe_name: uniRow?.data?.name ?? "默认宇宙",
+    };
+
     // ── 1. Wiki-first: search wiki_pages ──────────────────────────────
     let wikiHits: Array<{ id: string; title: string; summary: string; content_markdown: string; page_type: string }> = [];
     try {
@@ -87,9 +99,11 @@ Deno.serve(async (req) => {
     if (candidates.length === 0 && wikiHits.length === 0) {
       return new Response(JSON.stringify({
         success: true,
-        answer: "知识库中暂无相关内容。请先分析一些笔记，然后再搜索。",
+        answer: null,
         citations: [],
         wiki_citations: [],
+        scope_meta,
+        no_evidence: true,
         conversation_id: null,
       }), { headers: { ...cors, "Content-Type": "application/json", "Expect": "" } });
     }
@@ -216,6 +230,7 @@ Rules:
       answer,
       citations,
       wiki_citations,
+      scope_meta,
       conversation_id: convo?.id || null,
     }), { headers: { ...cors, "Content-Type": "application/json", "Expect": "" } });
 
