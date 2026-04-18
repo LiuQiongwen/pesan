@@ -42,7 +42,6 @@ export function TourOverlay() {
           border: '1px solid rgba(102,240,255,0.18)',
           borderRadius: 12,
           boxShadow: '0 0 40px rgba(102,240,255,0.06), 0 12px 40px rgba(0,0,0,0.5)',
-          whiteSpace: 'nowrap',
         }}
       >
         {/* Step icon */}
@@ -58,15 +57,25 @@ export function TourOverlay() {
         </div>
 
         {/* Task text */}
-        <span style={{
-          fontFamily: INTER,
-          fontSize: 13,
-          fontWeight: 600,
-          color: 'rgba(220,230,255,0.90)',
-          letterSpacing: '0.01em',
-        }}>
-          {content.task}
-        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{
+            fontFamily: INTER,
+            fontSize: 13,
+            fontWeight: 600,
+            color: 'rgba(220,230,255,0.90)',
+            letterSpacing: '0.01em',
+          }}>
+            {content.task}
+          </span>
+          <span style={{
+            fontFamily: MONO,
+            fontSize: 9,
+            color: 'rgba(102,240,255,0.50)',
+            letterSpacing: '0.04em',
+          }}>
+            {content.hint}
+          </span>
+        </div>
 
         {/* Progress dots */}
         <div style={{ display: 'flex', gap: 4, marginLeft: 4 }}>

@@ -25,7 +25,7 @@ import { QuickCaptureBar } from '@/components/starmap/QuickCaptureBar';
 import { LayoutEditBar }   from '@/components/window-manager/LayoutEditBar';
 import { AlignmentGuides } from '@/components/window-manager/AlignmentGuides';
 import { UniverseSwitcher } from '@/components/universe/UniverseSwitcher';
-import { TourProvider } from '@/components/tour/TourProvider';
+import { TourProvider, useTour } from '@/components/tour/TourProvider';
 import { TourOverlay } from '@/components/tour/TourOverlay';
 import { useTourTrigger } from '@/hooks/useTourTrigger';
 
@@ -85,8 +85,16 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
   const [agentActive,     setAgentActive]     = useState(false);
   const [pinnedMemoryId,  setPinnedMemoryId]  = useState<string | null>(null);
 
-  // Tour trigger hook — watches actions to auto-advance 3-step tour
+  // Tour trigger hook — watches actions to auto-advance tour
   useTourTrigger({ noteCount: notes.length });
+
+  // Auto-open capture pod when tour starts on 'create' step
+  const tour = useTour();
+  useEffect(() => {
+    if (tour.active && tour.step?.id === 'create' && !pods.capture?.open) {
+      openPod('capture');
+    }
+  }, [tour.active, tour.step, pods.capture?.open, openPod]);
 
   useEffect(() => {
     if (!loading && !user) navigate('/auth');

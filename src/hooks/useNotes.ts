@@ -21,7 +21,7 @@ export function useNotes(userId?: string, universeId?: string | null) {
   const [loading, setLoading] = useState(true);
 
   const fetchNotes = useCallback(async () => {
-    if (!userId || !universeId) return;
+    if (!userId || !universeId) { setLoading(false); return; }
     setLoading(true);
     const { data, error } = await supabase
       .from('notes')

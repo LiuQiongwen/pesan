@@ -1,7 +1,7 @@
 /**
  * useTourTrigger — watches user actions and signals the TourProvider
- * to auto-advance the 3-step onboarding.
- * Signals: camera-moved, first-note-created, note-detail-opened
+ * to auto-advance the 2-step onboarding.
+ * Signals: first-note-created, note-detail-opened
  */
 import { useEffect, useRef, useCallback } from 'react';
 import { useTour, type TourSignal } from '@/components/tour/TourProvider';
@@ -23,15 +23,7 @@ export function useTourTrigger({ noteCount }: TriggerOpts) {
     signalRef.current(s);
   }, []);
 
-  // Step 1: Listen for camera-moved CustomEvent from CosmosScene
-  useEffect(() => {
-    if (!active || step?.id !== 'orbit') return;
-    const handler = () => send('camera-moved');
-    window.addEventListener('tour-camera-moved', handler);
-    return () => window.removeEventListener('tour-camera-moved', handler);
-  }, [active, step, send]);
-
-  // Step 2: Watch first note creation (noteCount 0 → 1+)
+  // Step 1: Watch first note creation (noteCount 0 → 1+)
   useEffect(() => {
     if (!active || step?.id !== 'create') return;
     if (prevNoteCount.current === 0 && noteCount > 0) {
@@ -40,7 +32,7 @@ export function useTourTrigger({ noteCount }: TriggerOpts) {
     prevNoteCount.current = noteCount;
   }, [active, step, noteCount, send]);
 
-  // Step 3: Watch node detail opened (NodeWindow toggle or note page navigation)
+  // Step 2: Watch node detail opened (NodeWindow toggle)
   useEffect(() => {
     if (!active || step?.id !== 'explore') return;
     const handler = () => send('note-detail-opened');

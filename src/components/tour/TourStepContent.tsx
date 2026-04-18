@@ -3,21 +3,28 @@
  * Pattern: one action sentence the user can immediately do.
  */
 import type { TourStepId } from './TourProvider';
-import { Orbit, PlusCircle, MousePointerClick } from 'lucide-react';
+import { PlusCircle, MousePointerClick } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 export interface StepContent {
   task: string;
+  hint: string;
   icon: LucideIcon;
 }
 
 export function getStepContent(id: TourStepId): StepContent {
   switch (id) {
-    case 'orbit':
-      return { task: '拖动星空，转动你的宇宙', icon: Orbit };
     case 'create':
-      return { task: '粘贴一段文字，生成第一颗知识星', icon: PlusCircle };
+      return {
+        task: '在左侧 Capture Pod 输入或粘贴一段文字，点击发送',
+        hint: 'AI 会自动提炼、索引并生成你的第一颗知识星',
+        icon: PlusCircle,
+      };
     case 'explore':
-      return { task: '点击星球，查看 AI 分析', icon: MousePointerClick };
+      return {
+        task: '点击星图中刚生成的星球',
+        hint: '查看 AI 为你生成的摘要、观点和知识关联',
+        icon: MousePointerClick,
+      };
   }
 }

@@ -6,19 +6,18 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
-export type TourStepId = 'orbit' | 'create' | 'explore';
+export type TourStepId = 'create' | 'explore';
 
 export interface TourStep {
   id: TourStepId;
 }
 
 const STEPS: TourStep[] = [
-  { id: 'orbit' },
   { id: 'create' },
   { id: 'explore' },
 ];
 
-export type TourSignal = 'camera-moved' | 'first-note-created' | 'note-detail-opened';
+export type TourSignal = 'first-note-created' | 'note-detail-opened';
 
 interface TourCtx {
   active:     boolean;
@@ -95,10 +94,8 @@ export function TourProvider({ userId, noteCount, children }: Props) {
     if (!active) return;
     setStepIdx(prev => {
       const currentId = STEPS[prev]?.id;
-      if (currentId === 'orbit'   && event === 'camera-moved')        return prev + 1;
       if (currentId === 'create'  && event === 'first-note-created')  return prev + 1;
       if (currentId === 'explore' && event === 'note-detail-opened') {
-        // Last step — complete after a short delay so user sees the transition
         setTimeout(() => complete(), 1200);
         return prev;
       }
