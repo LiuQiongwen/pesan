@@ -1,0 +1,22 @@
+
+create table reality_anchors (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  universe_id uuid not null references universes(id) on delete cascade,
+  anchor_type text not null check (anchor_type in ('note','tag','universe')),
+  target_id   text not null,
+  label       text not null default '',
+  created_at  timestamptz not null default now()
+);
+
+alter table reality_anchors enable row level security;
+
+create policy "users manage own anchors" on reality_anchors
+  for all using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+-- Allow public read for anchor landing page (unauthenticated scan)
+create policy "anyone can read anchors" on reality_anchors
+  for select using (true);
+
+create index idx_reality_anchors_user on reality_anchors(user_id);

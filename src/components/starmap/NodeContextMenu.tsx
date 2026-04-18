@@ -45,6 +45,7 @@ interface Props {
   onConnect?: (noteId: string) => void;
   onDelete?: (noteId: string) => void;
   onResetPosition?: (noteId: string) => void;
+  onCreateAnchor?: (noteId: string) => void;
   hasManualPosition?: boolean;
 }
 
@@ -68,7 +69,7 @@ function Item({ label, onClick, sub }: { label: string; onClick: () => void; sub
   );
 }
 
-export function NodeContextMenu({ noteId, x, y, note, onClose, onOpenNote, onDistill, onSendToPod, onFlash, onConnect, onDelete, onResetPosition, hasManualPosition }: Props) {
+export function NodeContextMenu({ noteId, x, y, note, onClose, onOpenNote, onDistill, onSendToPod, onFlash, onConnect, onDelete, onResetPosition, onCreateAnchor, hasManualPosition }: Props) {
   const [podHover, setPodHover] = useState(false);
   const isPhone = typeof window !== 'undefined' && window.innerWidth < 768;
 
@@ -235,6 +236,9 @@ export function NodeContextMenu({ noteId, x, y, note, onClose, onOpenNote, onDis
         {onConnect && <Item label="⟷ 连接到..." onClick={() => { onConnect(noteId); onClose(); }} />}
         {hasManualPosition && onResetPosition && (
           <Item label="⊕ 重置位置" onClick={() => { onResetPosition(noteId); onClose(); }} />
+        )}
+        {onCreateAnchor && (
+          <Item label="⊞ QR 锚点" onClick={() => { onCreateAnchor(noteId); onClose(); }} />
         )}
         {onDelete && (
           <>

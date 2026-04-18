@@ -12,6 +12,7 @@ import { UndoToast } from './UndoToast';
 import { WorkbenchSummonBar } from './WorkbenchSummonBar';
 import { WorkbenchPanel } from './WorkbenchPanel';
 import { MobileNodeCard } from './MobileNodeCard';
+import { CreateAnchorModal } from '@/components/anchors/CreateAnchorModal';
 import { type RelationType } from './connect-types';
 import { supabase } from '@/integrations/supabase/client';
 import { useDevice } from '@/hooks/useDevice';
@@ -172,6 +173,7 @@ export default function KnowledgeStarMap({
   // ── Mobile node card ──────────────────────────────────────────────────
   const { isPhone } = useDevice();
   const [mobileCardNoteId, setMobileCardNoteId] = useState<string | null>(null);
+  const [anchorNoteId, setAnchorNoteId] = useState<string | null>(null);
 
   // On phone, intercept node toggle to open MobileNodeCard instead
   const toggleNode = useCallback((id: string) => {
@@ -711,6 +713,7 @@ export default function KnowledgeStarMap({
           }}
           onDelete={onDeleteNote ? (id => { handleDeleteRequest(id); setCtxMenu(null); }) : undefined}
           onResetPosition={id => { handleResetPosition(id); setCtxMenu(null); }}
+          onCreateAnchor={id => { setAnchorNoteId(id); setCtxMenu(null); }}
           hasManualPosition={!!(ctxMenu && manualNodePos[ctxMenu.noteId])}
         />
       )}
@@ -800,6 +803,15 @@ export default function KnowledgeStarMap({
           color="#b496ff"
           onUndo={handleGalaxyUndo}
           onDismiss={() => setGalaxyUndoInfo(null)}
+        />
+      )}
+
+      {/* Create QR Anchor Modal */}
+      {anchorNoteId && (
+        <CreateAnchorModal
+          noteId={anchorNoteId}
+          noteTitle={notesMap.get(anchorNoteId)?.title ?? ''}
+          onClose={() => setAnchorNoteId(null)}
         />
       )}
     </div>

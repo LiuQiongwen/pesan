@@ -4055,6 +4055,43 @@ export type Database = {
           },
         ]
       }
+      reality_anchors: {
+        Row: {
+          anchor_type: string
+          created_at: string
+          id: string
+          label: string
+          target_id: string
+          universe_id: string
+          user_id: string
+        }
+        Insert: {
+          anchor_type: string
+          created_at?: string
+          id?: string
+          label?: string
+          target_id: string
+          universe_id: string
+          user_id: string
+        }
+        Update: {
+          anchor_type?: string
+          created_at?: string
+          id?: string
+          label?: string
+          target_id?: string
+          universe_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reality_anchors_universe_id_fkey"
+            columns: ["universe_id"]
+            referencedRelation: "universes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subscriptions: {
         Row: {
           created_at: string | null

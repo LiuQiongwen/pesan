@@ -4,6 +4,7 @@ import Auth from "./pages/Auth";
 import NotePage from "./pages/Note";
 import MindMapPage from "./pages/MindMap";
 import NotFound from "./pages/NotFound";
+import AnchorLanding from "./pages/AnchorLanding";
 import Architecture from "./pages/Architecture";
 import PricingPage from "./pages/PricingPage";
 import TermsPage from "./pages/TermsPage";
@@ -97,6 +98,11 @@ export const routers = [
     path: "/refund",
     name: "refund",
     element: <RefundPage />,
+  },
+  {
+    path: "/anchor/:anchorId",
+    name: "anchor-landing",
+    element: <AnchorLanding />,
   },
   {
     path: "/architecture",
