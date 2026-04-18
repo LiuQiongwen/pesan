@@ -38,7 +38,7 @@ const GUIDES: Array<{ icon: typeof Orbit; color: string; title: string; desc: st
 
 export function GuideCenterModal({ onClose }: Props) {
   const { restart } = useTour();
-  const { resetAll, disableAll } = useHintState();
+  const { resetAll, disableAll, completedCount, totalCount, globalDisabled, enableAll } = useHintState();
 
   const handleRestart = () => {
     restart();
@@ -95,8 +95,19 @@ export function GuideCenterModal({ onClose }: Props) {
               fontFamily: MONO, fontSize: 9, letterSpacing: '0.08em',
               color: 'rgba(102,240,255,0.40)', margin: '4px 0 0',
             }}>
-              GUIDE CENTER
+              GUIDE CENTER — {completedCount}/{totalCount} COMPLETED
             </p>
+            <div style={{
+              marginTop: 6, width: 120, height: 3, borderRadius: 2,
+              background: 'rgba(255,255,255,0.06)',
+            }}>
+              <div style={{
+                width: `${(completedCount / totalCount) * 100}%`,
+                height: '100%', borderRadius: 2,
+                background: 'rgba(102,240,255,0.50)',
+                transition: 'width 0.4s ease',
+              }} />
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -202,22 +213,22 @@ export function GuideCenterModal({ onClose }: Props) {
             </span>
           </button>
           <button
-            onClick={handleDisableAll}
+            onClick={() => { if (globalDisabled) { enableAll(); } else { disableAll(); } }}
             style={{
               width: '100%', display: 'flex', alignItems: 'center', gap: 8,
               padding: '8px 12px', borderRadius: 8,
               background: 'transparent', border: 'none',
               cursor: 'pointer', transition: 'background 0.15s',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,64,64,0.06)'; }}
+            onMouseEnter={e => { e.currentTarget.style.background = globalDisabled ? 'rgba(102,240,255,0.06)' : 'rgba(255,64,64,0.06)'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
           >
-            <EyeOff size={12} color="rgba(210,70,70,0.50)" />
+            <EyeOff size={12} color={globalDisabled ? 'rgba(102,240,255,0.50)' : 'rgba(210,70,70,0.50)'} />
             <span style={{
               fontFamily: INTER, fontSize: 11,
-              color: 'rgba(195,75,75,0.55)',
+              color: globalDisabled ? 'rgba(102,240,255,0.55)' : 'rgba(195,75,75,0.55)',
             }}>
-              关闭所有引导提示
+              {globalDisabled ? '重新开启引导提示' : '关闭所有引导提示'}
             </span>
           </button>
         </div>

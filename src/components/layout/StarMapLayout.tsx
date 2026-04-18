@@ -106,18 +106,18 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
     const onOpen = () => {
       setNodeWindowOpen(true);
       // First-time NodeWindow hint
-      if (hints.shouldShow('node-window-seen')) {
+      if (hints.shouldShowHint('first_click_node')) {
         pushToast({ message: '点击「委托」将知识发送到各功能舱', icon: Sparkles, duration: 3500 });
-        hints.dismiss('node-window-seen');
+        hints.markCompleted('first_click_node');
       }
     };
     const onClose = () => setNodeWindowOpen(false);
 
     // First-time camera move hint
     const onCameraMove = () => {
-      if (hints.shouldShow('first-move')) {
+      if (hints.shouldShowHint('first_move_universe')) {
         pushToast({ message: '视角已旋转 — 滚轮缩放，双指平移', icon: Sparkles, duration: 3000 });
-        hints.dismiss('first-move');
+        hints.markCompleted('first_move_universe');
       }
     };
 
@@ -146,9 +146,9 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
   // ── First note created feedback ────────────────────────────────────────────
   const prevNoteCountRef = useRef(notes.length);
   useEffect(() => {
-    if (prevNoteCountRef.current === 0 && notes.length > 0 && hints.shouldShow('first-note-created')) {
+    if (prevNoteCountRef.current === 0 && notes.length > 0 && hints.shouldShowHint('first_create_star')) {
       pushToast({ message: '知识星已生成 — 点击星球查看详情', icon: Sparkles, duration: 3500 });
-      hints.dismiss('first-note-created');
+      hints.markCompleted('first_create_star');
     }
     prevNoteCountRef.current = notes.length;
   }, [notes.length, hints, pushToast]);
@@ -205,9 +205,9 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
   const [connectModeInfo, setConnectModeInfo] = useState<{ mode: 'browse' | 'connect'; fromTitle?: string }>({ mode: 'browse' });
   const handleModeChange = useCallback((mode: 'browse' | 'connect', fromTitle?: string) => {
     setConnectModeInfo({ mode, fromTitle });
-    if (mode === 'connect' && hints.shouldShow('connect-mode')) {
+    if (mode === 'connect' && hints.shouldShowHint('action_feedback')) {
       pushToast({ message: '连接模式 — 点击另一颗星建立关联', icon: Link2, duration: 3000 });
-      hints.dismiss('connect-mode');
+      hints.markCompleted('action_feedback');
     }
   }, [hints, pushToast]);
 
@@ -277,7 +277,8 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
       action: 'Action Pod', memory: 'Memory Pod', capture: 'Capture Pod',
     };
     pushToast({ message: `已发送到 ${podNames[podId] ?? podId}`, icon: Send, duration: 2000 });
-  }, [notes, workflow, openPod, pushToast]);
+    hints.markCompleted('drag_to_pod');
+  }, [notes, workflow, openPod, pushToast, hints]);
 
   if (loading) return (
     <div style={{
