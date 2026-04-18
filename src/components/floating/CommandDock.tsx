@@ -8,6 +8,8 @@ import { useState, useEffect, useRef } from 'react';
 import { Inbox, Telescope, Sparkles, Library, Rocket, Check } from 'lucide-react';
 import { useToolbox, type PodId } from '@/contexts/ToolboxContext';
 import { useAgentWorkflow } from '@/contexts/AgentWorkflowContext';
+import { HintPulse } from '@/components/hints/HintPulse';
+import { useHintState } from '@/hooks/useHintState';
 import { type LucideIcon } from 'lucide-react';
 import { PestaLogo } from '@/components/brand/PestaLogo';
 import { useDevice } from '@/hooks/useDevice';
@@ -48,6 +50,8 @@ export function CommandDock() {
 function DesktopCommandDock() {
   const { pods, togglePod } = useToolbox();
   const { activeStep, completedSteps } = useAgentWorkflow();
+  const hints = useHintState();
+  const showCapturePulse = hints.shouldShowHint('first_create_star');
   const [hoveredId,     setHoveredId]     = useState<PodId | null>(null);
   const [dragActive,    setDragActive]    = useState(false);
   const [dragHoverId,   setDragHoverId]   = useState<PodId | null>(null);
@@ -390,6 +394,17 @@ function DesktopCommandDock() {
                   }}>
                     推荐
                   </div>
+                )}
+
+                {/* Hint pulse for new users — Capture pod */}
+                {step.id === 'capture' && showCapturePulse && !isDragTarget && !isActive && (
+                  <div style={{
+                    position: 'absolute', inset: -3,
+                    borderRadius: 17,
+                    border: `1.5px solid ${accentAlpha(0.45)}`,
+                    animation: 'hint-pulse-ring 2.2s ease-out infinite',
+                    pointerEvents: 'none',
+                  }} />
                 )}
 
                 {/* Open indicator bar */}
