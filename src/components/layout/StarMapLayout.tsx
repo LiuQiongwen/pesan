@@ -125,6 +125,7 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
     const onTraceSource = (e: Event) => {
       const title = (e as CustomEvent).detail?.noteTitle ?? '';
       pushToast({ message: `已在星图中高亮「${title}」`, icon: Star, duration: 2500 });
+      hints.markCompleted('trace_source');
     };
 
     window.addEventListener('tour-node-opened', onOpen);

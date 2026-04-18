@@ -10,11 +10,12 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   Search, MessageCircle, Loader2, ChevronDown, ChevronUp,
-  ArrowRight, Star, Feather, Database,
+  ArrowRight, Star, Feather, Database, Crosshair,
 } from 'lucide-react';
 import { useRAG, type Citation, type ScopeMeta } from '@/hooks/useRAG';
 import { useAgentWorkflow } from '@/contexts/AgentWorkflowContext';
 import { useToolbox } from '@/contexts/ToolboxContext';
+import { useHintState } from '@/hooks/useHintState';
 
 const C    = '#66f0ff';
 const MONO = "'IBM Plex Mono','Roboto Mono',monospace";
@@ -145,6 +146,9 @@ export default function RetrievalBox({ onHighlight }: Props) {
   const { search, loading } = useRAG();
   const workflow            = useAgentWorkflow();
   const { openPod }         = useToolbox();
+  const hints               = useHintState();
+  const showScopeHint       = hints.shouldShowHint('retrieval_scope');
+  const showTraceHint       = hints.shouldShowHint('trace_source');
 
   const [mode,      setMode]      = useState<Mode>('search');
   const [query,     setQuery]     = useState('');
@@ -190,11 +194,13 @@ export default function RetrievalBox({ onHighlight }: Props) {
       setShowSrc(true);
       onHighlight?.(res.citations.map(c => c.note_id));
       workflow.markStepComplete('retrieval');
+      hints.markCompleted('retrieval_scope');
     }
   };
 
   const handleFlyTo = (noteId: string, noteTitle: string) => {
     onHighlight?.([noteId]);
+    hints.markCompleted('trace_source');
     // Dispatch event so StarMapLayout can show trace toast
     window.dispatchEvent(new CustomEvent('hint-trace-source', { detail: { noteTitle } }));
   };
@@ -342,6 +348,27 @@ export default function RetrievalBox({ onHighlight }: Props) {
                 来源引用 · {citations.length} 个知识节点
                 {showSrc ? <ChevronUp size={9} /> : <ChevronDown size={9} />}
               </button>
+
+              {/* Trace source hint */}
+              {showSrc && showTraceHint && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '5px 8px', marginBottom: 6,
+                  background: 'rgba(102,240,255,0.04)',
+                  border: '1px solid rgba(102,240,255,0.10)',
+                  borderRadius: 5, pointerEvents: 'none',
+                }}>
+                  <Star size={9} color={`${C}60`} style={{ flexShrink: 0 }} />
+                  <div>
+                    <span style={{ fontFamily: INTER, fontSize: 10, color: 'rgba(102,240,255,0.65)', fontWeight: 500 }}>
+                      点击引用，飞回来源节点
+                    </span>
+                    <span style={{ fontFamily: INTER, fontSize: 8.5, color: 'rgba(102,240,255,0.30)', marginLeft: 6 }}>
+                      每个答案都可以回到你的原始资料
+                    </span>
+                  </div>
+                </div>
+              )}
               {showSrc && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {citations.map((c, i) => (
@@ -381,14 +408,36 @@ export default function RetrievalBox({ onHighlight }: Props) {
       {/* Empty hint (no search yet) */}
       {!hasResults && !noEvidence && !loading && (
         <div style={{ padding: '20px 16px', textAlign: 'center' }}>
-          <div style={{ fontFamily: INTER, fontSize: 11, color: 'rgba(102,240,255,0.40)', marginBottom: 4 }}>
-            你的私人知识库
-          </div>
-          <div style={{ fontFamily: MONO, fontSize: 9, color: 'rgba(60,72,95,0.55)', letterSpacing: '0.05em', lineHeight: 1.8 }}>
-            {mode === 'search'
-              ? '只从你的笔记中检索 · 每个回答都有来源'
-              : '直接提问 · AI 仅基于你导入的资料回答'}
-          </div>
+          {showScopeHint ? (
+            <>
+              <div style={{
+                width: 30, height: 30, borderRadius: '50%',
+                background: 'rgba(102,240,255,0.06)',
+                border: '1px solid rgba(102,240,255,0.15)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                margin: '0 auto 10px',
+              }}>
+                <Crosshair size={13} color={`${C}70`} />
+              </div>
+              <div style={{ fontFamily: INTER, fontSize: 12, color: 'rgba(102,240,255,0.70)', marginBottom: 4, fontWeight: 500 }}>
+                先选知识范围，再提问
+              </div>
+              <div style={{ fontFamily: INTER, fontSize: 10, color: 'rgba(102,240,255,0.35)', lineHeight: 1.7 }}>
+                这次回答只会基于你选中的知识范围
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontFamily: INTER, fontSize: 11, color: 'rgba(102,240,255,0.40)', marginBottom: 4 }}>
+                你的私人知识库
+              </div>
+              <div style={{ fontFamily: MONO, fontSize: 9, color: 'rgba(60,72,95,0.55)', letterSpacing: '0.05em', lineHeight: 1.8 }}>
+                {mode === 'search'
+                  ? '只从你的笔记中检索 · 每个回答都有来源'
+                  : '直接提问 · AI 仅基于你导入的资料回答'}
+              </div>
+            </>
+          )}
         </div>
       )}
 
