@@ -1,54 +1,91 @@
-# Mobile Experience Optimization — MVP Plan
+# Mobile Interaction Refactor — MVP Plan
 
 ## Context
-Mobile pods are partially visible causing button obstruction, z-index layering is inconsistent,
-and mobile lacks dedicated guidance. Most infrastructure already exists (MobileBottomSheet,
-MobileTabBar, NodeContextMenu with mobile mode, CosmosScene long-press).
+Mobile users face: (1) NodeWindow via drei `Html` with `distanceFactor:18` renders tiny/unusable on phone,
+(2) no light-preview card on tap — jumps straight to complex NodeWindow,
+(3) mobile already has good action sheet (NodeContextMenu) and bottom sheet (MobileBottomSheet),
+(4) Connection mode only works with Shift+click (desktop).
 
-## Root Analysis
-1. MobileBottomSheet `maxHeight: 78vh` can clip content; MobileTabBar at bottom `z-40` sits below sheet `z-51` but can overlap other elements
-2. When a bottom sheet is open, MobileTabBar stays visible underneath — occupying screen real estate without utility
-3. CosmosScene touch: tap → open node, long-press → context menu already works
-4. NodeContextMenu already has mobile action sheet mode with "Send to Pod" options
-5. No mobile-specific hints exist in InteractionHints or GuideCenterModal
+**Strategy**: Keep existing good mobile code, fix the 3 biggest pain points.
 
-## MVP Scope (3 changes)
+---
 
-### Change 1: MobileBottomSheet layout fix
-**File: `src/components/floating/MobileBottomSheet.tsx`**
-- Change `maxHeight: 78vh` → `maxHeight: calc(90vh - env(safe-area-inset-bottom))` 
-- Add `paddingBottom: env(safe-area-inset-bottom)` to body for keyboard safety
-- Add `paddingTop: env(safe-area-inset-top)` to handle area
+## Change 1: Mobile Node Tap → Full-Screen Light Card (not drei Html)
 
-### Change 2: Hide MobileTabBar when a pod sheet is open
-**File: `src/components/floating/MobileTabBar.tsx`**
-- Read `pods` from `useToolbox()`
-- If any pod is open, hide the tab bar (return null or translate off screen)
-- This eliminates the z-index conflict entirely
+**File**: `src/components/starmap/CosmosScene.tsx` (outer component, ~line 1695)
 
-### Change 3: Add mobile section to GuideCenterModal
-**File: `src/components/tour/GuideCenterModal.tsx`**
-- Add a 4th section "移动端操作" after "进阶效率" with these items:
-  - **轻点查看**: 轻点星球查看内容，长按打开更多操作
-  - **发送到功能舱**: 长按节点 → 选择目标舱，替代桌面端拖拽
-  - **连接节点**: 长按选择「建立连接」→ 轻点第二个节点
-  - **上拉展开舱页**: 舱页底部上拉可展开更多空间，下滑可关闭
+- On phone: **skip** rendering `NodeWindow` via drei `Html`
+- Instead dispatch a `CustomEvent('mobile-node-open', { detail: noteId })` when `onNodeToggle` is called
 
-### Change 4: Mobile-specific InteractionHints
-**File: `src/components/starmap/InteractionHints.tsx`**
-- Detect `useDevice()` — on phone show mobile-specific hint text:
-  - browse mode: `轻点星球 · 长按更多操作`  (instead of desktop mouse hints)
-  - node hover: hide (no hover on mobile)
-  - connect: `轻点第二颗星完成连接`
+**File**: `src/components/starmap/KnowledgeStarMap.tsx`
+
+- Listen for `mobile-node-open` event
+- Pass the noteId to a new `MobileNodeCard` component rendered as a portal
+
+**New file**: `src/components/starmap/MobileNodeCard.tsx`
+
+- Fixed-position card covering bottom 60% of screen (not drei-based)
+- Shows: title, node_type badge, summary, tags, created_at
+- **Action buttons row**: 打开笔记, 发送到舱, 建立连接, 删除
+- "发送到舱" opens the existing NodeContextMenu action sheet with pod list
+- Swipe-down or X to dismiss
+- `pointerEvents: 'all'` — fully interactive
+- Uses same styling tokens as NodeContextMenu mobile sheet
+
+## Change 2: Skip drei NodeWindow on Phone
+
+**File**: `src/components/starmap/CosmosScene.tsx` (outer component ~line 1695)
+
+- Wrap the `openNodes.map(...)` NodeWindow block in `!isPhone &&`
+- On phone, single tap dispatches `mobile-node-open` instead of toggling openNodes
+
+**File**: `src/components/starmap/CosmosScene.tsx` (ImperativeCore, onUp handler ~line 970)
+
+- On phone, instead of `onNodeToggleRef.current(id)`, dispatch `mobile-node-open` event
+
+## Change 3: Mobile Node Card "Send to Pod" Integration
+
+**File**: `src/components/starmap/MobileNodeCard.tsx`
+
+- "发送到功能舱" button dispatches `cosmos-context-menu` event reusing existing NodeContextMenu action sheet
+- OR directly calls `onSendToPod(noteId, podId)` via a small inline pod picker (5 colored buttons)
+- **Recommendation**: Inline pod picker (5 small colored buttons in a row) — simpler, faster
+
+## Change 4: Mobile Connection Mode Polish
+
+Already works: NodeContextMenu has `onConnect` → enters connect mode → tap second node completes.
+
+**File**: `src/components/starmap/MobileNodeCard.tsx`
+- Add "建立连接" button that calls `onConnect(noteId)` and closes the card
+
+**File**: `src/components/starmap/InteractionHints.tsx` (already done)
+- Already shows "轻点 选择第二颗星完成连接" in connect mode on mobile
+
+## Change 5: MobileBottomSheet touch-to-dismiss
+
+**File**: `src/components/floating/MobileBottomSheet.tsx`
+
+- Add touch drag handler: swipe down > 80px → close
+- Track `translateY` state during touch, apply as transform
+- On touch end: if translateY > 80 → close, else spring back to 0
+
+---
 
 ## Files to Modify
-1. `src/components/floating/MobileBottomSheet.tsx` — maxHeight + safe area
-2. `src/components/floating/MobileTabBar.tsx` — auto-hide when pod open
-3. `src/components/tour/GuideCenterModal.tsx` — add mobile section
-4. `src/components/starmap/InteractionHints.tsx` — mobile hint text
+
+| File | Change |
+|------|--------|
+| `src/components/starmap/MobileNodeCard.tsx` | **NEW** — mobile light card |
+| `src/components/starmap/CosmosScene.tsx` | Skip drei NodeWindow on phone; dispatch mobile-node-open on tap |
+| `src/components/starmap/KnowledgeStarMap.tsx` | Listen mobile-node-open, render MobileNodeCard |
+| `src/components/floating/MobileBottomSheet.tsx` | Add swipe-down-to-dismiss |
 
 ## Verification
-- Open on mobile viewport (< 768px): open any pod → tab bar disappears, sheet fills most of screen
-- Close pod → tab bar reappears
-- Open GuideCenterModal → see "移动端操作" section
-- InteractionHints shows touch-specific text on mobile
+
+1. On phone viewport: tap node → MobileNodeCard slides up from bottom
+2. Card shows title, summary, tags, action buttons
+3. "发送到舱" shows inline pod picker, tapping a pod sends and closes
+4. "建立连接" enters connect mode, tap second node completes
+5. Swipe down on card or X button → dismisses
+6. Pod bottom sheets can be swiped down to close
+7. Desktop behavior unchanged — still uses drei Html NodeWindow
