@@ -38,6 +38,11 @@ export default function Auth() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Manual validation (HTML5 native validation doesn't show tooltips in iframes)
+    if (!email.trim()) { toast.error('请输入邮箱 / Please enter your email'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast.error('邮箱格式不正确 / Invalid email format'); return; }
+    if (mode !== 'forgot' && !password) { toast.error('请输入密码 / Please enter your password'); return; }
+
     setLoading(true);
     try {
       if (mode === 'login') {
@@ -136,16 +141,16 @@ export default function Auth() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} noValidate className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="email">{t('auth.email')}</Label>
               <Input
                 id="email"
                 type="email"
+                autoComplete="email"
                 placeholder={t('auth.emailPlaceholder')}
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                required
                 className="h-11"
               />
             </div>
@@ -157,10 +162,10 @@ export default function Auth() {
                   <Input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
+                    autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
                     placeholder="••••••••"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
-                    required
                     className="h-11 pr-10"
                   />
                   <button
@@ -180,10 +185,10 @@ export default function Auth() {
                 <Input
                   id="confirm"
                   type="password"
+                  autoComplete="new-password"
                   placeholder="••••••••"
                   value={confirmPassword}
                   onChange={e => setConfirmPassword(e.target.value)}
-                  required
                   className="h-11"
                 />
               </div>
