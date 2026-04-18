@@ -52,6 +52,8 @@ function DesktopCommandDock() {
   const { activeStep, completedSteps } = useAgentWorkflow();
   const hints = useHintState();
   const showCapturePulse = hints.shouldShowHint('first_create_star');
+  const showDragHint = hints.shouldShowHint('drag_to_pod');
+  const [nodeWinOpen, setNodeWinOpen] = useState(false);
   const [hoveredId,     setHoveredId]     = useState<PodId | null>(null);
   const [dragActive,    setDragActive]    = useState(false);
   const [dragHoverId,   setDragHoverId]   = useState<PodId | null>(null);
@@ -93,6 +95,18 @@ function DesktopCommandDock() {
 
     window.addEventListener('cosmos:pod-drag', onDrag);
     return () => window.removeEventListener('cosmos:pod-drag', onDrag);
+  }, []);
+
+  // Track node window open state for drag hint glow
+  useEffect(() => {
+    const onOpen  = () => setNodeWinOpen(true);
+    const onClose = () => setNodeWinOpen(false);
+    window.addEventListener('tour-node-opened', onOpen);
+    window.addEventListener('node-window-closed', onClose);
+    return () => {
+      window.removeEventListener('tour-node-opened', onOpen);
+      window.removeEventListener('node-window-closed', onClose);
+    };
   }, []);
 
   const lastCompleted = completedSteps[completedSteps.length - 1];
@@ -404,6 +418,18 @@ function DesktopCommandDock() {
                     border: `1.5px solid ${accentAlpha(0.45)}`,
                     animation: 'hint-pulse-ring 2.2s ease-out infinite',
                     pointerEvents: 'none',
+                  }} />
+                )}
+
+                {/* Drag-to-pod hint glow for non-capture pods */}
+                {step.id !== 'capture' && showDragHint && nodeWinOpen && !isDragTarget && !isActive && (
+                  <div style={{
+                    position: 'absolute', inset: -2,
+                    borderRadius: 16,
+                    border: `1px solid ${accentAlpha(0.30)}`,
+                    boxShadow: `0 0 12px ${accentAlpha(0.15)}`,
+                    pointerEvents: 'none',
+                    transition: 'opacity 0.3s',
                   }} />
                 )}
 

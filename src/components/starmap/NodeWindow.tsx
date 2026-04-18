@@ -1,12 +1,13 @@
 import { useState, useCallback, useEffect } from 'react';
 import { X, Edit3, Check, XCircle, Tag, Clock, ExternalLink,
-         RefreshCw, FlaskConical, Zap, HelpCircle, Bell, GitBranch, BookOpen, Loader2 } from 'lucide-react';
+         RefreshCw, FlaskConical, Zap, HelpCircle, Bell, GitBranch, BookOpen, Loader2, GripVertical } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import type { NodeType } from '@/types';
 import { getEdgeTypeConfig } from './connect-types';
+import { useHintState } from '@/hooks/useHintState';
 
 const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
@@ -46,6 +47,8 @@ export function NodeWindow({ note, accentColor, onClose, onNavigate, onNewNode, 
   const [summary,  setSummary]  = useState(note.summary  ?? '');
   const [saving,   setSaving]   = useState(false);
   const [delegating, setDelegating] = useState<string | null>(null);
+  const hints = useHintState();
+  const showDragHint = hints.shouldShowHint('drag_to_pod');
 
   const nodeType = note.node_type ?? 'capture';
   const isWiki = nodeType.startsWith('wiki_');
@@ -329,6 +332,28 @@ export function NodeWindow({ note, accentColor, onClose, onNavigate, onNewNode, 
               loading={false}
               onClick={() => { onDropToPod?.(note.id, 'memory'); onClose(); }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* ── DRAG-TO-POD HINT ── */}
+      {showDragHint && (
+        <div style={{
+          margin: '0 14px 8px', padding: '6px 9px',
+          background: 'rgba(180,150,255,0.05)',
+          border: '1px solid rgba(180,150,255,0.12)',
+          borderRadius: 6,
+          pointerEvents: 'none',
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <GripVertical size={11} color="rgba(180,150,255,0.5)" style={{ flexShrink: 0 }} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <span style={{ fontFamily: INTER, fontSize: 10.5, fontWeight: 500, color: 'rgba(180,150,255,0.75)', letterSpacing: '0.01em' }}>
+              拖到洞察舱试试
+            </span>
+            <span style={{ fontFamily: INTER, fontSize: 9, color: 'rgba(180,150,255,0.38)', letterSpacing: '0.01em' }}>
+              把这颗星送进功能舱，继续检索、提炼或转成行动
+            </span>
           </div>
         </div>
       )}
