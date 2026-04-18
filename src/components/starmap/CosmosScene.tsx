@@ -21,6 +21,7 @@ import { type CosmosLayout, type CosmosNote } from './cosmos-layout';
 import { NodeWindow }  from './NodeWindow';
 import { getEdgeTypeConfig } from './connect-types';
 import { useHintState } from '@/hooks/useHintState';
+import { useDevice } from '@/hooks/useDevice';
 import type { HoveredNodeInfo } from './KnowledgeStarMap';
 import type { NodeType } from '@/types';
 
@@ -1506,6 +1507,7 @@ export function CosmosScene({
   const highlightSet  = useMemo(() => new Set(highlightedNoteIds), [highlightedNoteIds]);
   const navigate      = useNavigate();
   const hints         = useHintState();
+  const { isPhone }   = useDevice();
   const showClickHint = hints.shouldShowHint('first_click_node', { noteCount: notes.length });
   const [hoveredId,   setHoveredId]  = useState<string | null>(null);
   const [hoveredEdgeMeta, setHoveredEdgeMeta] = useState<{
@@ -1692,7 +1694,8 @@ export function CosmosScene({
       })()}
 
       {/* Open node windows */}
-      {Array.from(openNodes).map(noteId => {
+      {/* Node windows — desktop only; mobile uses MobileNodeCard portal */}
+      {!isPhone && Array.from(openNodes).map(noteId => {
         const pos  = currentPosRef.current.get(noteId);
         const note = notesMap.get(noteId);
         const np   = layout.positions[noteId];

@@ -11,8 +11,10 @@ import { ConfirmDeleteOverlay } from './ConfirmDeleteOverlay';
 import { UndoToast } from './UndoToast';
 import { WorkbenchSummonBar } from './WorkbenchSummonBar';
 import { WorkbenchPanel } from './WorkbenchPanel';
+import { MobileNodeCard } from './MobileNodeCard';
 import { type RelationType } from './connect-types';
 import { supabase } from '@/integrations/supabase/client';
+import { useDevice } from '@/hooks/useDevice';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export interface HoveredNodeInfo {
@@ -167,6 +169,31 @@ export default function KnowledgeStarMap({
   const [selectedNodeId,   setSelectedNodeId]   = useState<string | null>(null);
   const [connectFromId,    setConnectFromId]    = useState<string | null>(null);
 
+  // ── Mobile node card ──────────────────────────────────────────────────
+  const { isPhone } = useDevice();
+  const [mobileCardNoteId, setMobileCardNoteId] = useState<string | null>(null);
+
+  // On phone, intercept node toggle to open MobileNodeCard instead
+  const toggleNode = useCallback((id: string) => {
+    if (isPhone) {
+      setMobileCardNoteId(prev => prev === id ? null : id);
+      return;
+    }
+    setOpenNodes(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+        return next;
+      }
+      if (next.size >= 3) {
+        const oldest = Array.from(next)[0];
+        next.delete(oldest);
+      }
+      next.add(id);
+      return next;
+    });
+  }, [isPhone]);
+
   const handleSelectNode = useCallback((nodeId: string | null) => {
     setSelectedNodeId(nodeId);
   }, []);
@@ -246,23 +273,6 @@ export default function KnowledgeStarMap({
       new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     )[0].id;
   }, [notes]);
-
-  // ── Max 3 node windows ────────────────────────────────────────────────────
-  const toggleNode = useCallback((id: string) => {
-    setOpenNodes(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-        return next;
-      }
-      if (next.size >= 3) {
-        const oldest = Array.from(next)[0];
-        next.delete(oldest);
-      }
-      next.add(id);
-      return next;
-    });
-  }, []);
 
   // ── Drag-to-connect: initiate ─────────────────────────────────────────────
   const handleNodeConnect = useCallback((sourceId: string, targetId: string) => {
@@ -704,6 +714,29 @@ export default function KnowledgeStarMap({
           hasManualPosition={!!(ctxMenu && manualNodePos[ctxMenu.noteId])}
         />
       )}
+
+      {/* Mobile node card */}
+      {isPhone && mobileCardNoteId && (() => {
+        const note = notesMap.get(mobileCardNoteId);
+        const np = note ? layout.positions[note.id] : undefined;
+        if (!note) return null;
+        return (
+          <MobileNodeCard
+            note={{ id: note.id, title: note.title, summary: note.summary, tags: note.tags, created_at: note.created_at, node_type: note.node_type }}
+            accentColor={np?.color ?? '#66f0ff'}
+            onClose={() => setMobileCardNoteId(null)}
+            onNavigate={(id) => { window.location.href = `/app/note/${id}`; }}
+            onSendToPod={(id, podId) => { onNodeDropToPod?.(id, podId); }}
+            onConnect={(id) => {
+              setInteractionMode('connect');
+              setConnectFromId(id);
+              setSelectedNodeId(id);
+              setMobileCardNoteId(null);
+            }}
+            onDelete={onDeleteNote ? ((id) => { handleDeleteRequest(id); setMobileCardNoteId(null); }) : undefined}
+          />
+        );
+      })()}
 
       {/* Galaxy context menu */}
       {galaxyCtx && (() => {
