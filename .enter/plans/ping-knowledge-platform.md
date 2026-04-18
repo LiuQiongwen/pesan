@@ -1,132 +1,168 @@
-# Zustand 状态拆分重构
+# Camera Navigation System Overhaul
 
 ## Context
 
-KnowledgeStarMap.tsx 单组件持有 **30+ useState**（hover、连接FSM、perf、delete、galaxy、workbench、mobile…），任意 setState 都触发整棵子树重渲染。ToolboxContext 虽已 useMemo，但 pods 对象每次 setPos/setSize 都新建整个 Record，导致所有 Pod 消费者级联刷新。AgentWorkflowContext 的 relay 状态也会波及无关组件。
+The 3D knowledge star map currently uses raw `camera.position.lerp()` with hardcoded alpha values (0.055 / 0.065) inside `useFrame` for camera transitions. This produces:
 
-拆分为 4 个独立 Zustand store，每个 store 的 selector 粒度订阅天然隔离，消除跨域级联。
+1. **Non-uniform timing** — the lerp alpha is frame-rate dependent, making fly-in faster on 120fps screens and slower on 30fps
+2. **Abrupt or sluggish transitions** — fly-to-node uses 0.055, recenter uses 0.065, but neither has easing curves, so the motion lacks "cinematic" feel
+3. **No distance-aware duration** — flying to a nearby node takes the same proportional time as flying across the entire universe
+4. **Flash note has no camera movement** — `flashNoteId` only triggers a visual pulse, the camera doesn't move to the flashed node
+5. **No galaxy-level fly** — clicking a galaxy tag doesn't zoom to its center
+6. **OrbitControls damping fights with manual tweens** — `controls.update()` is called inside the tween, causing micro-jitter
 
----
+## Approach: `useCosmosCam` Hook
 
-## Store 拆分设计
-
-### Store 1: `useSceneStore` — 3D 场景 + 布局数据
-管理星图渲染所需的只读/低频数据，变更只影响 Canvas 内部。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| notes | CosmosNote[] | 从 useNotes 同步 |
-| dbEdges | DbEdge[] | thought_edges |
-| manualNodePos | Record<string, [n,n,n]> | 手动位置 |
-| manualGalaxyPos | Record<string, [n,n,n]> | 星系位置 |
-| layout | CosmosLayout | buildCosmosLayout 缓存 |
-| highlightedNoteIds | string[] | 高亮节点 |
-| flashNoteId | string \| null | 闪烁节点 |
-| **actions** | setNotes, setDbEdges, setManualNodePos, setManualGalaxyPos, highlight, flash, recomputeLayout |
-
-**不持久化**：notes/edges 来自 DB，每次加载刷新。manualPos 已存 DB。
-
-### Store 2: `usePanelStore` — 面板 / Pod 窗口管理
-替代 ToolboxContext，管理 6 个 Pod 的开关、位置、大小、z-index。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| pods | Record<PodId, PodState> | 窗口状态 |
-| layoutConfig | LayoutConfig | 网格/锁定/字号 |
-| presets | Record<string, LayoutPreset> | 布局预设 |
-| topZ | number | z-index 计数器 |
-| lastOpened | PodId \| null | 最近打开 |
-| stagingOpen | boolean | 候选工作台 |
-| ocrOpen / ocrAutoCamera / ocrPasteImage | — | OCR 弹窗 |
-| **actions** | openPod, closePod, togglePod, minimizePod, bringToFront, setPos, setSize, setPinned, setFontScale, setSizeMode, savePreset, loadPreset, resetToDefault, openOcr, closeOcr, openStaging, closeStaging |
-
-**持久化**：pods 位置/大小/pinned + layoutConfig + presets → localStorage（800ms debounce）。
-
-### Store 3: `useInteractionStore` — 交互 FSM + hover
-高频变更，订阅者只需自己关心的 slice。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| hoveredNode | HoveredNodeInfo \| null | 当前 hover |
-| mode | 'browse' \| 'connect' | 交互模式 |
-| connectFromId | string \| null | 连接起点 |
-| selectedNodeId | string \| null | 选中节点 |
-| openNodes | Set<string> | 展开的 NodeWindow |
-| mobileCardNoteId | string \| null | 移动端卡片 |
-| ctxMenu | {noteId, x, y} \| null | 右键菜单 |
-| galaxyCtx | {tag, x, y} \| null | 星系菜单 |
-| anchorNoteId | string \| null | 锚点弹窗 |
-| workbenchSelectedIds | string[] | 工作台选中 |
-| workbenchActive | boolean | 工作台激活 |
-| **actions** | setHoveredNode, setMode, toggleNode, setCtxMenu, setGalaxyCtx, setAnchorNote, toggleWorkbenchSelect, activateWorkbench, clearWorkbench |
-
-**不持久化**：全部瞬态，页面刷新归零。
-
-### Store 4: `useAsyncStore` — 异步操作 + 工作流中继
-管理 pending 操作、status 枚举、relay 数据。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| pendingConn | PendingConnection \| null | 待确认连接 |
-| connectStatus | 'idle' \| 'saving' \| 'saved' \| 'error' | 连接状态 |
-| pendingGalaxy | PendingGalaxy \| null | 待确认星系 |
-| galaxyStatus | 'idle' \| 'saved' \| 'error' | 星系状态 |
-| pendingDeleteId | string \| null | 待删除节点 |
-| undoInfo | {noteId, title} \| null | 撤销信息 |
-| pendingGalaxyDelete | {tag, mode} \| null | 星系删除 |
-| galaxyUndoInfo | {tag, noteIds, oldTags} \| null | 星系撤销 |
-| relay | WorkflowRelay \| null | Agent 中继 |
-| activeStep | PodId \| null | 工作流步骤 |
-| completedSteps | PodId[] | 已完成步骤 |
-| **actions** | setPendingConn, confirmConnection, cancelConnection, setPendingGalaxy, confirmGalaxy, cancelGalaxy, requestDelete, confirmDelete, cancelDelete, setUndoInfo, sendRelay, consumeRelay, markStepComplete, clearWorkflow |
-
-**不持久化**：异步操作都是瞬态。
+Create a single hook that wraps all camera navigation into a **priority-queue animation system** with `smoothDamp` (critically damped spring, like camera-controls and Unity's `SmoothDamp`). The hook runs inside `useFrame` and owns all camera position/target changes.
 
 ---
 
-## 文件清单
+## File Plan
 
-### 新建 (4 files)
+### 1. NEW: `src/hooks/useCosmosCam.ts`
 
-| 文件 | 说明 |
-|---|---|
-| `src/stores/sceneStore.ts` | useSceneStore — notes, edges, positions, layout |
-| `src/stores/panelStore.ts` | usePanelStore — pods, layoutConfig, presets, ocr, staging |
-| `src/stores/interactionStore.ts` | useInteractionStore — hover, mode, menus, workbench |
-| `src/stores/asyncStore.ts` | useAsyncStore — pending ops, status, relay |
+The core camera controller hook.
 
-### 修改 (6 files)
+**Animation Model — SmoothDamp (critically damped spring)**
+```
+velocity += (target - current - velocity * 2 * smoothTime) / (smoothTime * smoothTime) * dt
+current += velocity * dt
+```
+- Produces a natural deceleration curve (fast start, gentle stop)
+- Frame-rate independent (uses `delta` from useFrame)
+- `smoothTime` = time to reach ~63% of target (like camera-controls)
 
-| 文件 | 变更 |
-|---|---|
-| `src/components/starmap/KnowledgeStarMap.tsx` | 删除 30+ useState，改为 4 个 store selector 订阅 |
-| `src/components/layout/StarMapLayout.tsx` | 删除 StarMapContents 内 hover/flash/highlight/ocr/staging useState，改用 store |
-| `src/contexts/ToolboxContext.tsx` | 改为薄 shim：内部调用 usePanelStore，保持 useToolbox() API 不变（渐进迁移） |
-| `src/contexts/AgentWorkflowContext.tsx` | 改为薄 shim：内部调用 useAsyncStore.relay/workflow 部分 |
-| `src/components/layout/NodeLightBand.tsx` | 直接 `useInteractionStore(s => s.hoveredNode)` 替代 props |
-| `src/components/floating/CommandDock.tsx` | 直接 `usePanelStore(s => s.pods)` 替代 useToolbox |
+**Camera Action Catalog:**
 
-### 删除 (0 files)
-Context 文件保留为 shim（向后兼容），未来可逐步移除。
+| Action | Target Distance | smoothTime | Zoom Level | Trigger |
+|--------|----------------|------------|------------|---------|
+| `focusNode(noteId)` | 20 units from node | 0.45s | Close | Node click, flash, anchor scan |
+| `focusGalaxy(tag)` | 1.6 * cluster.radius | 0.55s | Mid | Tag click, galaxy context |
+| `recenter()` | INIT_CAM_POS (0,0,90) | 0.50s | Full | Space bar, double-click empty, G key |
+| `peek(pos, distance?)` | custom | 0.35s | custom | Retrieval source trace, external |
+
+**State machine:**
+```
+idle -> animating -> settling -> idle
+```
+- `animating`: smoothDamp is running, OrbitControls disabled
+- `settling`: within 0.5 units of target, re-enable OrbitControls with damping
+- `idle`: user has full orbit/pan/zoom control
+
+**API (returned from hook):**
+```ts
+interface CosmosCamAPI {
+  focusNode:   (noteId: string) => void;
+  focusGalaxy: (tag: string) => void;
+  recenter:    () => void;
+  peek:        (target: Vector3, distance?: number) => void;
+  isAnimating: boolean;   // read inside useFrame for orbit lock
+}
+```
+
+**Implementation details:**
+- Uses `useThree()` to get camera + controls
+- Reads `sceneStore.getState().layout` to look up node/galaxy positions
+- Runs in `useFrame` with priority `-1` (before ImperativeCore) to update camera before scene renders
+- SmoothDamp for both `camera.position` and `controls.target` simultaneously
+- Auto-disables OrbitControls during animation (sets `controls.enabled = false`)
+- Re-enables with a 100ms settling window after reaching target
+
+### 2. MODIFY: `src/components/starmap/CosmosScene.tsx`
+
+**Remove from ImperativeCore's `useFrame`:**
+- Lines 1156-1172: fly-in tween (`flyTargetRef`) + recenter tween (`recenterActiveRef`)
+- Lines 1120-1125: Manual OrbitControls enable/disable (moved to useCosmosCam)
+
+**Remove from ImperativeCore:**
+- `flyTargetRef` ref and all its usage
+- The fly logic in click handler (line 989: `if (worldPos) flyTargetRef.current = worldPos.clone()`)
+
+**Replace with:**
+- Accept `camApi: CosmosCamAPI` prop
+- On node click: call `camApi.focusNode(id)` instead of setting flyTargetRef
+- On empty-state click: call `camApi.recenter()` (already centered at origin)
+- OrbitControls disable: check `camApi.isAnimating` in useFrame
+
+**Keep in ImperativeCore's `useFrame`:**
+- All node animation, edge opacity, LOD, hover raycasting (unchanged)
+- Auto-rotate management (unchanged)
+- `recenterActiveRef` still used for Space/G key — but now triggers `camApi.recenter()`
+
+**OrbitControls config change:**
+```ts
+// Before:
+enableDamping: true, dampingFactor: 0.08,
+zoomSpeed: 0.7, panSpeed: 0.6,
+
+// After:
+enableDamping: true, dampingFactor: 0.12,    // Slightly more responsive
+zoomSpeed: 0.8, panSpeed: 0.7,               // Slightly faster user input
+```
+
+### 3. MODIFY: `src/components/starmap/KnowledgeStarMap.tsx`
+
+- Remove `recenterActiveRef` pattern (Space/G/double-click) — replace with `camApi.recenter()`
+- Pass `camApi` down to `CosmosScene` as prop
+- `flashNoteId` change: when flashNoteId is set, also call `camApi.focusNode(flashNoteId)` so the camera flies to the flashed node
+- Export `camApi` ref so StarMapLayout can call `camApi.focusGalaxy(tag)` from tag filter
+
+### 4. MODIFY: `src/components/layout/StarMapLayout.tsx`
+
+- `flashNote` callback: already sets flashNoteId; camera follow is now automatic
+- Tag click handler: call `camApi.focusGalaxy(tag)` so clicking a tag in NodeLightBand zooms to that galaxy
+- G key shortcut: call `camApi.recenter()` instead of incrementing recenterTrigger
+
+### 5. MODIFY: `src/stores/interactionStore.ts`
+
+- No structural changes needed. The `escapeAll()` action can optionally trigger recenter by dispatching a custom event that KnowledgeStarMap listens to.
 
 ---
 
-## 实施顺序
+## Animation Timing Rules
 
-1. **安装 zustand**
-2. **创建 4 个 store 文件**（纯数据 + actions，不依赖组件）
-3. **改写 ToolboxContext → panelStore shim**（保持 useToolbox API）
-4. **改写 AgentWorkflowContext → asyncStore shim**（保持 useAgentWorkflow API）
-5. **重构 KnowledgeStarMap.tsx**：删除 useState，用 store selectors
-6. **重构 StarMapLayout.tsx**：删除冗余 state，用 store selectors
-7. **优化 NodeLightBand / CommandDock** 直接订阅 store
+| Category | smoothTime | Use Case |
+|----------|-----------|----------|
+| **Snap** | 0.30s | Recenter from close distance (<30 units away) |
+| **Standard** | 0.45s | Node focus, flash-to-node |
+| **Cruise** | 0.55s | Galaxy focus, cross-universe travel |
+| **Gentle** | 0.35s | Peek (retrieval trace, external navigation) |
+
+Distance-aware adjustment: if the travel distance > 80 units, multiply smoothTime by `1 + (distance - 80) / 200` (capped at 1.5x) so long jumps don't feel rushed.
+
+---
+
+## Integration with Existing Features
+
+| Feature | Current Behavior | New Behavior |
+|---------|-----------------|-------------|
+| Node click | lerp(0.055) fly-in, no easing | `focusNode()` smooth spring to 20u from node |
+| Flash note (F key, capture) | Visual pulse only | Visual pulse + `focusNode()` camera fly |
+| Space / G / double-click | lerp(0.065) recenter | `recenter()` smooth spring to INIT_CAM_POS |
+| Tag filter click | Highlights nodes, no camera | Highlights nodes + `focusGalaxy(tag)` zoom |
+| QR/NFC anchor scan | Opens note page (no star map) | Future: could `focusNode()` if on star map |
+| Retrieval source trace | No camera action | `peek()` at source node position |
+
+---
+
+## Files to Create/Modify
+
+| File | Action |
+|------|--------|
+| `src/hooks/useCosmosCam.ts` | **CREATE** — smoothDamp camera controller |
+| `src/components/starmap/CosmosScene.tsx` | **MODIFY** — remove lerp tweens, accept camApi, delegate camera control |
+| `src/components/starmap/KnowledgeStarMap.tsx` | **MODIFY** — mount useCosmosCam, wire up focusNode/recenter/flashNote |
+| `src/components/layout/StarMapLayout.tsx` | **MODIFY** — wire focusGalaxy for tag clicks, simplify recenter |
 
 ---
 
 ## Verification
 
-1. **Shift+R 渲染追踪**：hover 节点时，只有 NodeLightBand 和 CosmosScene 出现在日志，不再有 CommandDock / FloatingPod / SettingsCapsule
-2. **Pod 开关**：togglePod 只触发对应 FloatingPod 重渲染，其他 Pod 和星图无变化
-3. **连接流程**：setPendingConn → 只触发 ConnectConfirmOverlay，星图不重渲染
-4. **OCR 弹窗**：打开/关闭 OCR 不影响星图 FPS
-5. **Shift+P 性能面板**：切换前后 FPS 无显著差异（因为 perf state 已隔离到 interactionStore）
+1. **Node click**: Click a node → camera smoothly flies to 20 units away, decelerating naturally
+2. **Recenter**: Press Space or G → camera returns to overview position with spring motion
+3. **Flash note**: Press F on hovered node → pulse animation + camera flies to node
+4. **Tag filter**: Click a tag in NodeLightBand → highlighted nodes + camera zooms to galaxy center
+5. **Frame-rate independence**: Test at 30fps and 60fps — transition duration should feel identical
+6. **No jitter**: Camera should not fight with OrbitControls during or after animation
+7. **Drag-to-connect still works**: OrbitControls disabled during drag should still function
+8. **Perf overlay**: Shift+P should still show correct FPS during camera transitions
