@@ -1,154 +1,96 @@
-# 私有云 RAG 交互感知方案
+# 交互提示系统增量实现计划
 
 ## Context
 
-用户希望在 Retrieval 舱中通过交互让用户**感受到**私有云 RAG 的价值（而非文字解释概念）。核心目标让用户明确理解 4 件事：
+项目已有完整的 hint 基础设施（`useHintState` / `ContextToast` / `InteractionHints` / `PodWelcomeHint`），覆盖了 8 条提示中的 5 条。本计划补齐剩余 3 条 + 增强 1 条。
 
-1. 只在**我的知识**范围内检索
-2. 回答有**来源引用**
-3. 导入新资料后答案**随知识库变化**
-4. 无依据时**不乱答**
+## 已实现清单 (无需改动)
+
+| ID | 组件 | 触发方式 |
+|---|---|---|
+| `first_create_star` | ContextToast | noteCount 0→1+ |
+| `first_click_node` | ContextToast | tour-node-opened event |
+| `drag_to_pod` | ContextToast | handleNodeDropToPod 回调 |
+| `action_feedback` | ContextToast | 各处动作完成时 |
+| `connect_mode` | ContextToast | connectMode 切换 |
+
+---
+
+## 需要新增/增强的 3 个提示
+
+### 1. `first_move_universe` — 首次拖拽星图反馈
+
+**触发**: 用户首次拖拽旋转 3D 星图（`tour-camera-moved` event，但仅新用户首次触发）
+**反馈**: ContextToast「视角已旋转 — 滚轮缩放，双指平移」
+**文件**: `src/components/layout/StarMapLayout.tsx`
+**逻辑**: 
+- 监听 `tour-camera-moved` CustomEvent
+- `hints.shouldShow('first-move')` → show toast → `hints.dismiss('first-move')`
+
+### 2. `retrieval_scope` — RAG 检索范围标注
+
+**位置**: RetrievalBox 搜索框上方
+**展示**: `检索范围: {宇宙名} · {N} 篇笔记 · {M} 个知识片段`
+**文件**: 
+- `supabase/functions/rag-search/index.ts` — 返回 `scope_meta`
+- `src/hooks/useRAG.ts` — 传递 scope_meta
+- `src/components/pods/RetrievalBox.tsx` — 渲染 scope bar + 无依据增强
+
+**Edge Function 改动**:
+```
+// 在 rag-search 中新增 scope 查询
+const { count: noteCount } = await db.from('notes').select('*', { count: 'exact', head: true }).eq('user_id', user_id).eq('universe_id', uniId);
+const { count: chunkCount } = await db.from('knowledge_chunks').select('*', { count: 'exact', head: true }).eq('user_id', user_id).eq('universe_id', uniId);
+const { data: uni } = await db.from('universes').select('name').eq('id', uniId).maybeSingle();
+// 返回 scope_meta: { note_count, chunk_count, universe_name }
+```
+
+**RetrievalBox 改动**:
+- 搜索框上方加 ScopeBar 行
+- 回答底部加: `仅基于你的 {N} 篇笔记生成`
+- 无结果时: `知识库中未找到相关依据 · 导入更多资料后答案会更新`+ 打开 Capture 舱 CTA
+
+### 3. `trace_source` — 引用回溯反馈
+
+**触发**: 点击 RetrievalBox 中引用卡片的"飞到星图"按钮
+**反馈**: ContextToast「已在星图中高亮 "{note_title}"」
+**文件**: `src/components/pods/RetrievalBox.tsx`
+**逻辑**: 点击 Star 按钮后 → dispatch `hint-trace-source` CustomEvent with note_title → StarMapLayout 监听并 show toast
+
+### 4. `workbench_empty` 增强
+
+**位置**: 工作台面板空状态
+**文件**: `src/components/starmap/WorkbenchPanel.tsx`
+**逻辑**: 当工作台 notes 为空时，显示引导文案: `拖拽星球到此处，或右键节点「加入工作台」`
 
 ---
 
 ## 修改文件清单
 
-| 文件 | 变更 |
-|---|---|
-| `src/components/pods/RetrievalBox.tsx` | 主要改造 — 三层结构 + scope bar + fly-to + 无依据反馈 |
-| `src/hooks/useRAG.ts` | 增加 `noteCount` / `universeScope` 元数据返回 |
-| `supabase/functions/rag-search/index.ts` | 返回 `scope_meta` (note_count, chunk_count, universe_name) |
-| `src/components/hints/PodWelcomeHint.tsx` | 更新 retrieval 文案 |
+| 文件 | 变更类型 | 改动 |
+|---|---|---|
+| `supabase/functions/rag-search/index.ts` | 增强 | 返回 scope_meta |
+| `src/hooks/useRAG.ts` | 增强 | 传递 scope_meta 到 RAGConversation |
+| `src/components/pods/RetrievalBox.tsx` | 增强 | ScopeBar + 无依据增强 + trace_source event |
+| `src/components/layout/StarMapLayout.tsx` | 增强 | first_move + trace_source toast 监听 |
+| `src/components/starmap/WorkbenchPanel.tsx` | 增强 | 空状态引导文案 |
 
 ---
 
-## 1. 检索范围选择 + 数据来源条 (Scope Bar)
+## 实现顺序
 
-在搜索框上方添加一行 **Scope Bar**，让用户清楚看到"我的知识库"范围：
-
-```
-┌─────────────────────────────────────────────┐
-│ 🔍 检索范围: [当前宇宙 ▼]  ·  42 篇笔记 · 186 个知识片段 │
-└─────────────────────────────────────────────┘
-```
-
-- **实现**: `rag-search` 返回 `scope_meta: { note_count, chunk_count, universe_name }`
-- **触发**: 每次 RetrievalBox 挂载时 / 宇宙切换时查询一次
-- **文案**: `检索范围: {宇宙名} · {N} 篇笔记 · {M} 个知识片段`
-- 下拉可切"当前宇宙"/"全部宇宙"（MVP 仅展示当前宇宙）
-
----
-
-## 2. 答案·引用·来源 三层展示结构
-
-将现有结果区改造为清晰的三层视觉层次：
-
-```
-┌─ 回答层 ────────────────────────────────────┐
-│ 答案文本，关键引用标记 [1] [2] 内嵌在文中          │
-│ · 仅基于你的 42 篇笔记生成                       │
-└─────────────────────────────────────────────┘
-┌─ 引用层 ────────────────────────────────────┐
-│ [1] 笔记标题 — 摘录片段...        [飞到星图 ☆]  │
-│ [2] 笔记标题 — 摘录片段...        [飞到星图 ☆]  │
-└─────────────────────────────────────────────┘
-┌─ 来源层 (可展开) ──────────────────────────────┐
-│ 本次检索扫描了 186 个知识片段中的 15 个候选项        │
-│ 匹配来源分布: 笔记(3) · Wiki(1)                  │
-└─────────────────────────────────────────────┘
-```
-
-**关键改动:**
-- 回答层底部加一行 scope 说明: `仅基于你的 {N} 篇笔记生成`
-- 引用层默认展开（不是折叠），每个引用卡片有"飞到星图"按钮
-- 来源层折叠式，显示检索统计
-
----
-
-## 3. 点击引用 → 飞回星图节点
-
-现有 `onHighlight` 已支持传 `note_id` 数组。改造:
-
-- 引用卡片的 Star 按钮 → 调用 `onHighlight([note_id])` + 动效反馈
-- 按钮改为更醒目的样式: "定位 →" 文字 + Star 图标
-- 点击后 toast: `已在星图中高亮 "{note_title}"`
-
----
-
-## 4. 无依据时的反馈方式
-
-当 `rag-search` 返回零匹配时，改造空结果展示:
-
-```
-┌─────────────────────────────────────────────┐
-│  ⊘  知识库中未找到相关依据                         │
-│                                             │
-│  你的宇宙中有 42 篇笔记，但未涵盖此主题。            │
-│  导入更多相关资料后，答案会自动更新。                  │
-│                                             │
-│  [打开 Capture 舱导入资料]                       │
-└─────────────────────────────────────────────┘
-```
-
-- 明确告知"不是搜不到，而是知识库暂不包含"
-- 提供行动入口: 打开 Capture 舱
-
----
-
-## 5. "导入前后答案变化"演示 — 知识时间线标注
-
-不做独立的"对比演示"功能，而是在每个回答底部标注知识时间线:
-
-```
-基于 2026-04-18 15:30 的知识库状态 · 42 篇笔记
-```
-
-当用户导入新资料后再问同一个问题，时间戳和笔记数自然变化，用户自然感知"答案在演进"。
-
----
-
-## 6. 融入导览
-
-- 更新 `PodWelcomeHint` 的 retrieval 文案: `你的私人知识库 · 只从你的笔记中检索，每个回答都有来源`
-- 在 GuideCenterModal 的"五大功能舱"卡片中补充: `Retrieval — 私有语义检索，回答仅基于你导入的资料`
-
----
-
-## 7. 界面特色文案
-
-- Scope Bar: `检索范围: {宇宙名} · {N} 篇笔记`
-- 回答底部: `仅基于你的知识库生成 · 非通用 AI 回答`
-- 无结果: `知识库中未找到相关依据 · 导入资料后答案会自动更新`
-- 引用层标题: `来源引用 — 每个观点都有出处`
-
----
-
-## 实现步骤
-
-### Step 1: 更新 `rag-search` Edge Function
-- 在返回数据中增加 `scope_meta` 字段
-- 查询 `notes` 和 `knowledge_chunks` 的 count
-
-### Step 2: 更新 `useRAG.ts`
-- 将 `scope_meta` 传递到返回的 `RAGConversation` 对象
-
-### Step 3: 重构 `RetrievalBox.tsx`
-- 添加 Scope Bar 组件
-- 改造三层结构 (回答层 / 引用层 / 来源层)
-- 引用默认展开 + 飞到星图增强
-- 无依据反馈改造
-- 时间戳标注
-
-### Step 4: 更新提示文案
-- PodWelcomeHint retrieval 文案
-- GuideCenterModal 文案
+1. **rag-search + useRAG** — 返回 scope_meta
+2. **RetrievalBox** — ScopeBar + 三层结构增强 + trace event
+3. **StarMapLayout** — first_move + trace_source toast
+4. **WorkbenchPanel** — 空状态引导
 
 ---
 
 ## 验证
 
-1. 新用户打开 Retrieval 舱 → 看到 Scope Bar 显示知识库范围
-2. 提问后 → 看到三层结构，引用默认展开
-3. 点击引用"飞到星图" → 星图高亮对应节点
-4. 问一个知识库中没有的问题 → 看到"未找到依据"+ CTA
-5. 回答底部有时间戳和笔记数
+1. 新用户首次拖拽星图 → 看到「视角已旋转」toast，再次拖拽不显示
+2. 打开 Retrieval 舱 → 搜索框上方显示检索范围
+3. 提问后 → 回答底部显示「仅基于你的 N 篇笔记生成」
+4. 点击引用"飞到星图" → toast「已在星图中高亮 "标题"」
+5. 问无依据问题 → 显示「未找到依据」+ CTA
+6. 工作台为空 → 显示引导文案
