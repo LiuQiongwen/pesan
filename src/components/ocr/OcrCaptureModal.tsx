@@ -11,7 +11,7 @@ import {
 import { useOcr } from '@/hooks/useOcr';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveUniverse } from '@/contexts/UniverseContext';
-import { useAnalysis } from '@/hooks/useNotes';
+import { useCandidateNodes } from '@/hooks/useCandidateNodes';
 import { supabase } from '@/integrations/supabase/client';
 
 const MONO = "'IBM Plex Mono','Roboto Mono',monospace";
@@ -31,6 +31,7 @@ type Phase = 'upload' | 'ocr' | 'candidates' | 'done';
 interface Props {
   onClose: () => void;
   onFlashNote?: (id: string) => void;
+  onOpenStaging?: () => void;
 }
 
 const TYPE_META: Record<string, { label: string; color: string; icon: typeof Tag }> = {
@@ -45,10 +46,10 @@ const NODE_TYPE_MAP: Record<string, string> = {
   action: 'action',
 };
 
-export function OcrCaptureModal({ onClose, onFlashNote }: Props) {
+export function OcrCaptureModal({ onClose, onOpenStaging }: Props) {
   const { user } = useAuth();
   const { activeUniverseId } = useActiveUniverse();
-  const { insertDerivedNode } = useAnalysis(user?.id, activeUniverseId);
+  const cn = useCandidateNodes(user?.id, activeUniverseId);
   const ocr = useOcr();
 
   const [phase, setPhase] = useState<Phase>('upload');
@@ -116,42 +117,26 @@ export function OcrCaptureModal({ onClose, onFlashNote }: Props) {
     }
   };
 
-  /* ── Phase 3→4: Write confirmed nodes ── */
+  /* ── Phase 3→4: Write to candidate staging ── */
   const handleConfirm = async () => {
     if (!user?.id || !activeUniverseId) return;
     const selected = candidates.filter(c => c.selected);
     if (selected.length === 0) return;
 
     setWriting(true);
-    let count = 0;
 
-    for (const c of selected) {
-      const note = await insertDerivedNode({
-        userId: user.id,
-        universeId: activeUniverseId,
-        node_type: (NODE_TYPE_MAP[c.type] || 'capture') as 'capture' | 'summary' | 'action',
+    await cn.insertBatch(
+      selected.map(c => ({
+        candidate_type: c.type as 'topic' | 'keypoint' | 'action',
         title: c.title,
         summary: c.summary,
         tags: c.tags,
-      });
-      if (note) {
-        count++;
-        onFlashNote?.(note.id);
-        // RAG index in background
-        supabase.functions.invoke('chunk-and-index', {
-          body: {
-            note_id: note.id,
-            user_id: user.id,
-            content: `${c.title}\n\n${c.summary}`,
-            title: c.title,
-            source_type: 'image',
-            universe_id: activeUniverseId,
-          },
-        }).catch(() => {});
-      }
-    }
+        source: 'ocr' as const,
+        raw_text: rawCleaned || ocr.text,
+      }))
+    );
 
-    setWrittenCount(count);
+    setWrittenCount(selected.length);
     setPhase('done');
     setWriting(false);
   };
@@ -461,10 +446,10 @@ export function OcrCaptureModal({ onClose, onFlashNote }: Props) {
                 <Check size={22} color={ACCENT} />
               </div>
               <span style={{ fontFamily: INTER, fontSize: 14, fontWeight: 600, color: 'rgba(220,230,250,0.88)' }}>
-                已生成 {writtenCount} 个知识星
+                已生成 {writtenCount} 个候选节点
               </span>
               <span style={{ fontFamily: INTER, fontSize: 11, color: 'rgba(140,150,180,0.55)' }}>
-                节点已接入星图，内容已加入知识库
+                前往候选工作台审阅后发布到星图
               </span>
             </div>
           )}
@@ -536,18 +521,19 @@ export function OcrCaptureModal({ onClose, onFlashNote }: Props) {
                 <Camera size={10} />继续扫描
               </button>
               <button
-                onClick={onClose}
+                onClick={() => { onClose(); onOpenStaging?.(); }}
                 style={{
                   flex: 1, padding: '9px 0',
                   fontFamily: MONO, fontSize: 9, letterSpacing: '0.06em',
-                  color: 'rgba(200,210,230,0.75)',
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(255,255,255,0.08)',
+                  color: '#040508',
+                  background: 'linear-gradient(135deg, #ffa040, #ffb870)',
+                  border: 'none',
                   borderRadius: 7, cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                  boxShadow: '0 2px 12px rgba(255,160,64,0.25)',
                 }}
               >
-                完成
+                <Check size={10} />前往工作台
               </button>
             </>
           )}

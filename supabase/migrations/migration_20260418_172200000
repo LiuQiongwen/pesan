@@ -1,0 +1,23 @@
+
+CREATE TABLE candidate_nodes (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id        uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  universe_id    uuid NOT NULL REFERENCES universes(id) ON DELETE CASCADE,
+  source         text NOT NULL CHECK (source IN ('ocr','ai','import')),
+  candidate_type text NOT NULL CHECK (candidate_type IN ('topic','keypoint','action')),
+  title          text NOT NULL DEFAULT '',
+  summary        text NOT NULL DEFAULT '',
+  tags           text[] DEFAULT '{}',
+  raw_text       text,
+  created_at     timestamptz DEFAULT now()
+);
+
+ALTER TABLE candidate_nodes ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "users manage own candidates" ON candidate_nodes
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE INDEX idx_candidate_nodes_user ON candidate_nodes(user_id);
+CREATE INDEX idx_candidate_nodes_universe ON candidate_nodes(universe_id);
+
+ALTER PUBLICATION supabase_realtime ADD TABLE "candidate_nodes";

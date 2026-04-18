@@ -40,6 +40,7 @@ import RetrievalBox from '@/components/pods/RetrievalBox';
 import InsightBox   from '@/components/pods/InsightBox';
 import MemoryBox    from '@/components/pods/MemoryBox';
 import ActionBox    from '@/components/pods/ActionBox';
+import { StagingWorkbench } from '@/components/staging/StagingWorkbench';
 import type { CosmosNote } from '@/components/starmap/cosmos-layout';
 
 const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
@@ -87,6 +88,7 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
   const [recenterTrigger, setRecenterTrigger] = useState(0);
   const [agentActive,     setAgentActive]     = useState(false);
   const [pinnedMemoryId,  setPinnedMemoryId]  = useState<string | null>(null);
+  const [stagingOpen,     setStagingOpen]     = useState(false);
 
   // ── Toast queue for contextual feedback ────────────────────────────────────
   const [toastQueue, setToastQueue] = useState<ToastItem[]>([]);
@@ -213,6 +215,12 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
   }, [hints, pushToast]);
 
   // ── Obsidian import-done listener: refresh notes + highlight cluster ──────
+  useEffect(() => {
+    const onOpenStaging = () => setStagingOpen(true);
+    window.addEventListener('open-staging', onOpenStaging);
+    return () => window.removeEventListener('open-staging', onOpenStaging);
+  }, []);
+
   useEffect(() => {
     const onImportDone = () => {
       fetchNotes();
@@ -429,6 +437,14 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
 
       {/* Layer 11 — Tour Overlay */}
       <TourOverlay />
+
+      {/* Layer 12 — Staging Workbench */}
+      {stagingOpen && (
+        <StagingWorkbench
+          onClose={() => setStagingOpen(false)}
+          onFlashNote={flashNote}
+        />
+      )}
 
     </div>
   );

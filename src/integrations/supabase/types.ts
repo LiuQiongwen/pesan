@@ -3308,6 +3308,52 @@ export type Database = {
         }
         Relationships: []
       }
+      candidate_nodes: {
+        Row: {
+          candidate_type: string
+          created_at: string | null
+          id: string
+          raw_text: string | null
+          source: string
+          summary: string
+          tags: string[] | null
+          title: string
+          universe_id: string
+          user_id: string
+        }
+        Insert: {
+          candidate_type: string
+          created_at?: string | null
+          id?: string
+          raw_text?: string | null
+          source: string
+          summary?: string
+          tags?: string[] | null
+          title?: string
+          universe_id: string
+          user_id: string
+        }
+        Update: {
+          candidate_type?: string
+          created_at?: string | null
+          id?: string
+          raw_text?: string | null
+          source?: string
+          summary?: string
+          tags?: string[] | null
+          title?: string
+          universe_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidate_nodes_universe_id_fkey"
+            columns: ["universe_id"]
+            referencedRelation: "universes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cognitive_reports: {
         Row: {
           bias_signatures: Json | null

@@ -5,7 +5,7 @@
  * dispatched by CosmosScene when a node is being dragged.
  */
 import { useState, useEffect, useRef } from 'react';
-import { Inbox, Telescope, Sparkles, Library, Rocket, Check } from 'lucide-react';
+import { Inbox, Telescope, Sparkles, Library, Rocket, Check, ClipboardList } from 'lucide-react';
 import { useToolbox, type PodId } from '@/contexts/ToolboxContext';
 import { useAgentWorkflow } from '@/contexts/AgentWorkflowContext';
 import { HintPulse } from '@/components/hints/HintPulse';
@@ -14,6 +14,9 @@ import { type LucideIcon } from 'lucide-react';
 import { PestaLogo } from '@/components/brand/PestaLogo';
 import { useDevice } from '@/hooks/useDevice';
 import { MobileTabBar } from '@/components/floating/MobileTabBar';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { useActiveUniverse } from '@/contexts/UniverseContext';
 
 const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
@@ -50,6 +53,8 @@ export function CommandDock() {
 function DesktopCommandDock() {
   const { pods, togglePod } = useToolbox();
   const { activeStep, completedSteps } = useAgentWorkflow();
+  const { user } = useAuth();
+  const { activeUniverseId } = useActiveUniverse();
   const hints = useHintState();
   const showCapturePulse = hints.shouldShowHint('first_create_star');
   const showDragHint = hints.shouldShowHint('drag_to_pod');
@@ -57,7 +62,27 @@ function DesktopCommandDock() {
   const [hoveredId,     setHoveredId]     = useState<PodId | null>(null);
   const [dragActive,    setDragActive]    = useState(false);
   const [dragHoverId,   setDragHoverId]   = useState<PodId | null>(null);
+  const [candidateCount, setCandidateCount] = useState(0);
   const buttonRefs = useRef<Map<PodId, HTMLButtonElement>>(new Map());
+
+  // Poll candidate count
+  useEffect(() => {
+    if (!user?.id || !activeUniverseId) return;
+    const fetch = async () => {
+      const { count } = await supabase
+        .from('candidate_nodes')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('universe_id', activeUniverseId);
+      setCandidateCount(count ?? 0);
+    };
+    fetch();
+    const channel = supabase
+      .channel('candidate-count')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'candidate_nodes', filter: `user_id=eq.${user.id}` }, () => { fetch(); })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id, activeUniverseId]);
 
   // Listen to drag CustomEvents dispatched by CosmosScene
   useEffect(() => {
@@ -446,6 +471,59 @@ function DesktopCommandDock() {
             </div>
           );
         })}
+      </div>
+
+      {/* Staging workbench button */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        paddingLeft: 'clamp(10px, 1.1vw, 18px)',
+        borderLeft: '1px solid rgba(255,255,255,0.07)',
+        marginLeft: 'clamp(6px, 0.8vw, 12px)',
+      }}>
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('open-staging'))}
+          title="候选工作台"
+          style={{
+            position: 'relative',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            gap: 'clamp(3px, 0.4vh, 5px)',
+            width: 'clamp(48px, 4.8vw, 66px)',
+            height: 'clamp(42px, 4.4vh, 58px)',
+            borderRadius: 'clamp(8px, 0.9vw, 12px)',
+            border: candidateCount > 0 ? '1px solid rgba(255,160,64,0.35)' : '1px solid rgba(255,255,255,0.06)',
+            background: candidateCount > 0 ? 'rgba(255,160,64,0.06)' : 'rgba(255,255,255,0.02)',
+            cursor: 'pointer',
+            transition: 'all 0.16s',
+          }}
+        >
+          <ClipboardList
+            size={16}
+            color={candidateCount > 0 ? '#ffa040' : 'rgba(80,95,125,0.55)'}
+            style={{ width: 'clamp(13px, 1.3vw, 18px)', height: 'clamp(13px, 1.3vw, 18px)' }}
+          />
+          <span style={{
+            fontFamily: MONO,
+            fontSize: 'clamp(7px, 0.65vw, 8.5px)',
+            color: candidateCount > 0 ? 'rgba(255,160,64,0.80)' : 'rgba(70,85,115,0.55)',
+            letterSpacing: '0.04em',
+          }}>
+            候选
+          </span>
+          {candidateCount > 0 && (
+            <span style={{
+              position: 'absolute', top: 2, right: 2,
+              minWidth: 14, height: 14, borderRadius: 7,
+              background: '#ffa040',
+              fontFamily: MONO, fontSize: 8, fontWeight: 700,
+              color: '#040508',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '0 3px',
+              boxShadow: '0 0 6px rgba(255,160,64,0.50)',
+            }}>
+              {candidateCount > 99 ? '99+' : candidateCount}
+            </span>
+          )}
+        </button>
       </div>
 
       <style>{`

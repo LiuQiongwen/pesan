@@ -317,6 +317,7 @@ export default function CaptureBox({ onFlashNote, onAgentStart, onAgentEnd }: Pr
         <OcrCaptureModal
           onClose={() => setOcrOpen(false)}
           onFlashNote={onFlashNote}
+          onOpenStaging={() => window.dispatchEvent(new CustomEvent('open-staging'))}
         />
       )}
     </div>
