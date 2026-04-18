@@ -1,31 +1,38 @@
-# Workbench Empty-State Hint
+# Guide Center 重构
 
 ## Context
-WorkbenchPanel has two redundant empty states (lines 244-253 and 437-443). Both are plain text with no "knowledge workspace" feel. The user wants a richer, cosmos-flavored empty state with clear CTA text.
+当前 GuideCenterModal 只有 4 张静态卡片。用户需要完整的使用攻略页，涵盖快速开始、核心交互、进阶效率、设置操作四大分类，与 `useHintState` 联动显示每项完成状态。
 
-## Approach — Single file change in `WorkbenchPanel.tsx`
+## 方案：重写 GuideCenterModal.tsx（单文件）
 
-### 1. Merge two empty blocks into one
-- Remove the first empty block (lines 244-253) — it's inside `!minimized` but before the card row conditional
-- Enhance the second empty block (lines 437-443, the `orderedNotes.length === 0` fallback) with:
-  - A subtle orbit ring icon (`Orbit` from lucide-react) replacing `MousePointerClick`
-  - **Primary text**: "拖入 2–5 个节点，开始整理"
-  - **Secondary text**: "这里适合比较、合并、提炼，再把结果发布回宇宙"
-  - Dashed border zone hinting at drag target
-  - `workbench_empty` hint key check — show the hint text only when `shouldShowHint('workbench_empty')`, otherwise show a shorter "从星图拖入节点" fallback
-  - Mark `workbench_empty` completed when first node arrives (already handled by the note count change in `useEffect`)
+### 文件：`src/components/tour/GuideCenterModal.tsx`
 
-### 2. Mark completion
-Add `useHintState` import and call `markCompleted('workbench_empty')` inside the existing `useEffect` that syncs `noteOrder` — when `notes.length > 0` and hint is still active.
+**信息架构（4 sections × N items）：**
 
-### 3. Responsive
-- Desktop: centered icon + text column layout (already works with flex column)
-- Mobile: same layout, narrower width is fine since it's just text + icon
+| Section | Items | hint key (if any) |
+|---|---|---|
+| 快速开始 | 移动知识宇宙 (`first_move_universe`) · 生成第一颗星 (`first_create_star`) · 打开节点 (`first_click_node`) | 3 keys |
+| 核心交互 | 拖拽到 Pod (`drag_to_pod`) · 建立连接 (`action_feedback`) · 使用工作台 (`workbench_empty`) · 私人云 RAG (`retrieval_scope`) · 来源回溯 (`trace_source`) | 5 keys |
+| 进阶效率 | 快捷键 · 多节点整理 · 导出与回流 · Obsidian 导入 | 0 keys (纯攻略文字) |
+| 设置操作 | 重新开启提示 (enableAll) · 重置所有 (resetAll+restart) · 关闭所有 (disableAll) | 操作按钮 |
 
-## Files Modified
-- `src/components/starmap/WorkbenchPanel.tsx`
+**每条 item 结构：**
+- icon + title + 一行描述
+- 若有 hint key → 右侧显示 completed/pending 小圆标
+- 进阶效率无 key，不显示状态
 
-## Verification
-1. Open workbench with 0 nodes → see orbit icon + "拖入 2–5 个节点" + secondary text
-2. Add a node → empty state disappears, hint marked completed
-3. Remove all nodes → empty state returns but with shorter fallback text (hint already completed)
+**Header：**
+- 保留 progress bar (`completedCount/totalCount`)
+- 保留"重新体验新手导览"按钮
+
+**底部设置操作区：**
+- 保留现有三个按钮（resetAll / enableAll / disableAll toggle）
+
+### 其他文件：无需修改
+- `useHintState` 已有所有 8 个 key + `completedCount/totalCount`
+- `SettingsCapsule` 已有 Guide Center 入口
+
+## 验证
+- 打开 Settings → 使用攻略 → 看到 4 分类，每项有 icon/desc
+- 快速开始和核心交互各项右侧显示绿色 ✓ 或灰色 ○
+- 点击"重置所有交互提示"后所有状态归零
