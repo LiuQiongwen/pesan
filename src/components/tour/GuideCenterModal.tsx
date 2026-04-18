@@ -2,8 +2,9 @@
  * GuideCenterModal — "使用攻略" modal accessible from Settings.
  * Shows topic cards for learning + restart tour + disable hints.
  */
-import { X, Orbit, Boxes, Link2, FileArchive, RotateCcw, EyeOff } from 'lucide-react';
+import { X, Orbit, Boxes, Link2, FileArchive, RotateCcw, EyeOff, RefreshCw } from 'lucide-react';
 import { useTour } from './TourProvider';
+import { useHintState } from '@/hooks/useHintState';
 
 const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
@@ -37,9 +38,21 @@ const GUIDES: Array<{ icon: typeof Orbit; color: string; title: string; desc: st
 
 export function GuideCenterModal({ onClose }: Props) {
   const { restart } = useTour();
+  const { resetAll, disableAll } = useHintState();
 
   const handleRestart = () => {
     restart();
+    onClose();
+  };
+
+  const handleResetHints = () => {
+    resetAll();
+    restart();
+    onClose();
+  };
+
+  const handleDisableAll = () => {
+    disableAll();
     onClose();
   };
 
@@ -163,13 +176,33 @@ export function GuideCenterModal({ onClose }: Props) {
           ))}
         </div>
 
-        {/* Disable hints */}
+        {/* Reset & disable hints */}
         <div style={{
           padding: '10px 22px 18px',
           borderTop: '1px solid rgba(255,255,255,0.05)',
+          display: 'flex', flexDirection: 'column', gap: 4,
         }}>
           <button
-            onClick={onClose}
+            onClick={handleResetHints}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+              padding: '8px 12px', borderRadius: 8,
+              background: 'transparent', border: 'none',
+              cursor: 'pointer', transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(102,240,255,0.06)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+          >
+            <RefreshCw size={12} color="rgba(102,240,255,0.50)" />
+            <span style={{
+              fontFamily: INTER, fontSize: 11,
+              color: 'rgba(102,240,255,0.55)',
+            }}>
+              重置所有交互提示
+            </span>
+          </button>
+          <button
+            onClick={handleDisableAll}
             style={{
               width: '100%', display: 'flex', alignItems: 'center', gap: 8,
               padding: '8px 12px', borderRadius: 8,

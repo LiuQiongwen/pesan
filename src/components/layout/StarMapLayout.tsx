@@ -26,11 +26,13 @@ import { LayoutEditBar }   from '@/components/window-manager/LayoutEditBar';
 import { AlignmentGuides } from '@/components/window-manager/AlignmentGuides';
 import { UniverseSwitcher } from '@/components/universe/UniverseSwitcher';
 import { InteractionHints } from '@/components/starmap/InteractionHints';
+import { ContextToast, type ToastItem } from '@/components/hints/ContextToast';
+import { useHintState } from '@/hooks/useHintState';
 import { TourProvider, useTour } from '@/components/tour/TourProvider';
 import { TourOverlay } from '@/components/tour/TourOverlay';
 import { useTourTrigger } from '@/hooks/useTourTrigger';
 
-import { Feather, Radar, FlaskConical, Layers, Zap } from 'lucide-react';
+import { Feather, Radar, FlaskConical, Layers, Zap, Sparkles, Link2, Send } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 import CaptureBox   from '@/components/pods/CaptureBox';
@@ -86,9 +88,51 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
   const [agentActive,     setAgentActive]     = useState(false);
   const [pinnedMemoryId,  setPinnedMemoryId]  = useState<string | null>(null);
 
+  // ── Toast queue for contextual feedback ────────────────────────────────────
+  const [toastQueue, setToastQueue] = useState<ToastItem[]>([]);
+  const currentToast = toastQueue[0] ?? null;
+  const pushToast = useCallback((t: Omit<ToastItem, 'id'>) => {
+    setToastQueue(q => [...q, { ...t, id: `${Date.now()}-${Math.random()}` }]);
+  }, []);
+  const popToast = useCallback(() => {
+    setToastQueue(q => q.slice(1));
+  }, []);
+  const hints = useHintState();
+
+  // ── Track open NodeWindow count for InteractionHints ───────────────────────
+  const [nodeWindowOpen, setNodeWindowOpen] = useState(false);
+
+  useEffect(() => {
+    const onOpen = () => {
+      setNodeWindowOpen(true);
+      // First-time NodeWindow hint
+      if (hints.shouldShow('node-window-seen')) {
+        pushToast({ message: '点击「委托」将知识发送到各功能舱', icon: Sparkles, duration: 3500 });
+        hints.dismiss('node-window-seen');
+      }
+    };
+    const onClose = () => setNodeWindowOpen(false);
+    window.addEventListener('tour-node-opened', onOpen);
+    window.addEventListener('node-window-closed', onClose);
+    return () => {
+      window.removeEventListener('tour-node-opened', onOpen);
+      window.removeEventListener('node-window-closed', onClose);
+    };
+  }, [hints, pushToast]);
+
   // Tour trigger hook — watches actions to auto-advance tour
   useTourTrigger({ noteCount: notes.length });
   const tour = useTour();
+
+  // ── First note created feedback ────────────────────────────────────────────
+  const prevNoteCountRef = useRef(notes.length);
+  useEffect(() => {
+    if (prevNoteCountRef.current === 0 && notes.length > 0 && hints.shouldShow('first-note-created')) {
+      pushToast({ message: '知识星已生成 — 点击星球查看详情', icon: Sparkles, duration: 3500 });
+      hints.dismiss('first-note-created');
+    }
+    prevNoteCountRef.current = notes.length;
+  }, [notes.length, hints, pushToast]);
 
   // Auto-open capture pod ONCE when tour starts on 'create' step
   const captureAutoOpened = useRef(false);
@@ -142,7 +186,11 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
   const [connectModeInfo, setConnectModeInfo] = useState<{ mode: 'browse' | 'connect'; fromTitle?: string }>({ mode: 'browse' });
   const handleModeChange = useCallback((mode: 'browse' | 'connect', fromTitle?: string) => {
     setConnectModeInfo({ mode, fromTitle });
-  }, []);
+    if (mode === 'connect' && hints.shouldShow('connect-mode')) {
+      pushToast({ message: '连接模式 — 点击另一颗星建立关联', icon: Link2, duration: 3000 });
+      hints.dismiss('connect-mode');
+    }
+  }, [hints, pushToast]);
 
   // ── Obsidian import-done listener: refresh notes + highlight cluster ──────
   useEffect(() => {
@@ -203,7 +251,14 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
         break;
       }
     }
-  }, [notes, workflow, openPod]);
+
+    // Feedback toast
+    const podNames: Record<string, string> = {
+      retrieval: 'Retrieval Pod', insight: 'Insight Pod',
+      action: 'Action Pod', memory: 'Memory Pod', capture: 'Capture Pod',
+    };
+    pushToast({ message: `已发送到 ${podNames[podId] ?? podId}`, icon: Send, duration: 2000 });
+  }, [notes, workflow, openPod, pushToast]);
 
   if (loading) return (
     <div style={{
@@ -345,9 +400,13 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
         noteCount={notes.length}
         hoveredNode={!!hoveredNode}
         connectMode={connectModeInfo.mode === 'connect'}
+        nodeWindowOpen={nodeWindowOpen}
       />
 
-      {/* Layer 10 — Tour Overlay */}
+      {/* Layer 10 — Context Toast */}
+      <ContextToast toast={currentToast} onDone={popToast} />
+
+      {/* Layer 11 — Tour Overlay */}
       <TourOverlay />
 
     </div>

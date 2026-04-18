@@ -6,6 +6,7 @@ import { useWindowSnap } from '@/hooks/useWindowSnap';
 import { emitSnapGuides } from '@/components/window-manager/snap-utils';
 import { useDevice } from '@/hooks/useDevice';
 import { MobileBottomSheet } from '@/components/floating/MobileBottomSheet';
+import { PodWelcomeHint } from '@/components/hints/PodWelcomeHint';
 
 const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
@@ -448,6 +449,7 @@ function DesktopFloatingPod({
             overscrollBehavior: 'contain',
             transition: 'max-height 0.24s cubic-bezier(0.4,0,0.2,1)',
           }}>
+            <PodWelcomeHint podId={id} />
             {children}
           </div>
         )}

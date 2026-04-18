@@ -10,6 +10,7 @@ interface Props {
   noteCount: number;
   hoveredNode: boolean;
   connectMode: boolean;
+  nodeWindowOpen?: boolean;
 }
 
 interface Hint {
@@ -17,7 +18,7 @@ interface Hint {
   action: string;
 }
 
-export function InteractionHints({ noteCount, hoveredNode, connectMode }: Props) {
+export function InteractionHints({ noteCount, hoveredNode, connectMode, nodeWindowOpen }: Props) {
   const [visible, setVisible] = useState(true);
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -45,6 +46,13 @@ export function InteractionHints({ noteCount, hoveredNode, connectMode }: Props)
         { key: 'Esc', action: '取消连接' },
       ];
     }
+    if (nodeWindowOpen) {
+      return [
+        { key: '委托', action: '发送到功能舱' },
+        { key: '详情', action: '打开笔记全文' },
+        { key: 'Esc', action: '关闭' },
+      ];
+    }
     if (hoveredNode) {
       return [
         { key: '点击', action: '打开节点' },
@@ -55,8 +63,8 @@ export function InteractionHints({ noteCount, hoveredNode, connectMode }: Props)
     }
     if (noteCount === 0) {
       return [
-        { key: 'N', action: '开始输入第一条知识' },
-        { key: '点击中心', action: '开始创作' },
+        { key: 'N', action: '输入第一条知识' },
+        { key: '点击光圈', action: '开始创作' },
       ];
     }
     return [
@@ -66,7 +74,7 @@ export function InteractionHints({ noteCount, hoveredNode, connectMode }: Props)
       { key: 'N', action: '新笔记' },
       { key: 'G', action: '回到中心' },
     ];
-  }, [noteCount, hoveredNode, connectMode]);
+  }, [noteCount, hoveredNode, connectMode, nodeWindowOpen]);
 
   return (
     <div style={{
