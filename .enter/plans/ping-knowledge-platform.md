@@ -1,88 +1,96 @@
-# OCR Cross-Platform Entry Redesign
+# NFC Cross-Platform Copy & Guidance
 
 ## Context
 
-OCR is currently buried as a mode tab inside CaptureBox — only visible when the Capture pod is open. Users don't realize it exists on desktop. This plan restructures OCR entry points so desktop and mobile both have prominent, appropriate access, while sharing the same underlying `useOcr` → `ocr-structurize` → `candidate_nodes` → StagingWorkbench pipeline.
+NFC Reality Anchors only work on Android Chrome (Web NFC API). Desktop users see no explanation, mobile iOS users get no fallback. The goal is:
+- **Desktop**: explain that NFC is a mobile-touch feature; provide create/manage/QR-fallback
+- **Mobile (NFC supported)**: guided scan/write experience with clear feedback
+- **Mobile (no NFC)**: graceful fallback to QR scan with explanation
 
-## Approach: Desktop Drop Zone + DesktopOcrButton + Mobile Camera Button
+All copy should be in Chinese matching the product's existing UI language.
 
-### What Changes
+## Implementation Steps
 
-| # | File | Change |
-|---|------|--------|
-| 1 | `src/components/ocr/OcrCaptureModal.tsx` | Add drag-drop & clipboard-paste support to upload phase; accept PDF via text extraction |
-| 2 | `src/components/floating/CommandDock.tsx` | Add a **ScanLine** "OCR" icon button in the desktop dock (beside the staging button), opens OcrCaptureModal directly |
-| 3 | `src/components/floating/MobileTabBar.tsx` | Add a center **ScanLine** "扫描" button that opens OcrCaptureModal with camera-first UX |
-| 4 | `src/components/layout/StarMapLayout.tsx` | Add global paste listener (`Ctrl+V` / `Cmd+V` with image) → opens OCR modal with pasted image |
-| 5 | `src/components/pods/CaptureBox.tsx` | Keep OCR mode tab as-is (secondary entry for in-pod use) — no changes needed |
+### Step 1: NfcScannerSheet — full copy redesign
+**File**: `src/components/anchors/NfcScannerSheet.tsx`
 
-### Detailed Design
+Replace all English strings with Chinese copy and add richer states:
+- Scanning: title "轻触 NFC 标签", subtitle "将手机背面靠近物体上的标签"
+- Success flash: title "已识别", subtitle "正在跳转..."
+- Error (permission): "NFC 权限被拒绝 · 请在系统设置中开启"
+- Error (not supported): "当前设备不支持 NFC · 请使用 Android Chrome"
+- Footer: "仅支持 Android Chrome · 桌面端请使用 QR 码"
 
-#### Step 1: Enhance `OcrCaptureModal` with Desktop Input Methods
+### Step 2: NfcWriterSheet — full copy redesign
+**File**: `src/components/anchors/NfcWriterSheet.tsx`
 
-**Drag-and-drop** on the upload phase drop zone:
-- `onDragOver` / `onDrop` handlers on the dashed-border zone
-- Visual feedback: border glows cyan on drag-over
-- Accept `dataTransfer.files[0]` of type `image/*`
+Replace English strings:
+- Header: "写入 NFC 标签"
+- Idle: "点击下方按钮，然后将手机靠近空白 NFC 标签"
+- Writing: "正在写入，请保持贴近..."
+- Success: "写入成功！标签已关联到锚点"
+- Error: "写入失败 · {error}"
+- Retry button: "重新写入"
+- Write button: "写入 NFC 标签"
+- Done button: "完成"
 
-**Clipboard paste** support:
-- Accept an optional `initialImage?: File` prop
-- If provided, auto-start OCR immediately (skip upload phase)
-- This lets StarMapLayout pass a pasted screenshot directly
+### Step 3: CreateAnchorModal — NFC section copy + desktop explanation
+**File**: `src/components/anchors/CreateAnchorModal.tsx`
 
-**PDF text extraction** (lightweight MVP):
-- Extend file input `accept` to include `.pdf`
-- For PDF files, read as text via `file.text()` and skip tesseract — go straight to `ocr-structurize`
-- This is a simple first pass; full PDF OCR can come later
+Changes:
+- After QR is generated, add a section explaining NFC:
+  - If NFC supported: show existing "写入 NFC 标签" button (already works)
+  - If NFC NOT supported (desktop/iOS): show an info card:
+    ```
+    Icon: Smartphone
+    Title: "NFC 标签？用手机写入"
+    Body: "NFC 写入需要 Android 手机。在手机端打开此锚点即可写入 NFC 标签。"
+    ```
+- Replace "Write to NFC Tag" button text → "写入 NFC 标签"
+- Replace QrCode icon on NFC button → Nfc icon
 
-#### Step 2: Desktop CommandDock OCR Button
+### Step 4: SettingsCapsule NFC entry — desktop explanation
+**File**: `src/components/floating/SettingsCapsule.tsx`
 
-Add a `ScanLine` icon button between the staging button and the logo area:
-- Gated on `isDesktop` — hidden on phone (phone uses MobileTabBar)
-- Opens OcrCaptureModal as a portal overlay
-- Badge shows nothing (no count like staging — OCR is action-based)
-- Tooltip: "OCR 识别"
+When `nfcSupported === false` (desktop/iOS):
+- Still show the NFC menu item but dimmed, with a tooltip/subtitle:
+  - Label: "NFC 轻触"
+  - Subtitle: "仅限 Android 手机"
+  - Click → open a small info sheet instead of scanner
 
-#### Step 3: Mobile MobileTabBar OCR Button
+When `nfcSupported === true`:
+- Keep existing behavior, update label to "NFC 轻触锚点"
 
-Add a center "扫描" button with `ScanLine` icon:
-- Positioned as 6th tab or as a raised center FAB
-- Since current tabs are 5 pods in a row, add OCR as a **raised center circle** between insight and memory
-- Opens OcrCaptureModal — but camera input is auto-triggered first on mobile
-- Add optional `autoCamera?: boolean` prop to OcrCaptureModal
+### Step 5: Create NfcDesktopInfoSheet — lightweight explanation overlay
+**File**: `src/components/anchors/NfcDesktopInfoSheet.tsx` (NEW)
 
-#### Step 4: Global Paste Listener in StarMapLayout
+A simple centered modal with:
+- Nfc icon + "NFC 轻触是什么？"
+- Body: "用 NFC 标签把现实物体连接到你的知识宇宙。手机轻触标签，即可跳转到对应的节点或星系。"
+- 3 bullet points:
+  1. Smartphone icon — "在 Android 手机上打开本应用"
+  2. Nfc icon — "进入锚点页面，写入 NFC 标签"  
+  3. QrCode icon — "桌面端可直接使用 QR 码"
+- Bottom: "QR 码同样有效" → button "创建 QR 锚点" (dispatches open-anchor-create event)
+- Close button
 
-- Listen for `paste` event on `window`
-- Check `clipboardData.items` for image types
-- If found, create `File` from blob, set state `pasteImage`, render OcrCaptureModal with `initialImage`
-- Only trigger when no other input is focused (check `document.activeElement` tag)
+### Step 6: QrScannerSheet — update NFC fallback copy
+**File**: `src/components/anchors/QrScannerSheet.tsx`
 
-### Data Flow (unchanged)
+Update the NFC alternative text at the bottom:
+- If NFC supported: "或轻触 NFC 标签" (keep existing)
+- If NOT supported: show "NFC 标签？用手机轻触" in dimmed text (no click action)
 
-```
-Image/PDF → useOcr (tesseract) → raw text
-  → ocr-structurize (Edge Function / LLM)
-    → candidate_nodes (DB staging table)
-      → StagingWorkbench (user review)
-        → notes + chunk-and-index (published to star map)
-```
-
-### Star Map Source Indicator
-
-Already handled: candidates have `source: 'ocr'`, and notes get `node_type` mapped from candidate type. The existing CosmosScene renders nodes by type. No additional work needed for MVP — a future iteration can add a small "OCR" badge on node hover labels.
-
-## Files to Modify
-
-1. **`src/components/ocr/OcrCaptureModal.tsx`** — Add `initialImage` + `autoCamera` props, drag-drop handlers, paste-ready, PDF text fallback
-2. **`src/components/floating/CommandDock.tsx`** — Add OCR button in desktop dock
-3. **`src/components/floating/MobileTabBar.tsx`** — Add raised center OCR FAB
-4. **`src/components/layout/StarMapLayout.tsx`** — Add global paste-to-OCR listener
+## Files Modified
+1. `src/components/anchors/NfcScannerSheet.tsx` — Chinese copy
+2. `src/components/anchors/NfcWriterSheet.tsx` — Chinese copy
+3. `src/components/anchors/CreateAnchorModal.tsx` — NFC section + desktop fallback
+4. `src/components/floating/SettingsCapsule.tsx` — always-visible NFC entry
+5. `src/components/anchors/NfcDesktopInfoSheet.tsx` — NEW desktop explanation
+6. `src/components/anchors/QrScannerSheet.tsx` — NFC fallback copy
 
 ## Verification
-
-1. **Desktop**: Click OCR button in dock → modal opens → drag image onto drop zone → OCR runs → candidates appear
-2. **Desktop paste**: Copy screenshot → Cmd+V on star map → OCR modal auto-opens with image
-3. **Mobile**: Tap center scan button → camera auto-opens → take photo → OCR runs → candidates in staging
-4. **CaptureBox**: OCR tab still works as before (secondary entry)
-5. **PDF**: Upload .pdf → text extracted → structurized → candidates
+1. Desktop browser: NFC menu item visible but shows info sheet on click
+2. Desktop CreateAnchorModal: shows "用手机写入" info card after QR generated
+3. Android Chrome (or simulated): NFC scanner/writer show full Chinese copy
+4. All text is concise, action-oriented, no technical jargon
