@@ -1,38 +1,54 @@
-# Guide Center 重构
+# Mobile Experience Optimization — MVP Plan
 
 ## Context
-当前 GuideCenterModal 只有 4 张静态卡片。用户需要完整的使用攻略页，涵盖快速开始、核心交互、进阶效率、设置操作四大分类，与 `useHintState` 联动显示每项完成状态。
+Mobile pods are partially visible causing button obstruction, z-index layering is inconsistent,
+and mobile lacks dedicated guidance. Most infrastructure already exists (MobileBottomSheet,
+MobileTabBar, NodeContextMenu with mobile mode, CosmosScene long-press).
 
-## 方案：重写 GuideCenterModal.tsx（单文件）
+## Root Analysis
+1. MobileBottomSheet `maxHeight: 78vh` can clip content; MobileTabBar at bottom `z-40` sits below sheet `z-51` but can overlap other elements
+2. When a bottom sheet is open, MobileTabBar stays visible underneath — occupying screen real estate without utility
+3. CosmosScene touch: tap → open node, long-press → context menu already works
+4. NodeContextMenu already has mobile action sheet mode with "Send to Pod" options
+5. No mobile-specific hints exist in InteractionHints or GuideCenterModal
 
-### 文件：`src/components/tour/GuideCenterModal.tsx`
+## MVP Scope (3 changes)
 
-**信息架构（4 sections × N items）：**
+### Change 1: MobileBottomSheet layout fix
+**File: `src/components/floating/MobileBottomSheet.tsx`**
+- Change `maxHeight: 78vh` → `maxHeight: calc(90vh - env(safe-area-inset-bottom))` 
+- Add `paddingBottom: env(safe-area-inset-bottom)` to body for keyboard safety
+- Add `paddingTop: env(safe-area-inset-top)` to handle area
 
-| Section | Items | hint key (if any) |
-|---|---|---|
-| 快速开始 | 移动知识宇宙 (`first_move_universe`) · 生成第一颗星 (`first_create_star`) · 打开节点 (`first_click_node`) | 3 keys |
-| 核心交互 | 拖拽到 Pod (`drag_to_pod`) · 建立连接 (`action_feedback`) · 使用工作台 (`workbench_empty`) · 私人云 RAG (`retrieval_scope`) · 来源回溯 (`trace_source`) | 5 keys |
-| 进阶效率 | 快捷键 · 多节点整理 · 导出与回流 · Obsidian 导入 | 0 keys (纯攻略文字) |
-| 设置操作 | 重新开启提示 (enableAll) · 重置所有 (resetAll+restart) · 关闭所有 (disableAll) | 操作按钮 |
+### Change 2: Hide MobileTabBar when a pod sheet is open
+**File: `src/components/floating/MobileTabBar.tsx`**
+- Read `pods` from `useToolbox()`
+- If any pod is open, hide the tab bar (return null or translate off screen)
+- This eliminates the z-index conflict entirely
 
-**每条 item 结构：**
-- icon + title + 一行描述
-- 若有 hint key → 右侧显示 completed/pending 小圆标
-- 进阶效率无 key，不显示状态
+### Change 3: Add mobile section to GuideCenterModal
+**File: `src/components/tour/GuideCenterModal.tsx`**
+- Add a 4th section "移动端操作" after "进阶效率" with these items:
+  - **轻点查看**: 轻点星球查看内容，长按打开更多操作
+  - **发送到功能舱**: 长按节点 → 选择目标舱，替代桌面端拖拽
+  - **连接节点**: 长按选择「建立连接」→ 轻点第二个节点
+  - **上拉展开舱页**: 舱页底部上拉可展开更多空间，下滑可关闭
 
-**Header：**
-- 保留 progress bar (`completedCount/totalCount`)
-- 保留"重新体验新手导览"按钮
+### Change 4: Mobile-specific InteractionHints
+**File: `src/components/starmap/InteractionHints.tsx`**
+- Detect `useDevice()` — on phone show mobile-specific hint text:
+  - browse mode: `轻点星球 · 长按更多操作`  (instead of desktop mouse hints)
+  - node hover: hide (no hover on mobile)
+  - connect: `轻点第二颗星完成连接`
 
-**底部设置操作区：**
-- 保留现有三个按钮（resetAll / enableAll / disableAll toggle）
+## Files to Modify
+1. `src/components/floating/MobileBottomSheet.tsx` — maxHeight + safe area
+2. `src/components/floating/MobileTabBar.tsx` — auto-hide when pod open
+3. `src/components/tour/GuideCenterModal.tsx` — add mobile section
+4. `src/components/starmap/InteractionHints.tsx` — mobile hint text
 
-### 其他文件：无需修改
-- `useHintState` 已有所有 8 个 key + `completedCount/totalCount`
-- `SettingsCapsule` 已有 Guide Center 入口
-
-## 验证
-- 打开 Settings → 使用攻略 → 看到 4 分类，每项有 icon/desc
-- 快速开始和核心交互各项右侧显示绿色 ✓ 或灰色 ○
-- 点击"重置所有交互提示"后所有状态归零
+## Verification
+- Open on mobile viewport (< 768px): open any pod → tab bar disappears, sheet fills most of screen
+- Close pod → tab bar reappears
+- Open GuideCenterModal → see "移动端操作" section
+- InteractionHints shows touch-specific text on mobile
