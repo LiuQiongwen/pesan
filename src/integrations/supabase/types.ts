@@ -3985,6 +3985,7 @@ export type Database = {
           id: string
           is_admin: boolean
           theme: string | null
+          tour_state: Json | null
           updated_at: string | null
           username: string | null
         }
@@ -3996,6 +3997,7 @@ export type Database = {
           id: string
           is_admin?: boolean
           theme?: string | null
+          tour_state?: Json | null
           updated_at?: string | null
           username?: string | null
         }
@@ -4007,6 +4009,7 @@ export type Database = {
           id?: string
           is_admin?: boolean
           theme?: string | null
+          tour_state?: Json | null
           updated_at?: string | null
           username?: string | null
         }

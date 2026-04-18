@@ -198,6 +198,12 @@ html, body, #root {
 .animate-toolbox-in { animation: toolbox-in 0.2s ease-out forwards; }
 .animate-slide-up { animation: slide-up 0.25s ease-out forwards; }
 
+/* ── Tour onboarding overlay ──────────────────────────────────────── */
+@keyframes tour-fade-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 /* ── Floating toolbox glass surface ─────────────────────────────────── */
 .toolbox-glass {
   background: var(--glass-bg);
