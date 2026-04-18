@@ -96,17 +96,10 @@ export function ConnectConfirmOverlay({
         borderRadius:     12,
         overflow:         'hidden',
         boxShadow:        `0 0 36px ${config.color}14, 0 20px 50px rgba(0,0,0,0.65)`,
-        animation:        'cco-in 0.22s cubic-bezier(0.22,1,0.36,1)',
+        animation:        'toast-in var(--dur-standard) var(--spring)',
       }}
     >
-      <style>{`
-        @keyframes cco-in {
-          from { opacity:0; transform:translateX(-50%) translateY(14px) scale(0.96); }
-          to   { opacity:1; transform:translateX(-50%) translateY(0) scale(1); }
-        }
-      `}</style>
-
-      {/* Auto-confirm progress bar — drains from left to right */}
+      {/* Auto-confirm progress bar */}
       <div style={{ height: 2, background: 'rgba(255,255,255,0.05)', position: 'relative' }}>
         <div style={{
           position:   'absolute',
@@ -199,7 +192,7 @@ export function ConnectConfirmOverlay({
                   borderRadius:  4,
                   padding:       '4px 11px',
                   cursor:        'pointer',
-                  transition:    'all 0.14s',
+                  transition:    'all var(--dur-snap) var(--spring-snap)',
                   outline:       'none',
                 }}
               >

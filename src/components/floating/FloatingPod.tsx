@@ -210,19 +210,13 @@ function DesktopFloatingPod({
         width:      explicitW !== null ? explicitW : autoW,
         height:     explicitH !== null ? (state.minimized ? 'auto' : explicitH) : 'auto',
         zIndex:     state.zIndex,
-        animation:  'pod-in 0.22s cubic-bezier(0.16,1,0.3,1)',
+        animation:  'spring-in var(--dur-standard) var(--spring)',
         maxWidth:   'calc(100vw - 16px)',
         maxHeight:  'calc(100vh - 60px)',
         // Font scale injected as CSS custom property
         ['--win-font-scale' as string]: fontScaleVar,
       }}
     >
-      <style>{`
-        @keyframes edit-rim-pulse {
-          0%, 100% { opacity: 0.45; box-shadow: 0 0 0 0 rgba(102,240,255,0); }
-          50%       { opacity: 0.85; box-shadow: 0 0 18px 2px rgba(102,240,255,0.22); }
-        }
-      `}</style>
       {/* Resize handles (only in edit mode and not minimized) */}
       {!locked && !state.minimized && (
         <ResizeHandles
@@ -449,7 +443,7 @@ function DesktopFloatingPod({
             flex: explicitH !== null ? 1 : undefined,
             overflowY: 'auto',
             overscrollBehavior: 'contain',
-            transition: 'max-height 0.24s cubic-bezier(0.4,0,0.2,1)',
+            transition: 'max-height var(--dur-standard) var(--spring)',
           }}>
             <PodWelcomeHint podId={id} />
             {children}
@@ -501,10 +495,6 @@ function DesktopFloatingPod({
       </div>
 
       <style>{`
-        @keyframes pod-in {
-          from { opacity: 0; transform: scale(0.94) translateY(8px); }
-          to   { opacity: 1; transform: scale(1)    translateY(0);   }
-        }
         @keyframes pod-dot {
           0%,100% { opacity: 0.6; }
           50%     { opacity: 1; box-shadow: 0 0 10px currentColor; }
@@ -523,7 +513,7 @@ function mkCtrl(color: string, bg?: string, border?: string): React.CSSPropertie
     background: bg     ?? 'rgba(255,255,255,0.05)',
     border: `1px solid ${border ?? 'rgba(255,255,255,0.09)'}`,
     cursor: 'pointer', color,
-    transition: 'all 0.14s', flexShrink: 0,
+    transition: 'all var(--dur-snap) var(--spring-snap)', flexShrink: 0,
   };
 }
 

@@ -43,7 +43,7 @@ export function UndoToast({ message, color = '#ff4466', durationMs = 8000, onUnd
       borderRadius: 8,
       padding: '8px 14px',
       boxShadow: `0 0 20px ${color}15, 0 8px 32px rgba(0,0,0,0.75)`,
-      animation: 'cosmos-window-in 0.2s ease',
+      animation: 'toast-in var(--dur-standard) var(--spring-snap)',
       overflow: 'hidden',
     }}>
       {/* Progress bar */}

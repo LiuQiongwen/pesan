@@ -76,7 +76,7 @@ export function MobileBottomSheet({
           position: 'fixed', inset: 0, zIndex: 50,
           background: 'rgba(0,0,0,0.45)',
           backdropFilter: 'blur(4px)',
-          animation: 'fade-in 0.2s ease-out',
+          animation: 'fade-in var(--dur-standard) var(--spring-snap)',
         }}
       />
 
@@ -89,7 +89,7 @@ export function MobileBottomSheet({
           zIndex: 51,
           maxHeight: 'calc(90vh - env(safe-area-inset-bottom, 0px))',
           transform: `translateY(${dragY}px)`,
-          transition: dragging ? 'none' : 'transform 0.28s cubic-bezier(0.22,1,0.36,1)',
+          transition: dragging ? 'none' : 'transform var(--dur-gentle) var(--spring)',
           display: 'flex', flexDirection: 'column',
           background: 'rgba(3,5,13,0.98)',
           backdropFilter: 'blur(40px) saturate(2)',
@@ -98,7 +98,7 @@ export function MobileBottomSheet({
           borderRadius: '20px 20px 0 0',
           boxShadow: `0 -4px 40px rgba(0,0,0,0.80), 0 0 40px ${a(0.12)}`,
           overflow: 'hidden',
-          animation: dragY === 0 && !dragging ? 'slide-up 0.28s cubic-bezier(0.22,1,0.36,1)' : 'none',
+          animation: dragY === 0 && !dragging ? 'spring-up var(--dur-gentle) var(--spring)' : 'none',
         }}
       >
         {/* Drag handle */}

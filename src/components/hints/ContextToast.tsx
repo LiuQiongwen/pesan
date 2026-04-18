@@ -50,7 +50,7 @@ export function ContextToast({ toast, onDone }: Props) {
       zIndex: 55,
       pointerEvents: 'none',
       opacity: show ? 1 : 0,
-      transition: 'opacity 0.35s ease, transform 0.35s ease',
+      transition: 'opacity var(--dur-standard) var(--spring), transform var(--dur-standard) var(--spring)',
     }}>
       <div style={{
         display: 'flex',

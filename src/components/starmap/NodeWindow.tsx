@@ -127,7 +127,7 @@ export function NodeWindow({ note, accentColor, onClose, onNavigate, onNewNode, 
         borderRadius: 10,
         boxShadow: `0 0 0 1px rgba(${r},${g},${b},0.07), 0 24px 64px rgba(0,0,0,0.85)`,
         overflow: 'hidden',
-        animation: 'cosmos-window-in 0.20s cubic-bezier(0.16,1,0.3,1)',
+        animation: 'spring-in var(--dur-standard) var(--spring)',
         pointerEvents: 'all',
         userSelect: 'none',
       }}
@@ -357,13 +357,7 @@ export function NodeWindow({ note, accentColor, onClose, onNavigate, onNewNode, 
           </div>
         </div>
       )}
-
-      <style>{`
-        @keyframes cosmos-window-in {
-          from { opacity: 0; transform: scale(0.88) translateY(5px); }
-          to   { opacity: 1; transform: scale(1)    translateY(0);   }
-        }
-      `}</style>
+      {/* cosmos-window-in keyframe now in index.css */}
     </div>
   );
 }

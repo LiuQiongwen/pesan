@@ -37,7 +37,7 @@ export function ConfirmDeleteOverlay({
       position: 'fixed', inset: 0, zIndex: 1500,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       background: 'rgba(0,0,0,0.65)',
-      animation: 'cosmos-window-in 0.15s ease',
+      animation: 'fade-in var(--dur-standard) var(--spring-snap)',
     }}>
       <div style={{
         width: 320, maxWidth: '90vw',
@@ -46,7 +46,7 @@ export function ConfirmDeleteOverlay({
         borderRadius: 10,
         padding: '20px 22px 18px',
         boxShadow: `0 0 40px ${color}10, 0 12px 40px rgba(0,0,0,0.80)`,
-        animation: 'cosmos-window-in 0.2s ease',
+        animation: 'spring-in var(--dur-standard) var(--spring)',
       }}>
         <div style={{
           fontFamily: INTER, fontSize: 14, fontWeight: 600,

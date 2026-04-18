@@ -664,16 +664,7 @@ export default function KnowledgeStarMap({
       }}
       onDoubleClick={handleDoubleClick}
     >
-      <style>{`
-        @keyframes cosmos-pulse {
-          0%,100% { opacity: 0.4; }
-          50%      { opacity: 0.9; }
-        }
-        @keyframes cosmos-window-in {
-          from { opacity:0; transform: scale(0.94) translateY(-6px); }
-          to   { opacity:1; transform: scale(1)    translateY(0);    }
-        }
-      `}</style>
+      {/* Keyframes moved to index.css (spring motion system) */}
 
       {loading ? (
         <CanvasLoader />
