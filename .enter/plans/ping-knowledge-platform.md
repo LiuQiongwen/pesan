@@ -1,96 +1,170 @@
-# NFC Cross-Platform Copy & Guidance
+# 3D 星图性能诊断面板
 
 ## Context
 
-NFC Reality Anchors only work on Android Chrome (Web NFC API). Desktop users see no explanation, mobile iOS users get no fallback. The goal is:
-- **Desktop**: explain that NFC is a mobile-touch feature; provide create/manage/QR-fallback
-- **Mobile (NFC supported)**: guided scan/write experience with clear feedback
-- **Mobile (no NFC)**: graceful fallback to QR scan with explanation
+星图场景（CosmosScene.tsx）包含多个性能敏感子系统：
+- **9000 粒子星场** — Points + BufferGeometry
+- **N 个节点 mesh** — 每个独立几何体 + 共享材质 clone，每帧 `position.set()` + `scale.setScalar()` + `emissiveIntensity` 更新
+- **N 条连线** — Line/LineDashedMaterial，每帧 lerp opacity
+- **Galaxy halos/rings** — 每帧 lerp opacity
+- **Raycasting** — 每 3 帧对所有 mesh + 所有 edge 线段做 intersect
+- **EffectComposer + Bloom** — 后处理 pass (mipmapBlur)
+- **Html 组件** — ClusterLabel × K + HoverTooltip + NodeWindow × 3（drei Html → DOM overlay）
+- **OrbitControls + Camera tween** — 每帧 lerp
 
-All copy should be in Chinese matching the product's existing UI language.
+当前无法区分帧率下降来自哪个子系统。需要 **非侵入** 诊断面板。
 
-## Implementation Steps
+---
 
-### Step 1: NfcScannerSheet — full copy redesign
-**File**: `src/components/anchors/NfcScannerSheet.tsx`
+## 方案：自建轻量级 PerfMonitor（不引入 r3f-perf 库）
 
-Replace all English strings with Chinese copy and add richer states:
-- Scanning: title "轻触 NFC 标签", subtitle "将手机背面靠近物体上的标签"
-- Success flash: title "已识别", subtitle "正在跳转..."
-- Error (permission): "NFC 权限被拒绝 · 请在系统设置中开启"
-- Error (not supported): "当前设备不支持 NFC · 请使用 Android Chrome"
-- Footer: "仅支持 Android Chrome · 桌面端请使用 QR 码"
+### 为什么不直接 `npm install r3f-perf`
 
-### Step 2: NfcWriterSheet — full copy redesign
-**File**: `src/components/anchors/NfcWriterSheet.tsx`
+r3f-perf 库依赖 R3F 的 JSX reconciler 来注册 `<Perf>` 组件。但本项目的 CosmosScene 使用 **全命令式构建**（`createElement` + imperative Three.js），是为了避免 Enter.pro babel 插件注入 `data-source-*` 到 Three 对象上导致崩溃。直接 `<Perf />` 同样会踩到这个问题。
 
-Replace English strings:
-- Header: "写入 NFC 标签"
-- Idle: "点击下方按钮，然后将手机靠近空白 NFC 标签"
-- Writing: "正在写入，请保持贴近..."
-- Success: "写入成功！标签已关联到锚点"
-- Error: "写入失败 · {error}"
-- Retry button: "重新写入"
-- Write button: "写入 NFC 标签"
-- Done button: "完成"
+**因此**：借鉴 r3f-perf 的思路，自建一个轻量级 `usePerfMonitor` hook + `PerfOverlay` HUD，直接在 useFrame 中采集指标，零外部依赖。
 
-### Step 3: CreateAnchorModal — NFC section copy + desktop explanation
-**File**: `src/components/anchors/CreateAnchorModal.tsx`
+---
 
-Changes:
-- After QR is generated, add a section explaining NFC:
-  - If NFC supported: show existing "写入 NFC 标签" button (already works)
-  - If NFC NOT supported (desktop/iOS): show an info card:
-    ```
-    Icon: Smartphone
-    Title: "NFC 标签？用手机写入"
-    Body: "NFC 写入需要 Android 手机。在手机端打开此锚点即可写入 NFC 标签。"
-    ```
-- Replace "Write to NFC Tag" button text → "写入 NFC 标签"
-- Replace QrCode icon on NFC button → Nfc icon
+## 监控指标
 
-### Step 4: SettingsCapsule NFC entry — desktop explanation
-**File**: `src/components/floating/SettingsCapsule.tsx`
+| 指标 | 采集方式 | 瓶颈信号 |
+|------|----------|----------|
+| **FPS** | `useFrame` delta 计算，1s 窗口平均 | < 45 fps |
+| **Frame time (ms)** | `performance.now()` 帧间隔 | > 22ms |
+| **Draw calls** | `gl.info.render.calls` (每帧读) | > 150 |
+| **Triangles** | `gl.info.render.triangles` | > 200K |
+| **Geometries** | `gl.info.memory.geometries` | 持续增长 = 泄漏 |
+| **Textures** | `gl.info.memory.textures` | 同上 |
+| **Node count** | `notes.length` | > 200 需要 LOD 策略 |
+| **Edge count** | `layout.edges.length` | > 500 需要 frustum cull |
+| **Raycast time** | `performance.now()` 包裹 raycast 区域 | > 2ms |
+| **Bloom pass** | 有/无对比帧率 | 差值 > 10fps = 瓶颈 |
 
-When `nfcSupported === false` (desktop/iOS):
-- Still show the NFC menu item but dimmed, with a tooltip/subtitle:
-  - Label: "NFC 轻触"
-  - Subtitle: "仅限 Android 手机"
-  - Click → open a small info sheet instead of scanner
+---
 
-When `nfcSupported === true`:
-- Keep existing behavior, update label to "NFC 轻触锚点"
+## 需要修改的文件
 
-### Step 5: Create NfcDesktopInfoSheet — lightweight explanation overlay
-**File**: `src/components/anchors/NfcDesktopInfoSheet.tsx` (NEW)
+### 1. `src/hooks/usePerfMonitor.ts` (NEW)
 
-A simple centered modal with:
-- Nfc icon + "NFC 轻触是什么？"
-- Body: "用 NFC 标签把现实物体连接到你的知识宇宙。手机轻触标签，即可跳转到对应的节点或星系。"
-- 3 bullet points:
-  1. Smartphone icon — "在 Android 手机上打开本应用"
-  2. Nfc icon — "进入锚点页面，写入 NFC 标签"  
-  3. QrCode icon — "桌面端可直接使用 QR 码"
-- Bottom: "QR 码同样有效" → button "创建 QR 锚点" (dispatches open-anchor-create event)
-- Close button
+轻量级性能采集 hook，在 R3F Canvas 内部使用：
 
-### Step 6: QrScannerSheet — update NFC fallback copy
-**File**: `src/components/anchors/QrScannerSheet.tsx`
+```
+export interface PerfSnapshot {
+  fps: number;
+  frameMs: number;
+  drawCalls: number;
+  triangles: number;
+  geometries: number;
+  textures: number;
+  raycastMs: number;
+  nodeCount: number;
+  edgeCount: number;
+}
+```
 
-Update the NFC alternative text at the bottom:
-- If NFC supported: "或轻触 NFC 标签" (keep existing)
-- If NOT supported: show "NFC 标签？用手机轻触" in dimmed text (no click action)
+- 使用 `useFrame` 每帧采集 `gl.info`
+- 每 60 帧计算一次平均值 → 写入 `ref` 供 overlay 读
+- 暴露 `raycastStart()` / `raycastEnd()` 方法供 ImperativeCore 打点
+- 暴露 `snapshot: PerfSnapshot` 供 overlay 读取
+- 暴露 `history: PerfSnapshot[]`（最近 120 条，约 2 秒）用于 sparkline
 
-## Files Modified
-1. `src/components/anchors/NfcScannerSheet.tsx` — Chinese copy
-2. `src/components/anchors/NfcWriterSheet.tsx` — Chinese copy
-3. `src/components/anchors/CreateAnchorModal.tsx` — NFC section + desktop fallback
-4. `src/components/floating/SettingsCapsule.tsx` — always-visible NFC entry
-5. `src/components/anchors/NfcDesktopInfoSheet.tsx` — NEW desktop explanation
-6. `src/components/anchors/QrScannerSheet.tsx` — NFC fallback copy
+### 2. `src/components/starmap/PerfOverlay.tsx` (NEW)
 
-## Verification
-1. Desktop browser: NFC menu item visible but shows info sheet on click
-2. Desktop CreateAnchorModal: shows "用手机写入" info card after QR generated
-3. Android Chrome (or simulated): NFC scanner/writer show full Chinese copy
-4. All text is concise, action-oriented, no technical jargon
+HUD 面板，渲染为普通 React DOM（不在 Canvas 内）：
+
+- 固定在右上角，半透明深色背景
+- 实时显示：FPS (大字 + 颜色编码)、Frame ms、Draw Calls、Tri count
+- Mini sparkline（最近 2s FPS 折线，canvas 2D 绘制）
+- 子系统开关面板：
+  - **Bloom**: 切换 EffectComposer 启/禁
+  - **星场**: 切换星场 Points visible
+  - **连线**: 切换 edge lines visible
+  - **标签**: 切换 Html labels 渲染
+  - **Raycast**: 切换 raycast 频率 (3帧 → 6帧 → off)
+- 每个开关切换后观察 FPS 变化 → 直接定位瓶颈
+
+### 3. `src/components/starmap/CosmosScene.tsx` (MODIFY)
+
+- 在 `ImperativeCore` 的 `useFrame` 中：
+  - 帧头调用 `perfMonitor.frameStart()`
+  - raycast 区块前后调用 `perfMonitor.raycastStart()` / `perfMonitor.raycastEnd()`
+  - 帧尾调用 `perfMonitor.frameEnd()`
+- 在外层 `CosmosScene` 函数中：
+  - 接收 `perfEnabled` prop
+  - 条件性调用 `usePerfMonitor()`
+  - 通过 ref 暴露 snapshot 给外部
+- 将 `EffectComposer + Bloom`、星场 Points name、edge lines 添加 `visible` 控制
+  - 通过 `useRef` flag 接收 PerfOverlay 的开关信号
+
+### 4. `src/components/starmap/KnowledgeStarMap.tsx` (MODIFY)
+
+- 添加 `perfEnabled` state（默认 false，仅开发时启用）
+- 传递给 CosmosScene
+- 条件渲染 `<PerfOverlay />`
+- 监听键盘快捷键 `Shift+P` 切换 perf panel
+
+### 5. `src/components/layout/StarMapLayout.tsx` (MODIFY - minor)
+
+- 无直接修改，perf panel 完全封装在 KnowledgeStarMap 内部
+
+---
+
+## 接入层级图
+
+```
+StarMapLayout
+  └── KnowledgeStarMap
+        ├── Canvas
+        │     └── CosmosScene
+        │           ├── ImperativeCore  ← usePerfMonitor() 在这里采集
+        │           ├── ClusterLabel (Html)  ← toggleable
+        │           ├── HoverTooltip (Html)  ← toggleable
+        │           ├── NodeWindow (Html)
+        │           ├── OrbitControls
+        │           └── EffectComposer+Bloom  ← toggleable
+        │
+        └── PerfOverlay (DOM)  ← 浮在 Canvas 上方，读 perf ref
+```
+
+---
+
+## 诊断 → 优化映射表
+
+| 诊断结论 | 优化动作 |
+|----------|----------|
+| Bloom 关闭 FPS 提升 >10 | 降低 Bloom intensity/分辨率，或 LOD>1 时禁用 |
+| Draw calls > 200 | InstancedMesh 合并同色节点 |
+| Triangles > 300K | 降低 SphereGeometry segments (18→10)，远处用 billboard |
+| Raycast > 3ms | 增大 throttle 间隔，BVH 空间索引，frustum pre-filter |
+| Edge lines 关闭 FPS 提升 >5 | 远处 edge 全部隐藏，近处分批渲染 |
+| Html labels 关闭 FPS 提升 >5 | LOD>0 已隐藏，检查 hover tooltip 开销 |
+| Node count > 200 | LOD2 只渲染 billboard sprites，LOD1 低段数几何 |
+| Geometries 持续增长 | 检查 dispose 遗漏（layout 变化时） |
+| FPS 拖动时 <30 | OrbitControls damping 回调触发过多重渲染 |
+
+---
+
+## MVP 最小接入
+
+**Phase 1（本次实施）**：
+1. 创建 `usePerfMonitor.ts` — 纯采集，无副作用
+2. 创建 `PerfOverlay.tsx` — 只读 HUD + sparkline + 子系统开关
+3. 修改 `CosmosScene.tsx` — 插入采集点 + visible 控制 ref
+4. 修改 `KnowledgeStarMap.tsx` — `Shift+P` 开关 + state 传递
+5. 开关面板的每次切换自动记录 FPS 差值 → 在面板中显示 "Bloom: -12fps" 格式的影响标注
+
+**Phase 2（后续按需）**：
+- 导出 perf 快照为 JSON（一键复制到剪贴板）
+- Timeline 录制模式：记录 10s 操作 → 帧级回放
+- 自动建议：当某子系统 FPS 影响 > 阈值时，面板自动高亮推荐优化
+
+---
+
+## 验证方式
+
+1. 打开星图页面，按 `Shift+P` → PerfOverlay 出现
+2. 确认 FPS / Draw Calls / Triangles 实时更新
+3. 逐个关闭子系统开关，观察 FPS 变化
+4. 拖动/缩放/聚焦节点时观察帧率曲线
+5. 再次 `Shift+P` → 面板隐藏，零性能开销
