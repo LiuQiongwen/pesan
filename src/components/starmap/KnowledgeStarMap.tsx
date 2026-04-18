@@ -2,6 +2,8 @@ import { Suspense, useMemo, useState, useCallback, useRef, useEffect, createElem
 import { createPortal } from 'react-dom';
 import { Canvas } from '@react-three/fiber';
 import { CosmosScene } from './CosmosScene';
+import { PerfOverlay } from './PerfOverlay';
+import type { PerfMonitorAPI } from '@/hooks/usePerfMonitor';
 import { buildCosmosLayout, type CosmosNote, type DbEdge, type ManualPositions } from './cosmos-layout';
 import { NodeContextMenu } from './NodeContextMenu';
 import { GalaxyContextMenu } from './GalaxyContextMenu';
@@ -174,6 +176,47 @@ export default function KnowledgeStarMap({
   const { isPhone } = useDevice();
   const [mobileCardNoteId, setMobileCardNoteId] = useState<string | null>(null);
   const [anchorNoteId, setAnchorNoteId] = useState<string | null>(null);
+
+  // ── Perf diagnostics state ──────────────────────────────────────────
+  const [perfEnabled, setPerfEnabled] = useState(false);
+  const perfApiRef = useRef<PerfMonitorAPI | null>(null);
+  const [bloomEnabled, setBloomEnabled] = useState(true);
+  const [starFieldEnabled, setStarFieldEnabled] = useState(true);
+  const [edgesEnabled, setEdgesEnabled] = useState(true);
+  const [labelsEnabled, setLabelsEnabled] = useState(true);
+  const [raycastThrottle, setRaycastThrottle] = useState(3);
+
+  const subsystems = useMemo(() => [
+    { key: 'bloom',     label: 'Bloom',     enabled: bloomEnabled },
+    { key: 'starfield', label: 'Star Field', enabled: starFieldEnabled },
+    { key: 'edges',     label: 'Edges',     enabled: edgesEnabled },
+    { key: 'labels',    label: 'Labels',    enabled: labelsEnabled },
+    { key: 'raycast',   label: `Raycast (/${raycastThrottle}f)`, enabled: raycastThrottle <= 6 },
+  ], [bloomEnabled, starFieldEnabled, edgesEnabled, labelsEnabled, raycastThrottle]);
+
+  const handleToggleSubsystem = useCallback((key: string) => {
+    switch (key) {
+      case 'bloom':     setBloomEnabled(v => !v); break;
+      case 'starfield': setStarFieldEnabled(v => !v); break;
+      case 'edges':     setEdgesEnabled(v => !v); break;
+      case 'labels':    setLabelsEnabled(v => !v); break;
+      case 'raycast':   setRaycastThrottle(v => v === 3 ? 6 : v === 6 ? 999 : 3); break;
+    }
+  }, []);
+
+  // Shift+P to toggle perf panel
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (e.shiftKey && e.key === 'P') {
+        e.preventDefault();
+        setPerfEnabled(v => !v);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // On phone, intercept node toggle to open MobileNodeCard instead
   const toggleNode = useCallback((id: string) => {
@@ -635,6 +678,13 @@ export default function KnowledgeStarMap({
               onSetConnectFromId={(id) => setConnectFromId(id)}
               onNodeMove={handleNodeMove}
               onGalaxyMove={handleGalaxyMove}
+              perfEnabled={perfEnabled}
+              perfApiRef={perfApiRef}
+              bloomEnabled={bloomEnabled}
+              starFieldEnabled={starFieldEnabled}
+              edgesEnabled={edgesEnabled}
+              labelsEnabled={labelsEnabled}
+              raycastThrottle={raycastThrottle}
             />
           )}
         </Suspense>
@@ -803,6 +853,16 @@ export default function KnowledgeStarMap({
           color="#b496ff"
           onUndo={handleGalaxyUndo}
           onDismiss={() => setGalaxyUndoInfo(null)}
+        />
+      )}
+
+      {/* Perf diagnostics overlay */}
+      {perfEnabled && perfApiRef.current && (
+        <PerfOverlay
+          snapshotRef={perfApiRef.current.snapshotRef}
+          historyRef={perfApiRef.current.historyRef}
+          subsystems={subsystems}
+          onToggleSubsystem={handleToggleSubsystem}
         />
       )}
 

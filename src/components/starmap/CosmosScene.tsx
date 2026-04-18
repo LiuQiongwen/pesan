@@ -22,6 +22,7 @@ import { NodeWindow }  from './NodeWindow';
 import { getEdgeTypeConfig } from './connect-types';
 import { useHintState } from '@/hooks/useHintState';
 import { useDevice } from '@/hooks/useDevice';
+import { usePerfMonitor, type PerfMonitorAPI } from '@/hooks/usePerfMonitor';
 import type { HoveredNodeInfo } from './KnowledgeStarMap';
 import type { NodeType } from '@/types';
 
@@ -93,6 +94,14 @@ export interface CosmosSceneProps {
   onSetConnectFromId?:  (id: string | null) => void;
   onNodeMove?:          (noteId: string, pos: [number, number, number]) => void;
   onGalaxyMove?:        (tag: string, center: [number, number, number], memberPositions: Record<string, [number, number, number]>) => void;
+  // ── Perf diagnostics ─────────────────────────────────────────────────
+  perfEnabled?:         boolean;
+  perfApiRef?:          React.MutableRefObject<PerfMonitorAPI | null>;
+  bloomEnabled?:        boolean;
+  starFieldEnabled?:    boolean;
+  edgesEnabled?:        boolean;
+  labelsEnabled?:       boolean;
+  raycastThrottle?:     number; // frames between raycasts (default 3)
 }
 
 // ── ImperativeCore ────────────────────────────────────────────────────────────
@@ -125,6 +134,9 @@ interface CoreProps {
   onEdgeHover?:       (meta: { fromNoteId: string; toNoteId: string; edgeType: string; description: string | null; midpoint: [number, number, number] } | null) => void;
   onNodeMove?:        (noteId: string, pos: [number, number, number]) => void;
   onGalaxyMove?:      (tag: string, center: [number, number, number], memberPositions: Record<string, [number, number, number]>) => void;
+  perfApi?:           PerfMonitorAPI | null;
+  edgesEnabled?:      boolean;
+  raycastThrottle?:   number;
 }
 
 function ImperativeCore({
@@ -137,6 +149,7 @@ function ImperativeCore({
   onSetMode, onSetSelectedNodeId, onSetConnectFromId,
   onEdgeHover,
   onNodeMove, onGalaxyMove,
+  perfApi, edgesEnabled = true, raycastThrottle = 3,
 }: CoreProps) {
   const { scene, camera, gl } = useThree();
 
@@ -317,7 +330,9 @@ function ImperativeCore({
       size: 0.28, vertexColors: true, sizeAttenuation: true,
       transparent: true, opacity: 0.72, depthWrite: false,
     });
-    group.add(new THREE.Points(starGeo, starMat));
+    const starPts = new THREE.Points(starGeo, starMat);
+    starPts.name = '__starfield__';
+    group.add(starPts);
 
     // ── Galaxy cluster halos ─────────────────────────────────────────────────
     layout.clusters.forEach(cluster => {
@@ -1100,6 +1115,8 @@ function ImperativeCore({
 
     frameCountRef.current++;
 
+    // Perf: update counts
+    perfApi?.setCounts(noteMeshes.current.size, allEdgeLinesRef.current.length);
     // ── OrbitControls: disable during drag-to-connect or node/galaxy move ──
     if (controls) {
       const ctrl = controls as unknown as { enabled: boolean; autoRotate: boolean };
@@ -1188,6 +1205,13 @@ function ImperativeCore({
     // Recompute base opacities whenever hover target changes OR every frame for smooth lerp
     const hoveredChanged = hoveredId !== lastHoveredRef.current;
     if (hoveredChanged) lastHoveredRef.current = hoveredId;
+
+    // Edge visibility toggle (perf diagnostics)
+    if (!edgesEnabled) {
+      allEdgeLinesRef.current.forEach(l => { l.visible = false; });
+    } else {
+      allEdgeLinesRef.current.forEach(l => { l.visible = true; });
+    }
 
     allEdgeLinesRef.current.forEach(l => {
       const ud = l.userData;
@@ -1338,8 +1362,10 @@ function ImperativeCore({
       flashTimesRef.current.set(flashNoteId, t);
     }
 
-    // ── Hover raycasting (throttled: every 3rd frame) ───────────────────────
-    if (frameCountRef.current % 3 !== 0) return;
+    // ── Hover raycasting (throttled: configurable frame interval) ──────────
+    if (frameCountRef.current % raycastThrottle !== 0) return;
+
+    perfApi?.raycastStart();
 
     // Suppress hover preview in connect mode
     if (modeRef.current === 'connect') {
@@ -1442,6 +1468,8 @@ function ImperativeCore({
     } else {
       onEdgeHoverRef.current?.(null);
     }
+
+    perfApi?.raycastEnd();
   });
 
   return null;
@@ -1503,12 +1531,27 @@ export function CosmosScene({
   onNodeWorkbenchSelect,
   interactionMode: mode = 'browse', selectedNodeId, connectFromId, onSetMode, onSetSelectedNodeId, onSetConnectFromId,
   onNodeMove, onGalaxyMove,
+  perfEnabled = false, perfApiRef, bloomEnabled = true, starFieldEnabled = true, edgesEnabled = true, labelsEnabled = true, raycastThrottle = 3,
 }: CosmosSceneProps) {
   const highlightSet  = useMemo(() => new Set(highlightedNoteIds), [highlightedNoteIds]);
   const navigate      = useNavigate();
   const hints         = useHintState();
   const { isPhone }   = useDevice();
   const showClickHint = hints.shouldShowHint('first_click_node', { noteCount: notes.length });
+
+  // ── Perf monitor (only runs when enabled) ─────────────────────────────
+  const perfApi = usePerfMonitor(perfEnabled);
+  useEffect(() => {
+    if (perfApiRef) perfApiRef.current = perfApi;
+  }, [perfApi, perfApiRef]);
+
+  // ── Star field visibility control ─────────────────────────────────────
+  const { scene } = useThree();
+  useEffect(() => {
+    const starfield = scene.getObjectByName('__starfield__');
+    if (starfield) starfield.visible = starFieldEnabled;
+  }, [scene, starFieldEnabled]);
+
   const [hoveredId,   setHoveredId]  = useState<string | null>(null);
   const [hoveredEdgeMeta, setHoveredEdgeMeta] = useState<{
     fromNoteId: string; toNoteId: string; edgeType: string;
@@ -1568,14 +1611,17 @@ export function CosmosScene({
         onEdgeHover={handleEdgeHover}
         onNodeMove={onNodeMove}
         onGalaxyMove={onGalaxyMove}
+        perfApi={perfApi}
+        edgesEnabled={edgesEnabled}
+        raycastThrottle={raycastThrottle}
       />
-      {lodLevel === 0 && layout.clusters.map(c => <ClusterLabel key={c.tag} cluster={c} />)}
+      {labelsEnabled && lodLevel === 0 && layout.clusters.map(c => <ClusterLabel key={c.tag} cluster={c} />)}
 
       {/* Empty state CTA */}
       {notes.length === 0 && <EmptyCtaLabel onClick={onEmptyStateClick} />}
 
       {/* Hover label — lightweight, never blocks clicks (pointerEvents: none) */}
-      {mode !== 'connect' && hoveredId && !openNodes.has(hoveredId) && showButtons && (() => {
+      {labelsEnabled && mode !== 'connect' && hoveredId && !openNodes.has(hoveredId) && showButtons && (() => {
         const pos  = currentPosRef.current.get(hoveredId);
         const note = notesMap.get(hoveredId);
         const np   = layout.positions[hoveredId];
@@ -1729,7 +1775,7 @@ export function CosmosScene({
         onChange: () => { window.dispatchEvent(new CustomEvent('tour-camera-moved')); },
       })}
 
-      {createElement(EffectComposer, {},
+      {bloomEnabled && createElement(EffectComposer, {},
         createElement(Bloom, {
           luminanceThreshold: 0.20,
           luminanceSmoothing: 0.7,
