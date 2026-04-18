@@ -1,0 +1,13 @@
+
+CREATE OR REPLACE FUNCTION create_default_universe()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = 'public'
+AS $$
+BEGIN
+  INSERT INTO universes (user_id, name, description, is_default, sort_order)
+  VALUES (NEW.id, '默认宇宙', '你的第一个知识世界', true, 0);
+  RETURN NEW;
+END;
+$$;
