@@ -189,6 +189,8 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
     } else {
       setTagFilter(tag);
       setHighlightedIds(notes.filter(n => (n.tags ?? []).includes(tag)).map(n => n.id));
+      // Fly camera to the galaxy cluster for this tag
+      window.dispatchEvent(new CustomEvent('cosmos-focus-galaxy', { detail: { tag } }));
     }
   }, [tagFilter, notes]);
 

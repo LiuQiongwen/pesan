@@ -63,10 +63,9 @@ function makeNodeGeometry(nodeType: NodeType | undefined, size: number): THREE.B
   }
 }
 
-const INIT_CAM_POS  = new THREE.Vector3(0, 0, 90);
-const INIT_CAM_TGT  = new THREE.Vector3(0, 0, 0);
-
 // ── Public API ────────────────────────────────────────────────────────────────
+import type { CosmosCamAPI } from '@/hooks/useCosmosCam';
+
 export interface CosmosSceneProps {
   layout:              CosmosLayout;
   notes:               CosmosNote[];
@@ -75,7 +74,7 @@ export interface CosmosSceneProps {
   openNodes:           Set<string>;
   onNodeToggle:        (id: string) => void;
   onNodeHover?:        (info: HoveredNodeInfo | null) => void;
-  recenterActiveRef:   React.MutableRefObject<boolean>;
+  camApi:              CosmosCamAPI;
   onLodChange?:        (level: 0 | 1 | 2) => void;
   onFlashNote?:        (id: string) => void;
   userId?:             string;
@@ -116,7 +115,7 @@ interface CoreProps {
   onNodeToggle:       (id: string) => void;
   onNodeHover?:       (info: HoveredNodeInfo | null) => void;
   currentPosRef:      React.MutableRefObject<Map<string, THREE.Vector3>>;
-  recenterActiveRef:  React.MutableRefObject<boolean>;
+  camApi:             CosmosCamAPI;
   onLodChange?:       (level: 0 | 1 | 2) => void;
   entranceNoteId?:    string;
   onEmptyStateClick?: () => void;
@@ -142,7 +141,7 @@ interface CoreProps {
 function ImperativeCore({
   layout, notes, highlightSet, flashNoteId, openNodes,
   hoveredId, setHoveredId, onNodeToggle, onNodeHover,
-  currentPosRef, recenterActiveRef, onLodChange,
+  currentPosRef, camApi, onLodChange,
   entranceNoteId, onEmptyStateClick, onNodeConnect, onNodeDropToGalaxy, onNodeDropToPod,
   onNodeWorkbenchSelect,
   interactionMode, selectedNodeId, connectFromId,
@@ -186,8 +185,7 @@ function ImperativeCore({
   const entranceRingsRef = useRef<THREE.Mesh[]>([]);
   const waveRingsRef     = useRef<Array<{ mesh: THREE.Mesh; startT: number }>>([]);
 
-  // Camera fly-in ref
-  const flyTargetRef     = useRef<THREE.Vector3 | null>(null);
+  // Camera managed by useCosmosCam — no flyTargetRef needed
 
   // Drag feedback ref
   const isDraggingRef    = useRef(false);
@@ -930,7 +928,7 @@ function ImperativeCore({
         waveMesh.position.set(0, 0, 0);
         scene.add(waveMesh);
         waveRingsRef.current.push({ mesh: waveMesh, startT: performance.now() / 1000 });
-        flyTargetRef.current = new THREE.Vector3(0, 0, 0);
+        camApi.recenter();
         onEmptyStateClickRef.current?.();
         return;
       }
@@ -985,8 +983,7 @@ function ImperativeCore({
         lastClickRef.current = null;
       } else {
         // Single click → select node AND open its detail panel
-        const worldPos = noteMeshes.current.get(id)?.position.clone();
-        if (worldPos) flyTargetRef.current = worldPos.clone();
+        camApi.focusNode(id);
         onSetSelectedRef.current(id);
         onToggleRef.current(id);
         // Notify tour system that user opened a node detail
@@ -1117,11 +1114,12 @@ function ImperativeCore({
 
     // Perf: update counts
     perfApi?.setCounts(noteMeshes.current.size, allEdgeLinesRef.current.length);
-    // ── OrbitControls: disable during drag-to-connect or node/galaxy move ──
+    // ── OrbitControls: disable during drag-to-connect, node/galaxy move, or camera animation ──
     if (controls) {
       const ctrl = controls as unknown as { enabled: boolean; autoRotate: boolean };
-      ctrl.enabled     = !connectStateRef.current && !moveStateRef.current && !galaxyMoveStateRef.current;
-      ctrl.autoRotate  = orbitAutoRotate.current && !connectStateRef.current && !moveStateRef.current && !galaxyMoveStateRef.current;
+      const camBusy = camApi.isAnimating();
+      ctrl.enabled     = !connectStateRef.current && !moveStateRef.current && !galaxyMoveStateRef.current && !camBusy;
+      ctrl.autoRotate  = orbitAutoRotate.current && !connectStateRef.current && !moveStateRef.current && !galaxyMoveStateRef.current && !camBusy;
     }
 
     // ── Drag line pulse animation ───────────────────────────────────────────
@@ -1153,23 +1151,7 @@ function ImperativeCore({
       }
     }
 
-    // ── Camera fly-in tween ─────────────────────────────────────────────────
-    if (flyTargetRef.current) {
-      const dir = camera.position.clone().sub(flyTargetRef.current).normalize().multiplyScalar(20);
-      const targetPos = flyTargetRef.current.clone().add(dir);
-      camera.position.lerp(targetPos, 0.055);
-      (controls as unknown as { target: THREE.Vector3; update: () => void } | null)?.target?.lerp(flyTargetRef.current, 0.055);
-      (controls as unknown as { update: () => void } | null)?.update?.();
-      if (camera.position.distanceTo(targetPos) < 1.5) flyTargetRef.current = null;
-    }
-
-    // ── Camera recenter tween ───────────────────────────────────────────────
-    if (recenterActiveRef.current) {
-      camera.position.lerp(INIT_CAM_POS, 0.065);
-      (controls as unknown as { target: THREE.Vector3; update: () => void } | null)?.target?.lerp(INIT_CAM_TGT, 0.065);
-      (controls as unknown as { update: () => void } | null)?.update?.();
-      if (camera.position.distanceTo(INIT_CAM_POS) < 0.8) recenterActiveRef.current = false;
-    }
+    // Camera transitions handled by useCosmosCam (smoothDamp in separate useFrame)
 
     // ── Auto-rotate sync ────────────────────────────────────────────────────
     if (controls) {
@@ -1526,7 +1508,7 @@ function EmptyCtaLabel({ onClick }: { onClick?: () => void }) {
 export function CosmosScene({
   layout, notes, highlightedNoteIds = [],
   flashNoteId = null, openNodes, onNodeToggle, onNodeHover,
-  recenterActiveRef, onLodChange, onFlashNote, userId,
+  camApi, onLodChange, onFlashNote, userId,
   entranceNoteId, onEmptyStateClick, onNodeConnect, onNodeDropToGalaxy, onNodeDropToPod,
   onNodeWorkbenchSelect,
   interactionMode: mode = 'browse', selectedNodeId, connectFromId, onSetMode, onSetSelectedNodeId, onSetConnectFromId,
@@ -1594,7 +1576,7 @@ export function CosmosScene({
         onNodeToggle={onNodeToggle}
         onNodeHover={onNodeHover}
         currentPosRef={currentPosRef}
-        recenterActiveRef={recenterActiveRef}
+        camApi={camApi}
         onLodChange={handleLodChange}
         entranceNoteId={entranceNoteId}
         onEmptyStateClick={onEmptyStateClick}
@@ -1768,8 +1750,8 @@ export function CosmosScene({
       {createElement(OrbitControls, {
         enablePan: true, enableZoom: true, enableRotate: true,
         autoRotate: true, autoRotateSpeed: 0.10,
-        enableDamping: true, dampingFactor: 0.08,
-        zoomSpeed: 0.7, panSpeed: 0.6,
+        enableDamping: true, dampingFactor: 0.12,
+        zoomSpeed: 0.8, panSpeed: 0.7,
         minDistance: 8, maxDistance: 180,
         makeDefault: true,
         onChange: () => { window.dispatchEvent(new CustomEvent('tour-camera-moved')); },

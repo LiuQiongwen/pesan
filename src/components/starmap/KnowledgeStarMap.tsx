@@ -18,6 +18,7 @@ import { CreateAnchorModal } from '@/components/anchors/CreateAnchorModal';
 import { type RelationType } from './connect-types';
 import { supabase } from '@/integrations/supabase/client';
 import { useDevice } from '@/hooks/useDevice';
+import { useCosmosCam, type CosmosCamAPI } from '@/hooks/useCosmosCam';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export interface HoveredNodeInfo {
@@ -89,6 +90,13 @@ function suggestRelType(a: CosmosNote, b: CosmosNote): RelationType {
   return 'semantic';
 }
 
+// ── CamBridge: instantiates useCosmosCam inside Canvas and exposes API via ref ──
+function CamBridge({ apiRef }: { apiRef: React.MutableRefObject<CosmosCamAPI | null> }) {
+  const api = useCosmosCam();
+  apiRef.current = api;
+  return null;
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function KnowledgeStarMap({
   notes,
@@ -156,7 +164,16 @@ export default function KnowledgeStarMap({
   const [connectStatus,   setConnectStatus]    = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [pendingGalaxy,   setPendingGalaxy]    = useState<PendingGalaxy | null>(null);
   const [galaxyStatus,    setGalaxyStatus]     = useState<'idle' | 'saved' | 'error'>('idle');
-  const recenterActiveRef = useRef(false);
+  const camApiRef = useRef<CosmosCamAPI | null>(null);
+
+  // No-op fallback before CamBridge mounts
+  const camApiFallback = useMemo<CosmosCamAPI>(() => ({
+    focusNode: () => {},
+    focusGalaxy: () => {},
+    recenter: () => {},
+    peek: () => {},
+    isAnimating: () => false,
+  }), []);
 
   // ── Delete / Undo state ─────────────────────────────────────────────────
   const [pendingDeleteId,  setPendingDeleteId]  = useState<string | null>(null);
@@ -445,11 +462,6 @@ export default function KnowledgeStarMap({
     if (error) console.error('[Workbench] combine error:', error);
   }, [notesMap, userId, universeId]);
 
-  // Keyboard shortcut: Escape clears workbench selection too
-  useEffect(() => {
-    if (recenterTrigger > 0) recenterActiveRef.current = true;
-  }, [recenterTrigger]);
-
   // ── Node delete: initiate (from context menu / NodeWindow) ─────────────
   const handleDeleteRequest = useCallback((noteId: string) => {
     setPendingDeleteId(noteId);
@@ -592,7 +604,7 @@ export default function KnowledgeStarMap({
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       if (e.code === 'Space') {
         e.preventDefault();
-        recenterActiveRef.current = true;
+        camApiRef.current?.recenter();
       }
       if (e.code === 'Escape') {
         setOpenNodes(new Set());
@@ -606,10 +618,30 @@ export default function KnowledgeStarMap({
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // ── Flash note → camera fly ─────────────────────────────────────────────
+  useEffect(() => {
+    if (flashNoteId) camApiRef.current?.focusNode(flashNoteId);
+  }, [flashNoteId]);
+
+  // ── Galaxy focus from tag click ─────────────────────────────────────────
+  useEffect(() => {
+    const onFocusGalaxy = (e: Event) => {
+      const { tag } = (e as CustomEvent).detail;
+      camApiRef.current?.focusGalaxy(tag);
+    };
+    window.addEventListener('cosmos-focus-galaxy', onFocusGalaxy);
+    return () => window.removeEventListener('cosmos-focus-galaxy', onFocusGalaxy);
+  }, []);
+
+  // ── Recenter trigger from parent ────────────────────────────────────────
+  useEffect(() => {
+    if (recenterTrigger > 0) camApiRef.current?.recenter();
+  }, [recenterTrigger]);
+
   // ── Double-click on canvas area to recenter ───────────────────────────────
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('[data-node-window]')) return;
-    recenterActiveRef.current = true;
+    camApiRef.current?.recenter();
   }, []);
 
   const srcNote = pendingConn ? notesMap.get(pendingConn.sourceId) : null;
@@ -653,6 +685,7 @@ export default function KnowledgeStarMap({
             style: { background: '#01040d' },
             dpr: [1, 1.5] as [number, number],
           },
+            <CamBridge apiRef={camApiRef} />,
             <CosmosScene
               layout={layout}
               notes={notes}
@@ -661,7 +694,7 @@ export default function KnowledgeStarMap({
               openNodes={openNodes}
               onNodeToggle={toggleNode}
               onNodeHover={onNodeHover}
-              recenterActiveRef={recenterActiveRef}
+              camApi={camApiRef.current ?? camApiFallback}
               onFlashNote={onFlashNote}
               userId={userId}
               entranceNoteId={entranceNoteId}
