@@ -32,6 +32,10 @@ interface Props {
   onClose: () => void;
   onFlashNote?: (id: string) => void;
   onOpenStaging?: () => void;
+  /** Pre-loaded image (e.g. from clipboard paste) — skips upload phase */
+  initialImage?: File | null;
+  /** Auto-trigger camera input on mount (mobile UX) */
+  autoCamera?: boolean;
 }
 
 const TYPE_META: Record<string, { label: string; color: string; icon: typeof Tag }> = {
@@ -46,7 +50,7 @@ const NODE_TYPE_MAP: Record<string, string> = {
   action: 'action',
 };
 
-export function OcrCaptureModal({ onClose, onOpenStaging }: Props) {
+export function OcrCaptureModal({ onClose, onOpenStaging, initialImage, autoCamera }: Props) {
   const { user } = useAuth();
   const { activeUniverseId } = useActiveUniverse();
   const cn = useCandidateNodes(user?.id, activeUniverseId);
@@ -64,9 +68,44 @@ export function OcrCaptureModal({ onClose, onOpenStaging }: Props) {
 
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const autoTriggered = useRef(false);
+
+  /* ── Auto-start from initialImage or autoCamera ── */
+  // Use useEffect-like pattern via ref check
+  if (initialImage && phase === 'upload' && !autoTriggered.current) {
+    autoTriggered.current = true;
+    // Defer to avoid setState during render
+    setTimeout(() => handleImage(initialImage), 0);
+  }
+  if (autoCamera && phase === 'upload' && !initialImage && !autoTriggered.current) {
+    autoTriggered.current = true;
+    setTimeout(() => cameraRef.current?.click(), 100);
+  }
 
   /* ── Phase 1: Image selection ── */
   const handleImage = useCallback(async (file: File) => {
+    // PDF: extract text directly, skip tesseract
+    if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+      setPhase('ocr');
+      setStructurizing(true);
+      try {
+        const pdfText = await file.text();
+        if (pdfText.trim().length < 5) {
+          setStructError('PDF 文本过少，请尝试图片模式');
+          setPhase('upload');
+          setStructurizing(false);
+          return;
+        }
+        await structurize(pdfText.trim().slice(0, 6000));
+      } catch {
+        setStructError('PDF 读取失败');
+        setPhase('upload');
+        setStructurizing(false);
+      }
+      return;
+    }
+
     const url = URL.createObjectURL(file);
     setImageUrl(url);
     setPhase('ocr');
@@ -219,28 +258,35 @@ export function OcrCaptureModal({ onClose, onOpenStaging }: Props) {
 
               <div
                 onClick={() => fileRef.current?.click()}
+                onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDragOver(true); }}
+                onDragLeave={e => { e.preventDefault(); e.stopPropagation(); setDragOver(false); }}
+                onDrop={e => {
+                  e.preventDefault(); e.stopPropagation(); setDragOver(false);
+                  const f = e.dataTransfer.files?.[0];
+                  if (f && (f.type.startsWith('image/') || f.type === 'application/pdf')) handleImage(f);
+                }}
                 style={{
                   width: '100%', padding: '40px 20px',
-                  border: `2px dashed ${ACCENT}25`,
+                  border: `2px dashed ${dragOver ? `${ACCENT}80` : `${ACCENT}25`}`,
                   borderRadius: 12,
-                  background: `${ACCENT}04`,
+                  background: dragOver ? `${ACCENT}0a` : `${ACCENT}04`,
                   cursor: 'pointer',
                   display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
-                  transition: 'border-color 0.15s',
+                  transition: 'border-color 0.15s, background 0.15s',
                 }}
-                onMouseEnter={e => { (e.currentTarget).style.borderColor = `${ACCENT}50`; }}
-                onMouseLeave={e => { (e.currentTarget).style.borderColor = `${ACCENT}25`; }}
+                onMouseEnter={e => { if (!dragOver) (e.currentTarget).style.borderColor = `${ACCENT}50`; }}
+                onMouseLeave={e => { if (!dragOver) (e.currentTarget).style.borderColor = `${ACCENT}25`; }}
               >
                 <Upload size={28} color={`${ACCENT}60`} />
                 <span style={{ fontFamily: INTER, fontSize: 13, color: 'rgba(200,210,230,0.75)', fontWeight: 500 }}>
-                  选择图片或拖放到此处
+                  {dragOver ? '松开以识别' : '点击选择 / 拖放图片到此处'}
                 </span>
                 <span style={{ fontFamily: MONO, fontSize: 9, color: 'rgba(120,130,160,0.50)', letterSpacing: '0.04em' }}>
-                  支持 JPG / PNG / WebP / HEIC
+                  支持 JPG / PNG / WebP / HEIC / PDF
                 </span>
               </div>
 
-              <input ref={fileRef} type="file" accept="image/*" onChange={onFileChange} style={{ display: 'none' }} />
+              <input ref={fileRef} type="file" accept="image/*,.pdf" onChange={onFileChange} style={{ display: 'none' }} />
               <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={onFileChange} style={{ display: 'none' }} />
 
               <button

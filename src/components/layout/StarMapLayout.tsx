@@ -37,6 +37,7 @@ import type { LucideIcon } from 'lucide-react';
 
 import CaptureBox   from '@/components/pods/CaptureBox';
 import RetrievalBox from '@/components/pods/RetrievalBox';
+import { OcrCaptureModal } from '@/components/ocr/OcrCaptureModal';
 import InsightBox   from '@/components/pods/InsightBox';
 import MemoryBox    from '@/components/pods/MemoryBox';
 import ActionBox    from '@/components/pods/ActionBox';
@@ -89,6 +90,9 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
   const [agentActive,     setAgentActive]     = useState(false);
   const [pinnedMemoryId,  setPinnedMemoryId]  = useState<string | null>(null);
   const [stagingOpen,     setStagingOpen]     = useState(false);
+  const [ocrOpen,         setOcrOpen]         = useState(false);
+  const [ocrPasteImage,   setOcrPasteImage]   = useState<File | null>(null);
+  const [ocrAutoCamera,   setOcrAutoCamera]   = useState(false);
 
   // ── Toast queue for contextual feedback ────────────────────────────────────
   const [toastQueue, setToastQueue] = useState<ToastItem[]>([]);
@@ -214,11 +218,50 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
     }
   }, [hints, pushToast]);
 
-  // ── Obsidian import-done listener: refresh notes + highlight cluster ──────
+  // ── OCR & Staging event listeners ───────────────────────────────────────────
   useEffect(() => {
     const onOpenStaging = () => setStagingOpen(true);
+    const onOpenOcr = () => {
+      setOcrPasteImage(null);
+      setOcrAutoCamera(false);
+      setOcrOpen(true);
+    };
+    const onOpenOcrCamera = () => {
+      setOcrPasteImage(null);
+      setOcrAutoCamera(true);
+      setOcrOpen(true);
+    };
+    // Global clipboard paste → OCR
+    const onPaste = (e: ClipboardEvent) => {
+      // Skip if user is typing in an input/textarea
+      const tag = (document.activeElement?.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of Array.from(items)) {
+        if (item.type.startsWith('image/')) {
+          const blob = item.getAsFile();
+          if (blob) {
+            e.preventDefault();
+            setOcrPasteImage(blob);
+            setOcrAutoCamera(false);
+            setOcrOpen(true);
+          }
+          return;
+        }
+      }
+    };
+
     window.addEventListener('open-staging', onOpenStaging);
-    return () => window.removeEventListener('open-staging', onOpenStaging);
+    window.addEventListener('open-ocr', onOpenOcr);
+    window.addEventListener('open-ocr-camera', onOpenOcrCamera);
+    window.addEventListener('paste', onPaste as EventListener);
+    return () => {
+      window.removeEventListener('open-staging', onOpenStaging);
+      window.removeEventListener('open-ocr', onOpenOcr);
+      window.removeEventListener('open-ocr-camera', onOpenOcrCamera);
+      window.removeEventListener('paste', onPaste as EventListener);
+    };
   }, []);
 
   useEffect(() => {
@@ -443,6 +486,16 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
         <StagingWorkbench
           onClose={() => setStagingOpen(false)}
           onFlashNote={flashNote}
+        />
+      )}
+
+      {ocrOpen && (
+        <OcrCaptureModal
+          onClose={() => { setOcrOpen(false); setOcrPasteImage(null); setOcrAutoCamera(false); }}
+          onFlashNote={flashNote}
+          onOpenStaging={() => { setOcrOpen(false); setStagingOpen(true); }}
+          initialImage={ocrPasteImage}
+          autoCamera={ocrAutoCamera}
         />
       )}
 

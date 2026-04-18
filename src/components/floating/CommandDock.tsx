@@ -5,7 +5,7 @@
  * dispatched by CosmosScene when a node is being dragged.
  */
 import { useState, useEffect, useRef } from 'react';
-import { Inbox, Telescope, Sparkles, Library, Rocket, Check, ClipboardList } from 'lucide-react';
+import { Inbox, Telescope, Sparkles, Library, Rocket, Check, ClipboardList, ScanLine } from 'lucide-react';
 import { useToolbox, type PodId } from '@/contexts/ToolboxContext';
 import { useAgentWorkflow } from '@/contexts/AgentWorkflowContext';
 import { HintPulse } from '@/components/hints/HintPulse';
@@ -476,10 +476,43 @@ function DesktopCommandDock() {
       {/* Staging workbench button */}
       <div style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        gap: 'clamp(6px, 0.6vh, 10px)',
         paddingLeft: 'clamp(10px, 1.1vw, 18px)',
         borderLeft: '1px solid rgba(255,255,255,0.07)',
         marginLeft: 'clamp(6px, 0.8vw, 12px)',
       }}>
+        {/* OCR button */}
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('open-ocr'))}
+          title="OCR 识别"
+          style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            gap: 'clamp(2px, 0.3vh, 4px)',
+            width: 'clamp(48px, 4.8vw, 66px)',
+            height: 'clamp(36px, 3.6vh, 48px)',
+            borderRadius: 'clamp(8px, 0.9vw, 12px)',
+            border: '1px solid rgba(102,240,255,0.15)',
+            background: 'rgba(102,240,255,0.04)',
+            cursor: 'pointer',
+            transition: 'all 0.16s',
+          }}
+        >
+          <ScanLine
+            size={14}
+            color="rgba(102,240,255,0.70)"
+            style={{ width: 'clamp(11px, 1.1vw, 15px)', height: 'clamp(11px, 1.1vw, 15px)' }}
+          />
+          <span style={{
+            fontFamily: MONO,
+            fontSize: 'clamp(6.5px, 0.6vw, 8px)',
+            color: 'rgba(102,240,255,0.55)',
+            letterSpacing: '0.04em',
+          }}>
+            OCR
+          </span>
+        </button>
+
+        {/* Staging button */}
         <button
           onClick={() => window.dispatchEvent(new CustomEvent('open-staging'))}
           title="候选工作台"
