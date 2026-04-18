@@ -12,7 +12,6 @@ interface TriggerOpts {
 
 export function useTourTrigger({ noteCount }: TriggerOpts) {
   const { active, step, signal } = useTour();
-  const prevNoteCount = useRef(noteCount);
   const sentSignals   = useRef(new Set<TourSignal>());
   const signalRef     = useRef(signal);
   signalRef.current   = signal;
@@ -23,13 +22,12 @@ export function useTourTrigger({ noteCount }: TriggerOpts) {
     signalRef.current(s);
   }, []);
 
-  // Step 1: Watch first note creation (noteCount 0 → 1+)
+  // Step 1: As soon as there is at least 1 note, advance past 'create'
   useEffect(() => {
     if (!active || step?.id !== 'create') return;
-    if (prevNoteCount.current === 0 && noteCount > 0) {
+    if (noteCount > 0) {
       send('first-note-created');
     }
-    prevNoteCount.current = noteCount;
   }, [active, step, noteCount, send]);
 
   // Step 2: Watch node detail opened (NodeWindow toggle)

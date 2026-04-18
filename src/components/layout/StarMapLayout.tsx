@@ -5,7 +5,7 @@
  *    └── StarMapOuter  (has ToolboxContext, provides AgentWorkflowProvider)
  *          └── StarMapContents  (uses AgentWorkflow + all child components)
  */
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth }  from '@/hooks/useAuth';
 import { useNotes } from '@/hooks/useNotes';
@@ -88,14 +88,16 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
 
   // Tour trigger hook — watches actions to auto-advance tour
   useTourTrigger({ noteCount: notes.length });
-
-  // Auto-open capture pod when tour starts on 'create' step
   const tour = useTour();
+
+  // Auto-open capture pod ONCE when tour starts on 'create' step
+  const captureAutoOpened = useRef(false);
   useEffect(() => {
-    if (tour.active && tour.step?.id === 'create' && !pods.capture?.open) {
+    if (tour.active && tour.step?.id === 'create' && !captureAutoOpened.current) {
+      captureAutoOpened.current = true;
       openPod('capture');
     }
-  }, [tour.active, tour.step, pods.capture?.open, openPod]);
+  }, [tour.active, tour.step, openPod]);
 
   useEffect(() => {
     if (!loading && !user) navigate('/auth');
