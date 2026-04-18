@@ -50,7 +50,7 @@ export function NfcWriterSheet({ open, onClose, anchorId, label }: Props) {
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20 }}>
           <Nfc size={20} color="#66f0ff" style={{ marginRight: 10 }} />
           <span style={{ fontFamily: INTER, fontSize: 16, fontWeight: 700, color: 'rgba(225,235,255,0.95)', flex: 1, textAlign: 'left' }}>
-            Write NFC Tag
+            写入 NFC 标签
           </span>
           <button onClick={onClose} style={{
             width: 32, height: 32, borderRadius: 8,
@@ -69,7 +69,7 @@ export function NfcWriterSheet({ open, onClose, anchorId, label }: Props) {
           border: '1px solid rgba(102,240,255,0.12)',
         }}>
           <div style={{ fontFamily: INTER, fontSize: 14, fontWeight: 600, color: 'rgba(225,235,255,0.85)' }}>
-            {label || 'Reality Anchor'}
+            {label || '现实锚点'}
           </div>
           <div style={{
             fontFamily: MONO, fontSize: 9, color: 'rgba(102,240,255,0.45)',
@@ -86,6 +86,7 @@ export function NfcWriterSheet({ open, onClose, anchorId, label }: Props) {
           background: done ? 'rgba(0,255,102,0.08)' : nfc.error ? 'rgba(255,68,102,0.08)' : 'rgba(102,240,255,0.06)',
           border: `1.5px solid ${done ? 'rgba(0,255,102,0.30)' : nfc.error ? 'rgba(255,68,102,0.25)' : 'rgba(102,240,255,0.20)'}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'all 0.3s',
         }}>
           {nfc.writing
             ? <Loader2 size={32} color="#66f0ff" style={{ animation: 'spin 1s linear infinite' }} />
@@ -99,15 +100,15 @@ export function NfcWriterSheet({ open, onClose, anchorId, label }: Props) {
         <p style={{
           fontFamily: INTER, fontSize: 14,
           color: done ? 'rgba(0,255,102,0.80)' : nfc.error ? 'rgba(255,68,102,0.75)' : 'rgba(200,210,235,0.60)',
-          margin: '0 0 20px',
+          margin: '0 0 20px', lineHeight: 1.6,
         }}>
           {nfc.writing
-            ? 'Hold phone near NFC tag...'
+            ? '正在写入，请保持贴近...'
             : done
-              ? 'Tag written successfully!'
+              ? '写入成功！标签已关联到锚点'
               : nfc.error
-                ? nfc.error
-                : 'Tap below, then hold phone near NFC tag'}
+                ? `写入失败 · ${nfc.error}`
+                : '点击下方按钮，然后将手机靠近空白 NFC 标签'}
         </p>
 
         {/* Action button */}
@@ -125,7 +126,7 @@ export function NfcWriterSheet({ open, onClose, anchorId, label }: Props) {
               boxShadow: nfc.writing ? 'none' : '0 4px 16px rgba(102,240,255,0.25)',
             }}
           >
-            {nfc.writing ? 'Writing...' : nfc.error ? 'Retry' : 'Write to NFC Tag'}
+            {nfc.writing ? '写入中...' : nfc.error ? '重新写入' : '写入 NFC 标签'}
           </button>
         ) : (
           <button
@@ -139,7 +140,7 @@ export function NfcWriterSheet({ open, onClose, anchorId, label }: Props) {
               borderRadius: 10, cursor: 'pointer',
             }}
           >
-            Done
+            完成
           </button>
         )}
       </div>

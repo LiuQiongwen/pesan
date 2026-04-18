@@ -10,6 +10,7 @@ import { CosmosExportModal } from '@/components/obsidian/CosmosExportModal';
 import { WikiCompileModal } from '@/components/wiki/WikiCompileModal';
 import { QrScannerSheet } from '@/components/anchors/QrScannerSheet';
 import { NfcScannerSheet } from '@/components/anchors/NfcScannerSheet';
+import { NfcDesktopInfoSheet } from '@/components/anchors/NfcDesktopInfoSheet';
 import { GuideCenterModal } from '@/components/tour/GuideCenterModal';
 
 const MONO = "'IBM Plex Mono','Roboto Mono',monospace";
@@ -25,6 +26,7 @@ export function SettingsCapsule() {
   const [guideOpen, setGuideOpen] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [nfcScanOpen, setNfcScanOpen] = useState(false);
+  const [nfcInfoOpen, setNfcInfoOpen] = useState(false);
   const nfcSupported = typeof window !== 'undefined' && 'NDEFReader' in window;
   const [isAdmin,      setIsAdmin]      = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -350,30 +352,32 @@ export function SettingsCapsule() {
                 </div>
               </button>
 
-              {/* NFC 锚点扫描 — only on supported devices */}
-              {nfcSupported && (
-                <button
-                  onClick={() => { setNfcScanOpen(true); setOpen(false); }}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 8,
-                    width: '100%', padding: '8px 12px',
-                    fontFamily: INTER, background: 'transparent', border: 'none',
-                    cursor: 'pointer', borderRadius: 4, transition: 'background 0.15s',
-                  }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(180,150,255,0.08)'; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
-                >
-                  <Nfc size={12} color="rgba(180,150,255,0.75)" />
-                  <div style={{ flex: 1 }}>
-                    <span style={{ fontFamily: INTER, fontSize: 11, color: 'rgba(180,150,255,0.85)', fontWeight: 600 }}>
-                      NFC 锚点轻触
-                    </span>
-                    <div style={{ fontFamily: MONO, fontSize: 8, color: 'rgba(140,150,180,0.50)', letterSpacing: '0.04em', marginTop: 1 }}>
-                      Tap NFC Reality Anchor
-                    </div>
+              {/* NFC 锚点 — always visible */}
+              <button
+                onClick={() => {
+                  if (nfcSupported) { setNfcScanOpen(true); } else { setNfcInfoOpen(true); }
+                  setOpen(false);
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  width: '100%', padding: '8px 12px',
+                  fontFamily: INTER, background: 'transparent', border: 'none',
+                  cursor: 'pointer', borderRadius: 4, transition: 'background 0.15s',
+                  opacity: nfcSupported ? 1 : 0.65,
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(180,150,255,0.08)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+              >
+                <Nfc size={12} color="rgba(180,150,255,0.75)" />
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontFamily: INTER, fontSize: 11, color: 'rgba(180,150,255,0.85)', fontWeight: 600 }}>
+                    NFC 轻触锚点
+                  </span>
+                  <div style={{ fontFamily: MONO, fontSize: 8, color: 'rgba(140,150,180,0.50)', letterSpacing: '0.04em', marginTop: 1 }}>
+                    {nfcSupported ? '轻触标签跳转节点' : '仅限 Android 手机'}
                   </div>
-                </button>
-              )}
+                </div>
+              </button>
 
               <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '3px 0' }} />
               {isAdmin && (
@@ -490,6 +494,7 @@ export function SettingsCapsule() {
       {guideOpen && <GuideCenterModal onClose={() => setGuideOpen(false)} />}
       {scannerOpen && <QrScannerSheet open={scannerOpen} onClose={() => setScannerOpen(false)} />}
       {nfcScanOpen && <NfcScannerSheet open={nfcScanOpen} onClose={() => setNfcScanOpen(false)} />}
+      <NfcDesktopInfoSheet open={nfcInfoOpen} onClose={() => setNfcInfoOpen(false)} />
     </>
   );
 }

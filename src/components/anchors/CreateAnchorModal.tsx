@@ -3,7 +3,7 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, QrCode, Download, Copy, Check } from 'lucide-react';
+import { X, QrCode, Download, Copy, Check, Nfc, Smartphone } from 'lucide-react';
 import QRCode from 'qrcode';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -219,7 +219,7 @@ export function CreateAnchorModal({
               fontFamily: INTER, fontSize: 13, color: 'rgba(200,210,235,0.55)',
               textAlign: 'center', margin: '8px 0 20px',
             }}>
-              Print this QR code and attach it to the physical object.
+              打印此二维码并贴到现实物体上
             </p>
 
             {/* Action buttons */}
@@ -232,7 +232,7 @@ export function CreateAnchorModal({
                 borderRadius: 10, cursor: 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               }}>
-                <Download size={14} /> Download
+                <Download size={14} /> 下载
               </button>
               <button onClick={handleCopy} style={{
                 flex: 1, padding: '10px 0',
@@ -244,12 +244,12 @@ export function CreateAnchorModal({
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               }}>
                 {copied ? <Check size={14} /> : <Copy size={14} />}
-                {copied ? 'Copied' : 'Copy Link'}
+                {copied ? '已复制' : '复制链接'}
               </button>
             </div>
 
-            {/* NFC write button — only on supported devices */}
-            {nfc.supported && (
+            {/* NFC section */}
+            {nfc.supported ? (
               <button onClick={() => setNfcWriteOpen(true)} style={{
                 width: '100%', marginTop: 10, padding: '10px 0',
                 fontFamily: INTER, fontSize: 13, fontWeight: 600,
@@ -259,8 +259,25 @@ export function CreateAnchorModal({
                 borderRadius: 10, cursor: 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               }}>
-                <QrCode size={14} /> Write to NFC Tag
+                <Nfc size={14} /> 写入 NFC 标签
               </button>
+            ) : (
+              <div style={{
+                marginTop: 12, padding: '10px 14px', borderRadius: 10,
+                background: 'rgba(180,150,255,0.04)',
+                border: '1px solid rgba(180,150,255,0.10)',
+                display: 'flex', alignItems: 'center', gap: 10,
+              }}>
+                <Smartphone size={16} color="rgba(180,150,255,0.50)" style={{ flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontFamily: INTER, fontSize: 12, fontWeight: 600, color: 'rgba(180,150,255,0.65)' }}>
+                    NFC 标签？用手机写入
+                  </div>
+                  <div style={{ fontFamily: INTER, fontSize: 11, color: 'rgba(160,170,200,0.40)', marginTop: 2, lineHeight: 1.4 }}>
+                    NFC 写入需要 Android 手机，在手机端打开此锚点即可操作
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* NFC Writer Sheet */}

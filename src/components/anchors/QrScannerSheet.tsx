@@ -205,7 +205,7 @@ export function QrScannerSheet({ open, onClose }: Props) {
           color: 'rgba(160,180,220,0.50)', letterSpacing: '0.04em',
           margin: 0,
         }}>
-          {nfcMode ? 'Hold phone near NFC tag' : 'Point camera at a Reality Anchor QR code'}
+          {nfcMode ? '将手机靠近 NFC 标签' : '将摄像头对准 QR 锚点'}
         </p>
         {nfc.supported && !nfcMode && (
           <button onClick={startNfcMode} style={{
@@ -217,8 +217,16 @@ export function QrScannerSheet({ open, onClose }: Props) {
             borderRadius: 8, cursor: 'pointer',
             display: 'inline-flex', alignItems: 'center', gap: 5,
           }}>
-            <Nfc size={13} /> Or tap NFC tag
+            <Nfc size={13} /> 或轻触 NFC 标签
           </button>
+        )}
+        {!nfc.supported && !nfcMode && (
+          <p style={{
+            marginTop: 8, fontFamily: MONO, fontSize: 9,
+            color: 'rgba(140,150,180,0.35)', letterSpacing: '0.04em',
+          }}>
+            NFC 标签？请使用 Android 手机轻触
+          </p>
         )}
         {nfcMode && (
           <div style={{
@@ -226,7 +234,7 @@ export function QrScannerSheet({ open, onClose }: Props) {
           }}>
             <Nfc size={20} color="#b496ff" style={{ animation: 'nfc-pulse 1.5s ease-in-out infinite' }} />
             <span style={{ fontFamily: INTER, fontSize: 13, color: 'rgba(180,150,255,0.70)' }}>
-              {nfc.scanning ? 'Listening...' : nfc.error || 'Starting NFC...'}
+              {nfc.scanning ? '正在监听...' : nfc.error || '正在启动 NFC...'}
             </span>
           </div>
         )}
