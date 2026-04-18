@@ -1711,10 +1711,7 @@ export function CosmosScene({
         zoomSpeed: 0.7, panSpeed: 0.6,
         minDistance: 8, maxDistance: 180,
         makeDefault: true,
-        onChange: () => {
-          // Dispatch for onboarding tour (deduplicated by useTourTrigger)
-          window.dispatchEvent(new CustomEvent('tour-camera-moved'));
-        },
+        onChange: () => { window.dispatchEvent(new CustomEvent('tour-camera-moved')); },
       })}
 
       {createElement(EffectComposer, {},
