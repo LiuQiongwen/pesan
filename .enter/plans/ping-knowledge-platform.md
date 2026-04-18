@@ -1,168 +1,126 @@
-# Camera Navigation System Overhaul
+# Unified Animation Language — Spring-Physics Motion System
 
 ## Context
 
-The 3D knowledge star map currently uses raw `camera.position.lerp()` with hardcoded alpha values (0.055 / 0.065) inside `useFrame` for camera transitions. This produces:
+The star map product has 70+ inline `@keyframes` and `transition` declarations scattered across components, each with its own easing and duration. Current problems:
 
-1. **Non-uniform timing** — the lerp alpha is frame-rate dependent, making fly-in faster on 120fps screens and slower on 30fps
-2. **Abrupt or sluggish transitions** — fly-to-node uses 0.055, recenter uses 0.065, but neither has easing curves, so the motion lacks "cinematic" feel
-3. **No distance-aware duration** — flying to a nearby node takes the same proportional time as flying across the entire universe
-4. **Flash note has no camera movement** — `flashNoteId` only triggers a visual pulse, the camera doesn't move to the flashed node
-5. **No galaxy-level fly** — clicking a galaxy tag doesn't zoom to its center
-6. **OrbitControls damping fights with manual tweens** — `controls.update()` is called inside the tween, causing micro-jitter
+1. **Inconsistent easing** — Pod uses `cubic-bezier(0.16,1,0.3,1)`, BottomSheet uses `cubic-bezier(0.22,1,0.36,1)`, overlays use `ease`, hints use `ease-out` — no shared rhythm
+2. **Duplicate keyframes** — `cosmos-window-in`, `pod-in`, `toolbox-in`, `cco-in`, `fade-up`, `slide-up` all do nearly the same "slide-up + fade" with slightly different offsets
+3. **No exit animations** — Components appear with animation but disappear instantly
+4. **Three.js vs DOM mismatch** — Camera uses smoothDamp springs (via `useCosmosCam`) but DOM panels use CSS keyframes, creating a perceptual disconnect
 
-## Approach: `useCosmosCam` Hook
+**Goal**: Establish a 3-tier CSS spring-like animation system (Snap / Standard / Gentle) using a single shared cubic-bezier that mimics a critically damped spring, then apply it to the top-5 highest-impact surfaces.
 
-Create a single hook that wraps all camera navigation into a **priority-queue animation system** with `smoothDamp` (critically damped spring, like camera-controls and Unity's `SmoothDamp`). The hook runs inside `useFrame` and owns all camera position/target changes.
+## Approach: CSS Custom Properties + Shared Keyframes
+
+Rather than installing `react-spring` (heavy, introduces new render model), we define **spring-like cubic-beziers** as CSS custom properties and consolidate all keyframes into `index.css`. This matches the existing architecture (inline styles + CSS keyframes) with zero dependency cost.
+
+**Spring-like cubic-bezier curves:**
+```
+--ease-spring:  cubic-bezier(0.22, 1.00, 0.36, 1.00)   /* Standard (overdamped spring feel) */
+--ease-snap:    cubic-bezier(0.16, 1.00, 0.30, 1.00)   /* Fast micro-feedback */
+--ease-gentle:  cubic-bezier(0.33, 1.00, 0.68, 1.00)   /* Slow settle for large panels */
+```
+
+**Duration tiers:**
+| Tier | Duration | Use Case |
+|------|----------|----------|
+| **Snap** | 0.15-0.20s | Button press, pill select, micro-feedback |
+| **Standard** | 0.28-0.35s | Panel slide, toast appear, overlay enter |
+| **Gentle** | 0.45-0.55s | Bottom sheet, full-screen transitions, modal enter |
 
 ---
 
 ## File Plan
 
-### 1. NEW: `src/hooks/useCosmosCam.ts`
+### 1. MODIFY: `src/index.css` — Consolidate animation tokens
 
-The core camera controller hook.
+Add CSS custom properties for timing and curves, plus unified keyframes that replace scattered inline `<style>` blocks.
 
-**Animation Model — SmoothDamp (critically damped spring)**
-```
-velocity += (target - current - velocity * 2 * smoothTime) / (smoothTime * smoothTime) * dt
-current += velocity * dt
-```
-- Produces a natural deceleration curve (fast start, gentle stop)
-- Frame-rate independent (uses `delta` from useFrame)
-- `smoothTime` = time to reach ~63% of target (like camera-controls)
-
-**Camera Action Catalog:**
-
-| Action | Target Distance | smoothTime | Zoom Level | Trigger |
-|--------|----------------|------------|------------|---------|
-| `focusNode(noteId)` | 20 units from node | 0.45s | Close | Node click, flash, anchor scan |
-| `focusGalaxy(tag)` | 1.6 * cluster.radius | 0.55s | Mid | Tag click, galaxy context |
-| `recenter()` | INIT_CAM_POS (0,0,90) | 0.50s | Full | Space bar, double-click empty, G key |
-| `peek(pos, distance?)` | custom | 0.35s | custom | Retrieval source trace, external |
-
-**State machine:**
-```
-idle -> animating -> settling -> idle
-```
-- `animating`: smoothDamp is running, OrbitControls disabled
-- `settling`: within 0.5 units of target, re-enable OrbitControls with damping
-- `idle`: user has full orbit/pan/zoom control
-
-**API (returned from hook):**
-```ts
-interface CosmosCamAPI {
-  focusNode:   (noteId: string) => void;
-  focusGalaxy: (tag: string) => void;
-  recenter:    () => void;
-  peek:        (target: Vector3, distance?: number) => void;
-  isAnimating: boolean;   // read inside useFrame for orbit lock
-}
+**New tokens in `:root`:**
+```css
+--spring:        cubic-bezier(0.22, 1.00, 0.36, 1.00);
+--spring-snap:   cubic-bezier(0.16, 1.00, 0.30, 1.00);
+--spring-gentle: cubic-bezier(0.33, 1.00, 0.68, 1.00);
+--dur-snap:      0.18s;
+--dur-standard:  0.30s;
+--dur-gentle:    0.50s;
 ```
 
-**Implementation details:**
-- Uses `useThree()` to get camera + controls
-- Reads `sceneStore.getState().layout` to look up node/galaxy positions
-- Runs in `useFrame` with priority `-1` (before ImperativeCore) to update camera before scene renders
-- SmoothDamp for both `camera.position` and `controls.target` simultaneously
-- Auto-disables OrbitControls during animation (sets `controls.enabled = false`)
-- Re-enables with a 100ms settling window after reaching target
+**Consolidated keyframes (replace duplicates):**
+- `spring-in` → replaces `pod-in`, `toolbox-in`, `cosmos-window-in`, `cco-in`
+- `spring-out` → new exit animation
+- `spring-up` → replaces `slide-up`, `mobile-sheet-up`, `fade-up`
+- `spring-down` → replaces `slide-down`, `mobile-sheet-down`
+- `toast-in` / `toast-out` → for bottom-center toasts
+- Keep existing unique animations: `flow-light`, `pulse-glow`, `node-flash`, `shimmer`, `spin-slow`, `hint-pulse-ring`
 
-### 2. MODIFY: `src/components/starmap/CosmosScene.tsx`
-
-**Remove from ImperativeCore's `useFrame`:**
-- Lines 1156-1172: fly-in tween (`flyTargetRef`) + recenter tween (`recenterActiveRef`)
-- Lines 1120-1125: Manual OrbitControls enable/disable (moved to useCosmosCam)
-
-**Remove from ImperativeCore:**
-- `flyTargetRef` ref and all its usage
-- The fly logic in click handler (line 989: `if (worldPos) flyTargetRef.current = worldPos.clone()`)
-
-**Replace with:**
-- Accept `camApi: CosmosCamAPI` prop
-- On node click: call `camApi.focusNode(id)` instead of setting flyTargetRef
-- On empty-state click: call `camApi.recenter()` (already centered at origin)
-- OrbitControls disable: check `camApi.isAnimating` in useFrame
-
-**Keep in ImperativeCore's `useFrame`:**
-- All node animation, edge opacity, LOD, hover raycasting (unchanged)
-- Auto-rotate management (unchanged)
-- `recenterActiveRef` still used for Space/G key — but now triggers `camApi.recenter()`
-
-**OrbitControls config change:**
-```ts
-// Before:
-enableDamping: true, dampingFactor: 0.08,
-zoomSpeed: 0.7, panSpeed: 0.6,
-
-// After:
-enableDamping: true, dampingFactor: 0.12,    // Slightly more responsive
-zoomSpeed: 0.8, panSpeed: 0.7,               // Slightly faster user input
+**Utility classes:**
+```css
+.spring-in      { animation: spring-in    var(--dur-standard) var(--spring) both; }
+.spring-up      { animation: spring-up    var(--dur-gentle)   var(--spring) both; }
+.toast-enter    { animation: toast-in     var(--dur-standard) var(--spring-snap) both; }
 ```
 
-### 3. MODIFY: `src/components/starmap/KnowledgeStarMap.tsx`
+### 2. MODIFY: `src/components/floating/FloatingPod.tsx`
+- Replace inline `@keyframes pod-in` and `@keyframes edit-rim-pulse` with global `spring-in` class
+- Change `animation: 'pod-in 0.22s ...'` → `animation: 'spring-in var(--dur-standard) var(--spring)'`
+- Replace `transition: 'max-height 0.24s cubic-bezier(0.4,0,0.2,1)'` → use `--spring` token
+- Replace `transition: 'all 0.14s'` on buttons → `transition: 'all var(--dur-snap) var(--spring-snap)'`
 
-- Remove `recenterActiveRef` pattern (Space/G/double-click) — replace with `camApi.recenter()`
-- Pass `camApi` down to `CosmosScene` as prop
-- `flashNoteId` change: when flashNoteId is set, also call `camApi.focusNode(flashNoteId)` so the camera flies to the flashed node
-- Export `camApi` ref so StarMapLayout can call `camApi.focusGalaxy(tag)` from tag filter
+### 3. MODIFY: `src/components/floating/MobileBottomSheet.tsx`
+- Replace `transition: 'transform 0.28s cubic-bezier(0.22,1,0.36,1)'` → `transition: 'transform var(--dur-gentle) var(--spring)'`
+- Replace `animation: 'slide-up 0.28s cubic-bezier(0.22,1,0.36,1)'` → `animation: 'spring-up var(--dur-gentle) var(--spring)'`
+- Replace backdrop `animation: 'fade-in 0.2s ease-out'` → `animation: 'fade-in var(--dur-standard) var(--spring-snap)'`
 
-### 4. MODIFY: `src/components/layout/StarMapLayout.tsx`
+### 4. MODIFY: `src/components/starmap/ConnectConfirmOverlay.tsx`
+- Remove inline `@keyframes cco-in` block
+- Replace `animation: 'cco-in 0.22s cubic-bezier(0.22,1,0.36,1)'` → `animation: 'spring-in var(--dur-standard) var(--spring)'`
+- Replace `transition: 'all 0.14s'` on type pills → `var(--dur-snap) var(--spring-snap)`
 
-- `flashNote` callback: already sets flashNoteId; camera follow is now automatic
-- Tag click handler: call `camApi.focusGalaxy(tag)` so clicking a tag in NodeLightBand zooms to that galaxy
-- G key shortcut: call `camApi.recenter()` instead of incrementing recenterTrigger
+### 5. MODIFY: `src/components/starmap/UndoToast.tsx`
+- Replace `animation: 'cosmos-window-in 0.2s ease'` → `animation: 'toast-in var(--dur-standard) var(--spring-snap)'`
 
-### 5. MODIFY: `src/stores/interactionStore.ts`
+### 6. MODIFY: `src/components/hints/ContextToast.tsx`
+- Replace `transition: 'opacity 0.35s ease, transform 0.35s ease'` → `transition: 'opacity var(--dur-standard) var(--spring), transform var(--dur-standard) var(--spring)'`
 
-- No structural changes needed. The `escapeAll()` action can optionally trigger recenter by dispatching a custom event that KnowledgeStarMap listens to.
+### 7. MODIFY: `src/components/starmap/KnowledgeStarMap.tsx`
+- Remove inline `@keyframes cosmos-pulse` and `@keyframes cosmos-window-in` (moved to index.css)
+
+### 8. MODIFY: `src/components/starmap/NodeWindow.tsx`
+- Remove inline `@keyframes cosmos-window-in` (already in index.css)
+- Use `spring-in` animation
 
 ---
 
-## Animation Timing Rules
+## What NOT to Animate
 
-| Category | smoothTime | Use Case |
-|----------|-----------|----------|
-| **Snap** | 0.30s | Recenter from close distance (<30 units away) |
-| **Standard** | 0.45s | Node focus, flash-to-node |
-| **Cruise** | 0.55s | Galaxy focus, cross-universe travel |
-| **Gentle** | 0.35s | Peek (retrieval trace, external navigation) |
+- **Three.js scene** — already uses `useCosmosCam` smoothDamp for camera; node position/color tweens in `useFrame` stay as-is (GPU-side, not DOM)
+- **Scroll content** — pod body scroll should remain native, no spring on scroll
+- **Typing/input** — zero animation on text input fields
+- **Radix overlays** (dialog, sheet from shadcn) — keep their built-in animations; only align duration tokens
 
-Distance-aware adjustment: if the travel distance > 80 units, multiply smoothTime by `1 + (distance - 80) / 200` (capped at 1.5x) so long jumps don't feel rushed.
+## Three.js vs DOM Division of Labor
 
----
+| Layer | Animation Engine | Easing Model |
+|-------|-----------------|-------------|
+| Camera transitions | `useCosmosCam` smoothDamp | Critically damped spring |
+| Node/edge mesh animation | `useFrame` lerp | GPU-side per-frame interpolation |
+| DOM panels (FloatingPod, BottomSheet) | CSS `@keyframes` + custom properties | `--spring` cubic-bezier |
+| DOM micro-feedback (toast, pill, button) | CSS `transition` | `--spring-snap` cubic-bezier |
+| DOM overlays (confirm, galaxy join) | CSS `@keyframes` | `--spring` cubic-bezier |
 
-## Integration with Existing Features
-
-| Feature | Current Behavior | New Behavior |
-|---------|-----------------|-------------|
-| Node click | lerp(0.055) fly-in, no easing | `focusNode()` smooth spring to 20u from node |
-| Flash note (F key, capture) | Visual pulse only | Visual pulse + `focusNode()` camera fly |
-| Space / G / double-click | lerp(0.065) recenter | `recenter()` smooth spring to INIT_CAM_POS |
-| Tag filter click | Highlights nodes, no camera | Highlights nodes + `focusGalaxy(tag)` zoom |
-| QR/NFC anchor scan | Opens note page (no star map) | Future: could `focusNode()` if on star map |
-| Retrieval source trace | No camera action | `peek()` at source node position |
-
----
-
-## Files to Create/Modify
-
-| File | Action |
-|------|--------|
-| `src/hooks/useCosmosCam.ts` | **CREATE** — smoothDamp camera controller |
-| `src/components/starmap/CosmosScene.tsx` | **MODIFY** — remove lerp tweens, accept camApi, delegate camera control |
-| `src/components/starmap/KnowledgeStarMap.tsx` | **MODIFY** — mount useCosmosCam, wire up focusNode/recenter/flashNote |
-| `src/components/layout/StarMapLayout.tsx` | **MODIFY** — wire focusGalaxy for tag clicks, simplify recenter |
+The spring cubic-bezier `(0.22, 1.00, 0.36, 1.00)` is designed to *feel* similar to the smoothDamp spring used in the camera, creating perceptual unity without coupling the implementations.
 
 ---
 
 ## Verification
 
-1. **Node click**: Click a node → camera smoothly flies to 20 units away, decelerating naturally
-2. **Recenter**: Press Space or G → camera returns to overview position with spring motion
-3. **Flash note**: Press F on hovered node → pulse animation + camera flies to node
-4. **Tag filter**: Click a tag in NodeLightBand → highlighted nodes + camera zooms to galaxy center
-5. **Frame-rate independence**: Test at 30fps and 60fps — transition duration should feel identical
-6. **No jitter**: Camera should not fight with OrbitControls during or after animation
-7. **Drag-to-connect still works**: OrbitControls disabled during drag should still function
-8. **Perf overlay**: Shift+P should still show correct FPS during camera transitions
+1. **FloatingPod**: Open a pod → smooth scale+fade entry with spring deceleration, not linear
+2. **MobileBottomSheet**: Open on phone → slides up with spring-gentle timing, drag-dismiss still works
+3. **ConnectConfirmOverlay**: Drag-connect two nodes → overlay springs in from bottom with consistent easing
+4. **UndoToast**: Delete a node → toast appears with snap-spring from below
+5. **ContextToast**: Trigger a hint → toast fades in with spring curve, fades out naturally
+6. **Button hover**: All pod window control buttons → snap-tier transition (0.18s)
+7. **No regression**: Camera spring (Shift+P perf overlay), Three.js node animations unchanged
+8. **Lint**: Zero new lint errors
