@@ -972,6 +972,8 @@ function ImperativeCore({
         if (worldPos) flyTargetRef.current = worldPos.clone();
         onSetSelectedRef.current(id);
         onToggleRef.current(id);
+        // Notify tour system that user opened a node detail
+        window.dispatchEvent(new CustomEvent('tour-node-opened'));
       }
     };
 
@@ -1709,6 +1711,12 @@ export function CosmosScene({
         zoomSpeed: 0.7, panSpeed: 0.6,
         minDistance: 8, maxDistance: 180,
         makeDefault: true,
+        onChange: () => {
+          // Dispatch once per user-initiated orbit for onboarding tour
+          if (!orbitAutoRotate.current) {
+            window.dispatchEvent(new CustomEvent('tour-camera-moved'));
+          }
+        },
       })}
 
       {createElement(EffectComposer, {},
