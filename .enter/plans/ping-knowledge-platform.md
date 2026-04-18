@@ -1,107 +1,88 @@
-# NFC Reality Anchor — Phase 2 Implementation Plan
+# OCR Cross-Platform Entry Redesign
 
 ## Context
 
-Reality Anchors already exist in the project (`reality_anchors` table + QR creation/scanning).
-This plan adds **NFC** as a second trigger medium — same anchor data, different physical interface.
+OCR is currently buried as a mode tab inside CaptureBox — only visible when the Capture pod is open. Users don't realize it exists on desktop. This plan restructures OCR entry points so desktop and mobile both have prominent, appropriate access, while sharing the same underlying `useOcr` → `ocr-structurize` → `candidate_nodes` → StagingWorkbench pipeline.
 
-**Web NFC limitations (critical):**
-- Only works on **Chrome Android 89+** with **HTTPS**
-- Does NOT work on: iOS (any browser), Desktop Chrome, Firefox, Safari
-- Requires **user gesture** to start scanning (security restriction)
-- Cannot run in background — must be on active tab
-- This is why NFC is Phase 2 (QR works everywhere; NFC is an enhancement for Android users)
+## Approach: Desktop Drop Zone + DesktopOcrButton + Mobile Camera Button
 
-## Architecture
+### What Changes
 
-NFC shares the **exact same `reality_anchors` table** and `AnchorLanding` page.
-- QR encodes URL: `{origin}/anchor/{id}`
-- NFC writes the same URL as an **NDEF text record** to the tag
-- When scanned, the browser opens `/anchor/{id}` — identical flow
+| # | File | Change |
+|---|------|--------|
+| 1 | `src/components/ocr/OcrCaptureModal.tsx` | Add drag-drop & clipboard-paste support to upload phase; accept PDF via text extraction |
+| 2 | `src/components/floating/CommandDock.tsx` | Add a **ScanLine** "OCR" icon button in the desktop dock (beside the staging button), opens OcrCaptureModal directly |
+| 3 | `src/components/floating/MobileTabBar.tsx` | Add a center **ScanLine** "扫描" button that opens OcrCaptureModal with camera-first UX |
+| 4 | `src/components/layout/StarMapLayout.tsx` | Add global paste listener (`Ctrl+V` / `Cmd+V` with image) → opens OCR modal with pasted image |
+| 5 | `src/components/pods/CaptureBox.tsx` | Keep OCR mode tab as-is (secondary entry for in-pod use) — no changes needed |
 
-No DB changes needed. Only frontend additions.
+### Detailed Design
 
-## Implementation Steps
+#### Step 1: Enhance `OcrCaptureModal` with Desktop Input Methods
 
-### Step 1: Create `useNfc.ts` hook
+**Drag-and-drop** on the upload phase drop zone:
+- `onDragOver` / `onDrop` handlers on the dashed-border zone
+- Visual feedback: border glows cyan on drag-over
+- Accept `dataTransfer.files[0]` of type `image/*`
 
-**File:** `src/hooks/useNfc.ts`
+**Clipboard paste** support:
+- Accept an optional `initialImage?: File` prop
+- If provided, auto-start OCR immediately (skip upload phase)
+- This lets StarMapLayout pass a pasted screenshot directly
 
-Thin wrapper around Web NFC API (`NDEFReader`), inspired by react-nfc-hook:
-- `supported: boolean` — feature-detect `'NDEFReader' in window`
-- `scanning: boolean` — currently reading
-- `error: string | null`
-- `scan(onRead: (url: string) => void): Promise<void>` — request permission + start reading
-- `write(url: string): Promise<void>` — write NDEF text record to tag
-- `stop()` — abort controller cleanup
-- Uses `AbortController` for clean teardown (borrow from react-nfc-hook pattern)
-- All methods wrapped in try/catch with permission/NotAllowed error messages
+**PDF text extraction** (lightweight MVP):
+- Extend file input `accept` to include `.pdf`
+- For PDF files, read as text via `file.text()` and skip tesseract — go straight to `ocr-structurize`
+- This is a simple first pass; full PDF OCR can come later
 
-### Step 2: Create `NfcWriterSheet.tsx` component
+#### Step 2: Desktop CommandDock OCR Button
 
-**File:** `src/components/anchors/NfcWriterSheet.tsx`
+Add a `ScanLine` icon button between the staging button and the logo area:
+- Gated on `isDesktop` — hidden on phone (phone uses MobileTabBar)
+- Opens OcrCaptureModal as a portal overlay
+- Badge shows nothing (no count like staging — OCR is action-based)
+- Tooltip: "OCR 识别"
 
-Portal overlay (like QrScannerSheet) for writing an anchor URL to an NFC tag:
-- Input: `anchorId` (existing anchor from `reality_anchors`)
-- Flow:
-  1. Show "Hold phone near NFC tag" prompt
-  2. Call `useNfc().write(url)` — writes `{origin}/anchor/{anchorId}` to tag
-  3. Success → green check + "Tag written" confirmation
-  4. Error → red alert + retry button
-- Phone-tap animation (CSS pulse ring)
+#### Step 3: Mobile MobileTabBar OCR Button
 
-### Step 3: Create `NfcScannerSheet.tsx` component
+Add a center "扫描" button with `ScanLine` icon:
+- Positioned as 6th tab or as a raised center FAB
+- Since current tabs are 5 pods in a row, add OCR as a **raised center circle** between insight and memory
+- Opens OcrCaptureModal — but camera input is auto-triggered first on mobile
+- Add optional `autoCamera?: boolean` prop to OcrCaptureModal
 
-**File:** `src/components/anchors/NfcScannerSheet.tsx`
+#### Step 4: Global Paste Listener in StarMapLayout
 
-Portal overlay for reading NFC tags:
-- Calls `useNfc().scan()` — waits for NDEF read
-- On success: parse URL → extract anchor ID → navigate to `/anchor/{id}`
-- Same URL parsing logic as `QrScannerSheet.handleSuccess`
-- Shows "Hold phone near tag" prompt with animated NFC icon
-- Auto-close on successful read
+- Listen for `paste` event on `window`
+- Check `clipboardData.items` for image types
+- If found, create `File` from blob, set state `pasteImage`, render OcrCaptureModal with `initialImage`
+- Only trigger when no other input is focused (check `document.activeElement` tag)
 
-### Step 4: Add NFC write option to `CreateAnchorModal.tsx`
+### Data Flow (unchanged)
 
-**File:** `src/components/anchors/CreateAnchorModal.tsx`
+```
+Image/PDF → useOcr (tesseract) → raw text
+  → ocr-structurize (Edge Function / LLM)
+    → candidate_nodes (DB staging table)
+      → StagingWorkbench (user review)
+        → notes + chunk-and-index (published to star map)
+```
 
-After QR code is generated (phase 2 of existing modal):
-- If `useNfc().supported`, show additional "Write to NFC" button alongside Download/Copy
-- Clicking opens `NfcWriterSheet` with the anchor's URL
-- Button hidden on unsupported devices (no feature-flag clutter)
+### Star Map Source Indicator
 
-### Step 5: Add NFC scan entry to `SettingsCapsule.tsx`
+Already handled: candidates have `source: 'ocr'`, and notes get `node_type` mapped from candidate type. The existing CosmosScene renders nodes by type. No additional work needed for MVP — a future iteration can add a small "OCR" badge on node hover labels.
 
-**File:** `src/components/floating/SettingsCapsule.tsx`
+## Files to Modify
 
-Next to the existing QR scanner button:
-- If `useNfc().supported`, show NFC scan icon button (Nfc from lucide-react)
-- Clicking opens `NfcScannerSheet`
-- Button hidden on unsupported devices
-
-### Step 6: Add NFC scan entry to `QrScannerSheet.tsx`
-
-**File:** `src/components/anchors/QrScannerSheet.tsx`
-
-At the bottom of the QR scanner overlay:
-- If `useNfc().supported`, show "Or tap NFC tag" button
-- Tapping switches to NFC scanning mode (reuses NfcScannerSheet inline)
-
-## Files Modified
-
-| File | Change |
-|---|---|
-| `src/hooks/useNfc.ts` | NEW — Web NFC hook |
-| `src/components/anchors/NfcWriterSheet.tsx` | NEW — NFC tag writer overlay |
-| `src/components/anchors/NfcScannerSheet.tsx` | NEW — NFC tag scanner overlay |
-| `src/components/anchors/CreateAnchorModal.tsx` | Add "Write to NFC" button |
-| `src/components/floating/SettingsCapsule.tsx` | Add NFC scan entry point |
-| `src/components/anchors/QrScannerSheet.tsx` | Add "Or tap NFC" fallback link |
+1. **`src/components/ocr/OcrCaptureModal.tsx`** — Add `initialImage` + `autoCamera` props, drag-drop handlers, paste-ready, PDF text fallback
+2. **`src/components/floating/CommandDock.tsx`** — Add OCR button in desktop dock
+3. **`src/components/floating/MobileTabBar.tsx`** — Add raised center OCR FAB
+4. **`src/components/layout/StarMapLayout.tsx`** — Add global paste-to-OCR listener
 
 ## Verification
 
-1. **Android Chrome**: NFC buttons visible, scan/write functional with NDEF tags
-2. **iOS / Desktop**: NFC buttons hidden, QR flow unaffected
-3. **NFC write**: Tag contains correct URL, native phone scan opens anchor page
-4. **NFC scan**: Reading tag navigates to `/anchor/{id}`, same as QR
-5. **Permission denied**: Error shown with retry option, no crash
+1. **Desktop**: Click OCR button in dock → modal opens → drag image onto drop zone → OCR runs → candidates appear
+2. **Desktop paste**: Copy screenshot → Cmd+V on star map → OCR modal auto-opens with image
+3. **Mobile**: Tap center scan button → camera auto-opens → take photo → OCR runs → candidates in staging
+4. **CaptureBox**: OCR tab still works as before (secondary entry)
+5. **PDF**: Upload .pdf → text extracted → structurized → candidates
