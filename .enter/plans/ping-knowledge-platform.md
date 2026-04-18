@@ -1,152 +1,154 @@
-# 轻量交互提示系统 — 实现计划
+# 私有云 RAG 交互感知方案
 
 ## Context
 
-现有代码中已有：
-- `InteractionHints.tsx` — 底部左侧快捷键 HUD（5 种状态，自动淡出）
-- `TourProvider/TourOverlay` — 2 步新手引导（create → explore）
-- `GuideCenterModal` — 设置页使用攻略
-- 右键 `NodeContextMenu` / `GalaxyContextMenu`
-- 全局快捷键 N/G/F + CosmosScene 内快捷键
+用户希望在 Retrieval 舱中通过交互让用户**感受到**私有云 RAG 的价值（而非文字解释概念）。核心目标让用户明确理解 4 件事：
 
-**问题**：现有提示太碎片化，没有统一的状态系统、没有操作反馈、缺少拖拽/连接/检索的上下文引导。
+1. 只在**我的知识**范围内检索
+2. 回答有**来源引用**
+3. 导入新资料后答案**随知识库变化**
+4. 无依据时**不乱答**
 
 ---
 
-## 总体策略
+## 修改文件清单
 
-采用 **3 层提示架构**（不做阻断式教学）：
-
-| 层级 | 名称 | 位置 | 触发方式 | 持续 |
-|---|---|---|---|---|
-| L1 | InteractionHints | 左下角 HUD | 自动，按状态切换 | 常驻，idle 8s 淡出 |
-| L2 | ContextToast | 底部中央，tour bar 位置 | 动作完成后弹出 | 2-4s 自动消失 |
-| L3 | SpotPulse | 目标元素旁 | 首次进入某状态时 | 完成一次后永不再显示 |
-
-核心原则：
-- `pointerEvents: none` — 永不遮挡操作
-- 一次性提示用 `localStorage` 记录已展示过的 key
-- 所有文案 ≤ 12 字，有动作感
-
----
-
-## MVP — 8 个提示点
-
-### 1. 空状态引导（L1 升级）
-- **触发**：`noteCount === 0`
-- **提示**：InteractionHints 显示 `N 输入第一条知识` + `点击光圈 开始`
-- **已有**，仅微调文案
-
-### 2. 首次创建完成反馈（L2 新增）
-- **触发**：`noteCount` 从 0 变为 1+（`useTourTrigger` 已检测）
-- **内容**：ContextToast 显示 `"知识星已生成 — 点击星球查看详情"`
-- **消失**：3s 后淡出
-
-### 3. 节点悬停提示（L1 升级）
-- **触发**：`hoveredNode` 存在
-- **提示**：`点击 查看 · 右键 更多 · 拖拽 移动`
-- **已有**，增加 `拖至 Dock 委托`
-
-### 4. 首次打开 NodeWindow（L2 新增）
-- **触发**：NodeWindow 渲染 + `localStorage` 无 `hint:node-window-seen`
-- **内容**：ContextToast 显示 `"可点击「委托」将知识发送到各功能舱"`
-- **标记**：显示后写入 `localStorage`
-
-### 5. 连接模式引导（L1 已有 + L2 新增进入反馈）
-- **触发**：`connectMode === true`
-- **L1**：`点击 选择目标星 · Esc 取消`（已有）
-- **L2 新增**：进入连接模式时显示 ContextToast `"连接模式 — 点击另一颗星建立关联"`
-
-### 6. 拖拽到 Pod 反馈（L2 新增）
-- **触发**：`handleNodeDropToPod` 执行成功
-- **内容**：ContextToast 显示 `"已发送到 {PodName}"`（如 `"已发送到 Insight Pod"`）
-- **消失**：2s
-
-### 7. Retrieval 检索结果提示（L2 新增）
-- **触发**：RetrievalBox 返回搜索结果后
-- **内容**：在 RetrievalBox 内部（不是 ContextToast）显示搜索范围标注，如 `"共检索 42 条知识 · 语义匹配 Top 5"`
-- **位置**：搜索结果列表上方的小标签
-
-### 8. 功能舱首次打开引导（L3 SpotPulse）
-- **触发**：首次打开任一 Pod（`localStorage` 无 `hint:pod-{id}-seen`）
-- **内容**：Pod 标题栏下方显示一行提示文字（各 Pod 不同）：
-  - Capture: `"输入文字或 URL，AI 自动提炼生成知识星"`
-  - Retrieval: `"输入关键词，语义检索你的全部知识"`
-  - Insight: `"选择节点，AI 深度蒸馏提炼洞察"`
-  - Memory: `"查看与当前星球关联的记忆上下文"`
-  - Action: `"将知识转化为待办、大纲或执行方案"`
-- **消失**：关闭 Pod 或 5s 后淡出，写入 `localStorage`
-
----
-
-## 前端组件与状态设计
-
-### 新增文件
-
-#### `src/hooks/useHintState.ts` — 统一提示状态管理
-```
-- dismissedHints: Set<string>  (从 localStorage 读取)
-- dismiss(key): 写入 Set + localStorage
-- shouldShow(key): boolean
-- 导出 hook: useHintState()
-```
-
-#### `src/components/hints/ContextToast.tsx` — 动作反馈浮层
-```
-- 固定 bottom-center，z-index 55（在 tour 下方）
-- props: message, icon?, duration=3000, visible
-- 进入动画 slide-up + fade-in，退出 fade-out
-- pointerEvents: none
-```
-
-#### `src/components/hints/PodWelcomeHint.tsx` — Pod 首次使用提示
-```
-- 渲染在 FloatingPod 内部标题栏下方
-- props: podId, onDismiss
-- 单行文字 + 淡出动画
-```
-
-### 修改文件
-
-| 文件 | 改动 |
+| 文件 | 变更 |
 |---|---|
-| `InteractionHints.tsx` | 增加 `nodeWindowOpen` prop，当 NodeWindow 打开时显示 `"拖拽窗口 · 点委托到功能舱"` |
-| `StarMapLayout.tsx` | 添加 ContextToast 渲染 + 管理 toast 队列 state；拖拽到 Pod 后触发 toast |
-| `FloatingPod.tsx` | 内部添加 PodWelcomeHint（首次打开时） |
-| `NodeWindow.tsx` | 首次打开时触发 ContextToast |
-| `KnowledgeStarMap.tsx` | 进入连接模式时触发 ContextToast |
-
-### 状态流转
-```
-InteractionHints 状态（已有 + 扩展）:
-  empty    → noteCount === 0
-  browse   → noteCount > 0 && !hoveredNode && !connectMode && !nodeWindowOpen
-  hover    → hoveredNode
-  connect  → connectMode
-  detail   → nodeWindowOpen (新增)
-
-ContextToast 队列:
-  StarMapLayout 维护 toastQueue: Array<{id, message, icon?, duration}>
-  每次只显示一条，FIFO，显示完自动 pop
-```
+| `src/components/pods/RetrievalBox.tsx` | 主要改造 — 三层结构 + scope bar + fly-to + 无依据反馈 |
+| `src/hooks/useRAG.ts` | 增加 `noteCount` / `universeScope` 元数据返回 |
+| `supabase/functions/rag-search/index.ts` | 返回 `scope_meta` (note_count, chunk_count, universe_name) |
+| `src/components/hints/PodWelcomeHint.tsx` | 更新 retrieval 文案 |
 
 ---
 
-## 设置页"使用攻略"承接
+## 1. 检索范围选择 + 数据来源条 (Scope Bar)
 
-修改 `GuideCenterModal.tsx`：
-- 添加 "重置所有提示" 按钮（清除 localStorage 中所有 `hint:*` key）
-- 现有的 "关闭所有引导提示" 改为写入 `localStorage` `hint:all-disabled`
-- `useHintState` 检查此 key，如果为 true 则所有提示静默
+在搜索框上方添加一行 **Scope Bar**，让用户清楚看到"我的知识库"范围：
+
+```
+┌─────────────────────────────────────────────┐
+│ 🔍 检索范围: [当前宇宙 ▼]  ·  42 篇笔记 · 186 个知识片段 │
+└─────────────────────────────────────────────┘
+```
+
+- **实现**: `rag-search` 返回 `scope_meta: { note_count, chunk_count, universe_name }`
+- **触发**: 每次 RetrievalBox 挂载时 / 宇宙切换时查询一次
+- **文案**: `检索范围: {宇宙名} · {N} 篇笔记 · {M} 个知识片段`
+- 下拉可切"当前宇宙"/"全部宇宙"（MVP 仅展示当前宇宙）
 
 ---
 
-## 验证方式
+## 2. 答案·引用·来源 三层展示结构
 
-1. 新注册用户 → 空状态提示可见 → 创建第一条笔记 → 看到 "知识星已生成" 反馈
-2. 点击星球 → 看到 NodeWindow 首次提示 → 关闭后不再显示
-3. 首次打开各 Pod → 看到一行引导文字 → 第二次不显示
-4. 拖拽节点到 Dock Pod → 看到 "已发送到 X Pod" 反馈
-5. 进入连接模式 → 看到连接模式 toast
-6. 设置 → 使用攻略 → 点 "重置提示" → 再次看到所有首次提示
-7. 点 "关闭引导" → 所有提示不再出现
+将现有结果区改造为清晰的三层视觉层次：
+
+```
+┌─ 回答层 ────────────────────────────────────┐
+│ 答案文本，关键引用标记 [1] [2] 内嵌在文中          │
+│ · 仅基于你的 42 篇笔记生成                       │
+└─────────────────────────────────────────────┘
+┌─ 引用层 ────────────────────────────────────┐
+│ [1] 笔记标题 — 摘录片段...        [飞到星图 ☆]  │
+│ [2] 笔记标题 — 摘录片段...        [飞到星图 ☆]  │
+└─────────────────────────────────────────────┘
+┌─ 来源层 (可展开) ──────────────────────────────┐
+│ 本次检索扫描了 186 个知识片段中的 15 个候选项        │
+│ 匹配来源分布: 笔记(3) · Wiki(1)                  │
+└─────────────────────────────────────────────┘
+```
+
+**关键改动:**
+- 回答层底部加一行 scope 说明: `仅基于你的 {N} 篇笔记生成`
+- 引用层默认展开（不是折叠），每个引用卡片有"飞到星图"按钮
+- 来源层折叠式，显示检索统计
+
+---
+
+## 3. 点击引用 → 飞回星图节点
+
+现有 `onHighlight` 已支持传 `note_id` 数组。改造:
+
+- 引用卡片的 Star 按钮 → 调用 `onHighlight([note_id])` + 动效反馈
+- 按钮改为更醒目的样式: "定位 →" 文字 + Star 图标
+- 点击后 toast: `已在星图中高亮 "{note_title}"`
+
+---
+
+## 4. 无依据时的反馈方式
+
+当 `rag-search` 返回零匹配时，改造空结果展示:
+
+```
+┌─────────────────────────────────────────────┐
+│  ⊘  知识库中未找到相关依据                         │
+│                                             │
+│  你的宇宙中有 42 篇笔记，但未涵盖此主题。            │
+│  导入更多相关资料后，答案会自动更新。                  │
+│                                             │
+│  [打开 Capture 舱导入资料]                       │
+└─────────────────────────────────────────────┘
+```
+
+- 明确告知"不是搜不到，而是知识库暂不包含"
+- 提供行动入口: 打开 Capture 舱
+
+---
+
+## 5. "导入前后答案变化"演示 — 知识时间线标注
+
+不做独立的"对比演示"功能，而是在每个回答底部标注知识时间线:
+
+```
+基于 2026-04-18 15:30 的知识库状态 · 42 篇笔记
+```
+
+当用户导入新资料后再问同一个问题，时间戳和笔记数自然变化，用户自然感知"答案在演进"。
+
+---
+
+## 6. 融入导览
+
+- 更新 `PodWelcomeHint` 的 retrieval 文案: `你的私人知识库 · 只从你的笔记中检索，每个回答都有来源`
+- 在 GuideCenterModal 的"五大功能舱"卡片中补充: `Retrieval — 私有语义检索，回答仅基于你导入的资料`
+
+---
+
+## 7. 界面特色文案
+
+- Scope Bar: `检索范围: {宇宙名} · {N} 篇笔记`
+- 回答底部: `仅基于你的知识库生成 · 非通用 AI 回答`
+- 无结果: `知识库中未找到相关依据 · 导入资料后答案会自动更新`
+- 引用层标题: `来源引用 — 每个观点都有出处`
+
+---
+
+## 实现步骤
+
+### Step 1: 更新 `rag-search` Edge Function
+- 在返回数据中增加 `scope_meta` 字段
+- 查询 `notes` 和 `knowledge_chunks` 的 count
+
+### Step 2: 更新 `useRAG.ts`
+- 将 `scope_meta` 传递到返回的 `RAGConversation` 对象
+
+### Step 3: 重构 `RetrievalBox.tsx`
+- 添加 Scope Bar 组件
+- 改造三层结构 (回答层 / 引用层 / 来源层)
+- 引用默认展开 + 飞到星图增强
+- 无依据反馈改造
+- 时间戳标注
+
+### Step 4: 更新提示文案
+- PodWelcomeHint retrieval 文案
+- GuideCenterModal 文案
+
+---
+
+## 验证
+
+1. 新用户打开 Retrieval 舱 → 看到 Scope Bar 显示知识库范围
+2. 提问后 → 看到三层结构，引用默认展开
+3. 点击引用"飞到星图" → 星图高亮对应节点
+4. 问一个知识库中没有的问题 → 看到"未找到依据"+ CTA
+5. 回答底部有时间戳和笔记数
