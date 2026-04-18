@@ -155,7 +155,7 @@ export function GuideCenterModal({ onClose }: Props) {
 
   const getStatus = (key?: InteractionHintKey) => {
     if (!key) return null;
-    const entry = hints.hints[key];
+    const entry = hints.getEntry(key);
     return entry?.status === 'completed';
   };
 
