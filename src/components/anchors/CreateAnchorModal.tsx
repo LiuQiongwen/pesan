@@ -7,6 +7,8 @@ import { X, QrCode, Download, Copy, Check } from 'lucide-react';
 import QRCode from 'qrcode';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useNfc } from '@/hooks/useNfc';
+import { NfcWriterSheet } from '@/components/anchors/NfcWriterSheet';
 
 const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
@@ -35,6 +37,8 @@ export function CreateAnchorModal({
   const [anchorUrl, setAnchorUrl] = useState('');
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [nfcWriteOpen, setNfcWriteOpen] = useState(false);
+  const nfc = useNfc();
 
   // Reset on open
   useEffect(() => {
@@ -243,6 +247,29 @@ export function CreateAnchorModal({
                 {copied ? 'Copied' : 'Copy Link'}
               </button>
             </div>
+
+            {/* NFC write button — only on supported devices */}
+            {nfc.supported && (
+              <button onClick={() => setNfcWriteOpen(true)} style={{
+                width: '100%', marginTop: 10, padding: '10px 0',
+                fontFamily: INTER, fontSize: 13, fontWeight: 600,
+                color: 'rgba(180,150,255,0.85)',
+                background: 'rgba(180,150,255,0.08)',
+                border: '1px solid rgba(180,150,255,0.25)',
+                borderRadius: 10, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              }}>
+                <QrCode size={14} /> Write to NFC Tag
+              </button>
+            )}
+
+            {/* NFC Writer Sheet */}
+            <NfcWriterSheet
+              open={nfcWriteOpen}
+              onClose={() => setNfcWriteOpen(false)}
+              anchorId={anchorUrl.split('/').pop() || ''}
+              label={label}
+            />
           </>
         )}
       </div>

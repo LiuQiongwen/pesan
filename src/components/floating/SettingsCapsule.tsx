@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Settings, User, Languages, LogOut, ChevronDown, Sparkles, Zap, LayoutDashboard, FileArchive, Download, BookOpen, Compass, QrCode } from 'lucide-react';
+import { Settings, User, Languages, LogOut, ChevronDown, Sparkles, Zap, LayoutDashboard, FileArchive, Download, BookOpen, Compass, QrCode, Nfc } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useLanguage, useT } from '@/contexts/LanguageContext';
 import { useNavigate } from 'react-router-dom';
@@ -9,6 +9,7 @@ import { ObsidianImportModal } from '@/components/obsidian/ObsidianImportModal';
 import { CosmosExportModal } from '@/components/obsidian/CosmosExportModal';
 import { WikiCompileModal } from '@/components/wiki/WikiCompileModal';
 import { QrScannerSheet } from '@/components/anchors/QrScannerSheet';
+import { NfcScannerSheet } from '@/components/anchors/NfcScannerSheet';
 import { GuideCenterModal } from '@/components/tour/GuideCenterModal';
 
 const MONO = "'IBM Plex Mono','Roboto Mono',monospace";
@@ -23,6 +24,8 @@ export function SettingsCapsule() {
   const [wikiOpen, setWikiOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [nfcScanOpen, setNfcScanOpen] = useState(false);
+  const nfcSupported = typeof window !== 'undefined' && 'NDEFReader' in window;
   const [isAdmin,      setIsAdmin]      = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const { user, signOut } = useAuth();
@@ -347,6 +350,31 @@ export function SettingsCapsule() {
                 </div>
               </button>
 
+              {/* NFC 锚点扫描 — only on supported devices */}
+              {nfcSupported && (
+                <button
+                  onClick={() => { setNfcScanOpen(true); setOpen(false); }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    width: '100%', padding: '8px 12px',
+                    fontFamily: INTER, background: 'transparent', border: 'none',
+                    cursor: 'pointer', borderRadius: 4, transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(180,150,255,0.08)'; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+                >
+                  <Nfc size={12} color="rgba(180,150,255,0.75)" />
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontFamily: INTER, fontSize: 11, color: 'rgba(180,150,255,0.85)', fontWeight: 600 }}>
+                      NFC 锚点轻触
+                    </span>
+                    <div style={{ fontFamily: MONO, fontSize: 8, color: 'rgba(140,150,180,0.50)', letterSpacing: '0.04em', marginTop: 1 }}>
+                      Tap NFC Reality Anchor
+                    </div>
+                  </div>
+                </button>
+              )}
+
               <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '3px 0' }} />
               {isAdmin && (
                 <>
@@ -460,7 +488,8 @@ export function SettingsCapsule() {
       <CosmosExportModal open={exportOpen} onClose={() => setExportOpen(false)} />
       <WikiCompileModal open={wikiOpen} onClose={() => setWikiOpen(false)} />
       {guideOpen && <GuideCenterModal onClose={() => setGuideOpen(false)} />}
-      {scannerOpen && <QrScannerSheet onClose={() => setScannerOpen(false)} />}
+      {scannerOpen && <QrScannerSheet open={scannerOpen} onClose={() => setScannerOpen(false)} />}
+      {nfcScanOpen && <NfcScannerSheet open={nfcScanOpen} onClose={() => setNfcScanOpen(false)} />}
     </>
   );
 }

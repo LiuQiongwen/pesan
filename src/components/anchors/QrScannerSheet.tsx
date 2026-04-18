@@ -6,7 +6,8 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Html5Qrcode } from 'html5-qrcode';
-import { X, Camera, AlertTriangle } from 'lucide-react';
+import { X, Camera, AlertTriangle, Nfc } from 'lucide-react';
+import { useNfc } from '@/hooks/useNfc';
 
 const INTER = "'Inter',system-ui,sans-serif";
 const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
@@ -18,6 +19,8 @@ interface Props {
 
 export function QrScannerSheet({ open, onClose }: Props) {
   const navigate = useNavigate();
+  const nfc = useNfc();
+  const [nfcMode, setNfcMode] = useState(false);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const containerRef = useRef<string>('qr-reader-' + Math.random().toString(36).slice(2, 8));
   const [status, setStatus] = useState<'init' | 'scanning' | 'error'>('init');
@@ -105,8 +108,27 @@ export function QrScannerSheet({ open, onClose }: Props) {
 
   const handleClose = () => {
     stopScanner();
+    nfc.stop();
+    setNfcMode(false);
     onClose();
   };
+
+  const handleNfcRead = useCallback((text: string) => {
+    try {
+      const url = new URL(text);
+      const match = url.pathname.match(/^\/anchor\/([a-f0-9-]+)$/i);
+      if (match) { handleClose(); navigate(`/anchor/${match[1]}`); return; }
+    } catch { /* not a URL */ }
+    const m = text.match(/\/anchor\/([a-f0-9-]+)/i);
+    if (m) { handleClose(); navigate(`/anchor/${m[1]}`); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigate]);
+
+  const startNfcMode = useCallback(() => {
+    stopScanner();
+    setNfcMode(true);
+    nfc.scan(handleNfcRead);
+  }, [stopScanner, nfc, handleNfcRead]);
 
   if (!open) return null;
 
@@ -181,10 +203,41 @@ export function QrScannerSheet({ open, onClose }: Props) {
         <p style={{
           fontFamily: MONO, fontSize: 11,
           color: 'rgba(160,180,220,0.50)', letterSpacing: '0.04em',
+          margin: 0,
         }}>
-          Point camera at a Reality Anchor QR code
+          {nfcMode ? 'Hold phone near NFC tag' : 'Point camera at a Reality Anchor QR code'}
         </p>
+        {nfc.supported && !nfcMode && (
+          <button onClick={startNfcMode} style={{
+            marginTop: 10, padding: '7px 18px',
+            fontFamily: INTER, fontSize: 12, fontWeight: 600,
+            color: 'rgba(180,150,255,0.80)',
+            background: 'rgba(180,150,255,0.08)',
+            border: '1px solid rgba(180,150,255,0.22)',
+            borderRadius: 8, cursor: 'pointer',
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+          }}>
+            <Nfc size={13} /> Or tap NFC tag
+          </button>
+        )}
+        {nfcMode && (
+          <div style={{
+            marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          }}>
+            <Nfc size={20} color="#b496ff" style={{ animation: 'nfc-pulse 1.5s ease-in-out infinite' }} />
+            <span style={{ fontFamily: INTER, fontSize: 13, color: 'rgba(180,150,255,0.70)' }}>
+              {nfc.scanning ? 'Listening...' : nfc.error || 'Starting NFC...'}
+            </span>
+          </div>
+        )}
       </div>
+
+      <style>{`
+        @keyframes nfc-pulse {
+          0%, 100% { opacity: 0.5; transform: scale(1); }
+          50% { opacity: 1; transform: scale(1.1); }
+        }
+      `}</style>
     </div>,
     document.body,
   );
