@@ -3,8 +3,9 @@
  * Ultra-subtle, auto-fades after 8s idle, reappears on mouse move.
  * Shows touch-specific hints on mobile.
  */
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { useDevice } from '@/hooks/useDevice';
+import { useRenderTracer } from '@/hooks/useRenderTracer';
 
 const MONO = "'IBM Plex Mono','Roboto Mono',monospace";
 
@@ -20,7 +21,8 @@ interface Hint {
   action: string;
 }
 
-export function InteractionHints({ noteCount, hoveredNode, connectMode, nodeWindowOpen }: Props) {
+export const InteractionHints = memo(function InteractionHints({ noteCount, hoveredNode, connectMode, nodeWindowOpen }: Props) {
+  useRenderTracer('InteractionHints', { noteCount, hoveredNode, connectMode, nodeWindowOpen });
   const [visible, setVisible] = useState(true);
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
   const { isPhone } = useDevice();
@@ -138,4 +140,4 @@ export function InteractionHints({ noteCount, hoveredNode, connectMode, nodeWind
       ))}
     </div>
   );
-}
+});

@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect, useState, type ReactNode, type LucideIcon } from 'react';
+import { useRef, useCallback, useEffect, useState, memo, type ReactNode, type LucideIcon } from 'react';
 import { X, Minus, Pin, Maximize2, Minimize2, ALargeSmall, Expand, Shrink } from 'lucide-react';
 import { useToolbox, type PodId } from '@/contexts/ToolboxContext';
 import { ResizeHandles } from '@/components/window-manager/ResizeHandles';
@@ -7,6 +7,7 @@ import { emitSnapGuides } from '@/components/window-manager/snap-utils';
 import { useDevice } from '@/hooks/useDevice';
 import { MobileBottomSheet } from '@/components/floating/MobileBottomSheet';
 import { PodWelcomeHint } from '@/components/hints/PodWelcomeHint';
+import { useRenderTracer } from '@/hooks/useRenderTracer';
 
 const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
@@ -44,9 +45,10 @@ function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
 }
 
-export function FloatingPod({
+export const FloatingPod = memo(function FloatingPod({
   id, title, subtitle, icon: Icon, accentColor, children,
 }: FloatingPodProps) {
+  useRenderTracer('FloatingPod', { id, title });
   const { isPhone } = useDevice();
 
   // Phone: use bottom sheet
@@ -64,7 +66,7 @@ export function FloatingPod({
       {children}
     </DesktopFloatingPod>
   );
-}
+});
 
 function DesktopFloatingPod({
   id, title, subtitle, icon: Icon, accentColor, children,

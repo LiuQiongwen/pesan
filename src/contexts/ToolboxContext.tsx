@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from 'react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export type PodId = 'capture' | 'retrieval' | 'insight' | 'memory' | 'action' | 'settings';
@@ -361,7 +361,7 @@ export function ToolboxProvider({ children }: { children: React.ReactNode }) {
     setPods(defaultPositions());
   }, []);
 
-  const value: ToolboxContextValue = {
+  const value: ToolboxContextValue = useMemo(() => ({
     pods, primaryPod: lastOpened, secondaryPod: null, topZ,
     reportedSizesRef,
     layoutConfig, presets,
@@ -375,7 +375,14 @@ export function ToolboxProvider({ children }: { children: React.ReactNode }) {
     closeToolbox:    closePod,
     toggleToolbox:   togglePod,
     minimizeToolbox: minimizePod,
-  };
+  }), [
+    pods, lastOpened, topZ, layoutConfig, presets,
+    openPod, closePod, togglePod, minimizePod, bringToFront,
+    setPos, setSize, setPinned, setFontScale, setSizeMode, reportSize, podViewMode,
+    setLocked, setGridSize, setSnapToEdge, setGlobalFontScale,
+    savePreset, loadPreset, deletePreset, resetToDefault,
+    reportedSizesRef,
+  ]);
 
   return <ToolboxContext.Provider value={value}>{children}</ToolboxContext.Provider>;
 }

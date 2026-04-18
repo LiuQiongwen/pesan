@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, memo } from 'react';
 import { Settings, User, Languages, LogOut, ChevronDown, Sparkles, Zap, LayoutDashboard, FileArchive, Download, BookOpen, Compass, QrCode, Nfc } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useLanguage, useT } from '@/contexts/LanguageContext';
@@ -12,12 +12,14 @@ import { QrScannerSheet } from '@/components/anchors/QrScannerSheet';
 import { NfcScannerSheet } from '@/components/anchors/NfcScannerSheet';
 import { NfcDesktopInfoSheet } from '@/components/anchors/NfcDesktopInfoSheet';
 import { GuideCenterModal } from '@/components/tour/GuideCenterModal';
+import { useRenderTracer } from '@/hooks/useRenderTracer';
 
 const MONO = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
 const GREY = '#888fa8';
 
-export function SettingsCapsule() {
+export const SettingsCapsule = memo(function SettingsCapsule() {
+  useRenderTracer('SettingsCapsule', {});
   const [open,         setOpen]         = useState(false);
   const [billingOpen,  setBillingOpen]  = useState(false);
   const [obsidianOpen, setObsidianOpen] = useState(false);
@@ -497,7 +499,7 @@ export function SettingsCapsule() {
       <NfcDesktopInfoSheet open={nfcInfoOpen} onClose={() => setNfcInfoOpen(false)} />
     </>
   );
-}
+});
 
 const rowStyle: React.CSSProperties = {
   display: 'flex',

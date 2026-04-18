@@ -1,9 +1,11 @@
+import { memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Clock } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN, enUS } from 'date-fns/locale';
 import type { HoveredNodeInfo } from '@/components/starmap/KnowledgeStarMap';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useRenderTracer } from '@/hooks/useRenderTracer';
 
 const PALETTE_COLORS = ['#00ff66','#66e3ff','#b496ff','#ffa040','#ff64b4','#64a0ff'];
 const MONO = "'IBM Plex Mono','Roboto Mono',monospace";
@@ -17,7 +19,8 @@ interface NodeLightBandProps {
   connectFromTitle?: string;
 }
 
-export function NodeLightBand({ node, onTagClick, tagFilter, connectMode, connectFromTitle }: NodeLightBandProps) {
+export const NodeLightBand = memo(function NodeLightBand({ node, onTagClick, tagFilter, connectMode, connectFromTitle }: NodeLightBandProps) {
+  useRenderTracer('NodeLightBand', { noteId: node?.noteId, tagFilter, connectMode });
   const navigate = useNavigate();
   const { lang } = useLanguage();
   const isPhone = typeof window !== 'undefined' && window.innerWidth < 768;
@@ -188,4 +191,11 @@ export function NodeLightBand({ node, onTagClick, tagFilter, connectMode, connec
       </>}
     </div>
   );
-}
+}, (prev, next) =>
+  prev.node?.noteId === next.node?.noteId &&
+  prev.tagFilter === next.tagFilter &&
+  prev.connectMode === next.connectMode &&
+  prev.connectFromTitle === next.connectFromTitle &&
+  prev.node?.title === next.node?.title &&
+  prev.node?.summary === next.node?.summary
+);

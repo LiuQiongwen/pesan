@@ -4,7 +4,7 @@
  * Supports "drag-to-pod" receiving mode: listens to cosmos:pod-drag CustomEvent
  * dispatched by CosmosScene when a node is being dragged.
  */
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, memo } from 'react';
 import { Inbox, Telescope, Sparkles, Library, Rocket, Check, ClipboardList, ScanLine } from 'lucide-react';
 import { useToolbox, type PodId } from '@/contexts/ToolboxContext';
 import { useAgentWorkflow } from '@/contexts/AgentWorkflowContext';
@@ -17,6 +17,7 @@ import { MobileTabBar } from '@/components/floating/MobileTabBar';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveUniverse } from '@/contexts/UniverseContext';
+import { useRenderTracer } from '@/hooks/useRenderTracer';
 
 const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
@@ -41,16 +42,17 @@ function hexRgb(hex: string) {
   return { r: parseInt(hex.slice(1,3),16), g: parseInt(hex.slice(3,5),16), b: parseInt(hex.slice(5,7),16) };
 }
 
-export function CommandDock() {
+export const CommandDock = memo(function CommandDock() {
   const { isPhone } = useDevice();
 
   // Phone: use bottom tab bar
   if (isPhone) return <MobileTabBar />;
 
   return <DesktopCommandDock />;
-}
+});
 
-function DesktopCommandDock() {
+const DesktopCommandDock = memo(function DesktopCommandDock() {
+  useRenderTracer('CommandDock', {});
   const { pods, togglePod } = useToolbox();
   const { activeStep, completedSteps } = useAgentWorkflow();
   const { user } = useAuth();
@@ -584,4 +586,4 @@ function DesktopCommandDock() {
       `}</style>
     </div>
   );
-}
+});

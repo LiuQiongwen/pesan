@@ -42,6 +42,7 @@ import InsightBox   from '@/components/pods/InsightBox';
 import MemoryBox    from '@/components/pods/MemoryBox';
 import ActionBox    from '@/components/pods/ActionBox';
 import { StagingWorkbench } from '@/components/staging/StagingWorkbench';
+import { RenderTracerOverlay } from '@/components/starmap/RenderTracerOverlay';
 import type { CosmosNote } from '@/components/starmap/cosmos-layout';
 
 const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
@@ -498,6 +499,9 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
           autoCamera={ocrAutoCamera}
         />
       )}
+
+      {/* DEV: Render Tracer — Shift+R */}
+      {import.meta.env.DEV && <RenderTracerOverlay />}
 
     </div>
   );
