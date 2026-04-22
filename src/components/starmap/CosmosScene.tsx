@@ -1657,8 +1657,8 @@ export function CosmosScene({
         );
       })()}
 
-      {/* Edge hover tooltip — hidden on phone */}
-      {!isPhone && hoveredEdgeMeta && !hoveredId && (() => {
+      {/* Edge hover tooltip */}
+      {hoveredEdgeMeta && !hoveredId && (() => {
         const cfg = getEdgeTypeConfig(hoveredEdgeMeta.edgeType);
         const srcNote = notesMap.get(hoveredEdgeMeta.fromNoteId);
         const tgtNote = notesMap.get(hoveredEdgeMeta.toNoteId);
