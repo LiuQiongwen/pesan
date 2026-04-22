@@ -1602,8 +1602,8 @@ export function CosmosScene({
       {/* Empty state CTA */}
       {notes.length === 0 && <EmptyCtaLabel onClick={onEmptyStateClick} />}
 
-      {/* Hover label — lightweight, never blocks clicks (pointerEvents: none) */}
-      {labelsEnabled && mode !== 'connect' && hoveredId && !openNodes.has(hoveredId) && showButtons && (() => {
+      {/* Hover label — lightweight, never blocks clicks (pointerEvents: none), hidden on phone */}
+      {!isPhone && labelsEnabled && mode !== 'connect' && hoveredId && !openNodes.has(hoveredId) && showButtons && (() => {
         const pos  = currentPosRef.current.get(hoveredId);
         const note = notesMap.get(hoveredId);
         const np   = layout.positions[hoveredId];
@@ -1657,8 +1657,8 @@ export function CosmosScene({
         );
       })()}
 
-      {/* Edge hover tooltip */}
-      {hoveredEdgeMeta && !hoveredId && (() => {
+      {/* Edge hover tooltip — hidden on phone */}
+      {!isPhone && hoveredEdgeMeta && !hoveredId && (() => {
         const cfg = getEdgeTypeConfig(hoveredEdgeMeta.edgeType);
         const srcNote = notesMap.get(hoveredEdgeMeta.fromNoteId);
         const tgtNote = notesMap.get(hoveredEdgeMeta.toNoteId);
