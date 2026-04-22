@@ -1,48 +1,26 @@
-# Fix OOM: Router recreation + minor device check bug
+# Fix: NODE_TYPE_CFG missing fallback → crash on unknown node_type
 
 ## Context
 
-**Root cause of OOM crash**: In `App.tsx` line 14, `createBrowserRouter(routers)` is called **inside** the component function body. Every re-render of `App` creates a brand-new router instance, causing React to unmount/remount the entire route tree. With the Zustand-backed `ToolboxProvider` wrapping `RouterProvider`, store state changes trigger App re-renders → new router → full unmount/remount → more state changes → infinite loop → OOM.
-
-**Secondary bug**: In `SettingsCapsule.tsx` line 104, `device === 'phone'` compares a `DeviceInfo` object (not a string) to `'phone'` — always false, so mobile settings sheet never opens.
+`TypeError: can't access property "color", L is undefined` — When a note has a `node_type` not in `NODE_TYPE_CFG` (e.g. wiki types like `wiki_overview`), the lookup returns `undefined`, then accessing `.color` crashes.
 
 ## Fix
 
-### 1. `src/App.tsx` — Move router creation outside component
+Add fallback `?? NODE_TYPE_CFG['capture']` in both files:
 
-Move `const router = createBrowserRouter(routers)` to **module scope** (above the component). This ensures the router is created once and never recreated on re-render.
-
-```tsx
-const queryClient = new QueryClient();
-const router = createBrowserRouter(routers);   // ← module scope
-
-const App = () => {
-  return (
-    <LanguageProvider>
-      ...
-        <RouterProvider router={router} />
-      ...
-    </LanguageProvider>
-  );
-};
+### `src/components/starmap/NodeWindow.tsx` line 55
+```ts
+const typeCfg = NODE_TYPE_CFG[nodeType] ?? NODE_TYPE_CFG['capture'];
 ```
 
-### 2. `src/components/floating/SettingsCapsule.tsx` — Fix device check
+### `src/components/starmap/MobileNodeCard.tsx` line 80
+```ts
+const typeCfg = NODE_TYPE_CFG[(note.node_type as NodeType) ?? 'capture'] ?? NODE_TYPE_CFG['capture'];
+```
 
-Line 104: `device === 'phone'` → `device.isPhone`
-
-(Since `useDevice()` returns `DeviceInfo` object with `{ device, isPhone, isTablet, isDesktop, isTouch }`)
-
-## Files
-
-| File | Change |
-|------|--------|
-| `src/App.tsx` | Move `createBrowserRouter` to module scope |
-| `src/components/floating/SettingsCapsule.tsx` | Fix `device === 'phone'` → `device.isPhone` |
+### `src/components/starmap/NodeWindow.tsx` line 108
+Check if `NODE_TYPE_CFG[node_type]` exists before accessing `.label`.
 
 ## Verification
-
-1. App loads without OOM or "Router inside Router" errors
-2. No console errors on navigation between routes
-3. Mobile: tapping gear icon opens MobileSettingsSheet
-4. Desktop: tapping gear icon opens dropdown (no change)
+- Open a wiki node → no crash, shows capture-style label as fallback
+- Open regular capture/insight/action nodes → unchanged behavior
