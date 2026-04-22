@@ -101,7 +101,7 @@ export const SettingsCapsule = memo(function SettingsCapsule() {
       >
         {/* Gear trigger */}
         <button
-          onClick={() => { if (device.isPhone) { setMobileSheetOpen(true); } else { setOpen(o => !o); } }}
+          onClick={() => setOpen(o => !o)}
           title="Settings"
           style={{
             display: 'flex',
