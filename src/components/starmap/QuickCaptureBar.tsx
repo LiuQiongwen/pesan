@@ -204,21 +204,6 @@ export function QuickCaptureBar({ userId, onFlashNote, hasNotes = true, hidden =
         )}
       </div>
 
-      {/* Sub-label */}
-      <div style={{
-        textAlign:     'center',
-        marginTop:     5,
-        fontFamily:    INTER,
-        fontSize:      'clamp(9px, 0.8vw, 11px)',
-        color:         'rgba(50,60,80,0.55)',
-        letterSpacing: '0.04em',
-        pointerEvents: 'none',
-        transition:    'opacity 0.2s',
-        opacity:       focused ? 0 : 1,
-      }}>
-        快速捕捉 · CAPTURE NODE
-      </div>
-
       <style>{`
         input::placeholder { color: rgba(60,75,100,0.55); }
         @keyframes qbar-attention {
