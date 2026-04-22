@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
-import { RELATION_TYPES, type RelationType } from './connect-types';
+import { RELATION_TYPES, type RelationType, getEdgeTypeConfig } from './connect-types';
 import { useDevice } from '@/hooks/useDevice';
 
 const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
@@ -77,7 +77,7 @@ export function ConnectConfirmOverlay({
     setSelected(id);
   };
 
-  const config = RELATION_TYPES.find(r => r.id === selected)!;
+  const config = getEdgeTypeConfig(selected);
   const remainingSecs = Math.ceil(((1 - progress) * CONFIRM_DELAY) / 1000);
 
   return (
