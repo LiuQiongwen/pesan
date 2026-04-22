@@ -21,7 +21,6 @@ import { AgentTrail }      from '@/components/layout/AgentTrail';
 import { CommandDock }     from '@/components/floating/CommandDock';
 import { FloatingPod }     from '@/components/floating/FloatingPod';
 import { SettingsCapsule } from '@/components/floating/SettingsCapsule';
-import { QuickCaptureBar } from '@/components/starmap/QuickCaptureBar';
 import { AlignmentGuides } from '@/components/window-manager/AlignmentGuides';
 import { UniverseSwitcher } from '@/components/universe/UniverseSwitcher';
 import { InteractionHints } from '@/components/starmap/InteractionHints';
@@ -455,16 +454,6 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
         connectMode={connectModeInfo.mode === 'connect'}
         connectFromTitle={connectModeInfo.fromTitle}
       />
-
-      {/* Layer 6 — Quick Capture Bar (desktop/tablet only, hide when pod open or tour active) */}
-      {device !== 'phone' && (
-        <QuickCaptureBar
-          userId={user.id}
-          onFlashNote={flashNote}
-          hasNotes={notes.length > 0}
-          hidden={Object.values(pods).some(p => p.open) || tour.active}
-        />
-      )}
 
       {/* Layer 7 — Command Dock */}
       <CommandDock />
