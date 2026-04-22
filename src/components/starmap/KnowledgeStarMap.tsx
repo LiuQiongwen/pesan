@@ -14,7 +14,7 @@ import { UndoToast } from './UndoToast';
 import { WorkbenchSummonBar } from './WorkbenchSummonBar';
 import { WorkbenchPanel } from './WorkbenchPanel';
 import { MobileNodeCard } from './MobileNodeCard';
-import { CreateAnchorModal } from '@/components/anchors/CreateAnchorModal';
+import { CreateAnchorModal, type TargetType } from '@/components/anchors/CreateAnchorModal';
 import { type RelationType } from './connect-types';
 import { supabase } from '@/integrations/supabase/client';
 import { useDevice } from '@/hooks/useDevice';
@@ -193,6 +193,7 @@ export default function KnowledgeStarMap({
   const { isPhone } = useDevice();
   const [mobileCardNoteId, setMobileCardNoteId] = useState<string | null>(null);
   const [anchorNoteId, setAnchorNoteId] = useState<string | null>(null);
+  const [anchorTarget, setAnchorTarget] = useState<{ type: TargetType; id: string; name: string } | null>(null);
 
   // ── Perf diagnostics state ──────────────────────────────────────────
   const [perfEnabled, setPerfEnabled] = useState(false);
@@ -787,7 +788,7 @@ export default function KnowledgeStarMap({
           }}
           onDelete={onDeleteNote ? (id => { handleDeleteRequest(id); setCtxMenu(null); }) : undefined}
           onResetPosition={id => { handleResetPosition(id); setCtxMenu(null); }}
-          onCreateAnchor={id => { setAnchorNoteId(id); setCtxMenu(null); }}
+          onCreateAnchor={id => { setAnchorTarget({ type: 'note', id, name: notesMap.get(id)?.title ?? '' }); setCtxMenu(null); }}
           hasManualPosition={!!(ctxMenu && manualNodePos[ctxMenu.noteId])}
         />
       )}
@@ -811,7 +812,7 @@ export default function KnowledgeStarMap({
               setMobileCardNoteId(null);
             }}
             onDelete={onDeleteNote ? ((id) => { handleDeleteRequest(id); setMobileCardNoteId(null); }) : undefined}
-            onCreateAnchor={(id) => { setAnchorNoteId(id); setMobileCardNoteId(null); }}
+            onCreateAnchor={(id) => { setAnchorTarget({ type: 'note', id, name: notesMap.get(id)?.title ?? '' }); setMobileCardNoteId(null); }}
           />
         );
       })()}
@@ -829,6 +830,7 @@ export default function KnowledgeStarMap({
             onClose={() => setGalaxyCtx(null)}
             onDissolve={handleGalaxyDissolve}
             onDeleteAll={handleGalaxyDeleteAll}
+            onCreateAnchor={(tag) => { setAnchorTarget({ type: 'galaxy', id: tag, name: tag }); setGalaxyCtx(null); }}
           />
         ) : null;
       })()}
@@ -892,11 +894,15 @@ export default function KnowledgeStarMap({
       )}
 
       {/* Create QR Anchor Modal */}
-      {anchorNoteId && (
+      {anchorTarget && (
         <CreateAnchorModal
-          noteId={anchorNoteId}
-          noteTitle={notesMap.get(anchorNoteId)?.title ?? ''}
-          onClose={() => setAnchorNoteId(null)}
+          open={!!anchorTarget}
+          onClose={() => setAnchorTarget(null)}
+          userId={userId ?? ''}
+          universeId={universeId ?? ''}
+          defaultTargetType={anchorTarget.type}
+          defaultTargetId={anchorTarget.id}
+          defaultName={anchorTarget.name}
         />
       )}
     </div>

@@ -1,0 +1,39 @@
+
+-- 扩展 reality_anchors 表
+ALTER TABLE reality_anchors ADD COLUMN IF NOT EXISTS name text NOT NULL DEFAULT '';
+ALTER TABLE reality_anchors ADD COLUMN IF NOT EXISTS description text DEFAULT '';
+ALTER TABLE reality_anchors ADD COLUMN IF NOT EXISTS target_type text NOT NULL DEFAULT 'note';
+ALTER TABLE reality_anchors ADD COLUMN IF NOT EXISTS anchor_slug text;
+ALTER TABLE reality_anchors ADD COLUMN IF NOT EXISTS scan_count integer NOT NULL DEFAULT 0;
+ALTER TABLE reality_anchors ADD COLUMN IF NOT EXISTS last_scanned_at timestamptz;
+
+-- 唯一索引 slug
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reality_anchors_slug ON reality_anchors(anchor_slug) WHERE anchor_slug IS NOT NULL;
+
+-- 扩展 anchor_type CHECK（先删旧的再建新的）
+ALTER TABLE reality_anchors DROP CONSTRAINT IF EXISTS reality_anchors_anchor_type_check;
+ALTER TABLE reality_anchors ADD CONSTRAINT reality_anchors_anchor_type_check CHECK (anchor_type IN ('qr','nfc'));
+
+-- 新增 target_type CHECK
+ALTER TABLE reality_anchors ADD CONSTRAINT reality_anchors_target_type_check CHECK (target_type IN ('note','galaxy','project','workbench','universe'));
+
+-- slug 生成函数
+CREATE OR REPLACE FUNCTION generate_anchor_slug() RETURNS trigger AS $$
+BEGIN
+  IF NEW.anchor_slug IS NULL OR NEW.anchor_slug = '' THEN
+    NEW.anchor_slug := lower(substr(md5(NEW.id::text || now()::text), 1, 8));
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_anchor_slug BEFORE INSERT ON reality_anchors
+FOR EACH ROW EXECUTE FUNCTION generate_anchor_slug();
+
+-- 迁移旧数据：anchor_type 从 note/tag/universe 映射
+UPDATE reality_anchors SET target_type = anchor_type, anchor_type = 'qr' WHERE anchor_type IN ('note','tag','universe');
+-- tag → galaxy
+UPDATE reality_anchors SET target_type = 'galaxy' WHERE target_type = 'tag';
+
+-- 为旧行补 slug
+UPDATE reality_anchors SET anchor_slug = lower(substr(md5(id::text || now()::text), 1, 8)) WHERE anchor_slug IS NULL;

@@ -1,6 +1,6 @@
 /**
  * useAnchorLanding — reads ?anchor= query params in StarMapLayout,
- * switches universe and flashes the target node.
+ * switches universe and navigates to the target (note flash, galaxy focus, etc).
  */
 import { useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -8,9 +8,10 @@ import { useSearchParams } from 'react-router-dom';
 interface Deps {
   switchUniverse: (id: string) => void;
   flashNote: (id: string) => void;
+  focusGalaxy?: (tag: string) => void;
 }
 
-export function useAnchorLanding({ switchUniverse, flashNote }: Deps) {
+export function useAnchorLanding({ switchUniverse, flashNote, focusGalaxy }: Deps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const handled = useRef(false);
 
@@ -27,10 +28,22 @@ export function useAnchorLanding({ switchUniverse, flashNote }: Deps) {
     // Switch to the anchor's universe
     switchUniverse(auniverse);
 
-    // After a short delay to let notes load, flash the target
-    if (atype === 'note') {
-      setTimeout(() => flashNote(atarget), 800);
-    }
+    // After a short delay to let notes load, navigate to target
+    setTimeout(() => {
+      switch (atype) {
+        case 'note':
+          flashNote(atarget);
+          break;
+        case 'galaxy':
+          focusGalaxy?.(atarget);
+          break;
+        case 'workbench':
+        case 'universe':
+        default:
+          // For workbench/universe, just switching universe is enough
+          break;
+      }
+    }, 800);
 
     // Clean up URL params
     const next = new URLSearchParams(searchParams);
@@ -39,5 +52,5 @@ export function useAnchorLanding({ switchUniverse, flashNote }: Deps) {
     next.delete('atarget');
     next.delete('auniverse');
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, switchUniverse, flashNote]);
+  }, [searchParams, setSearchParams, switchUniverse, flashNote, focusGalaxy]);
 }

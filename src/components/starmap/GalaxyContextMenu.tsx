@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { QrCode } from 'lucide-react';
 
 const MONO = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter','system-ui',sans-serif";
@@ -33,9 +34,10 @@ interface Props {
   onClose: () => void;
   onDissolve: (tag: string) => void;
   onDeleteAll: (tag: string) => void;
+  onCreateAnchor?: (tag: string) => void;
 }
 
-export function GalaxyContextMenu({ tag, nodeCount, color, x, y, onClose, onDissolve, onDeleteAll }: Props) {
+export function GalaxyContextMenu({ tag, nodeCount, color, x, y, onClose, onDissolve, onDeleteAll, onCreateAnchor }: Props) {
   useEffect(() => {
     const h = (e: MouseEvent | TouchEvent) => {
       const el = document.getElementById('cosmos-galaxy-ctx');
@@ -93,6 +95,16 @@ export function GalaxyContextMenu({ tag, nodeCount, color, x, y, onClose, onDiss
       </div>
 
       <div style={{ padding: '4px 0' }}>
+        {onCreateAnchor && (
+          <>
+            <Item
+              label="QR Anchor"
+              onClick={() => { onCreateAnchor(tag); onClose(); }}
+              color="#66f0ff"
+            />
+            <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '3px 0' }} />
+          </>
+        )}
         <Item
           label="~ 解散星系"
           onClick={() => { onDissolve(tag); onClose(); }}
