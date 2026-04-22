@@ -52,7 +52,7 @@ export function NodeWindow({ note, accentColor, onClose, onNavigate, onNewNode, 
 
   const nodeType = note.node_type ?? 'capture';
   const isWiki = nodeType.startsWith('wiki_');
-  const typeCfg  = NODE_TYPE_CFG[nodeType];
+  const typeCfg  = NODE_TYPE_CFG[nodeType] ?? NODE_TYPE_CFG['capture'];
 
   const r = parseInt(accentColor.slice(1, 3), 16);
   const g = parseInt(accentColor.slice(3, 5), 16);
@@ -105,7 +105,7 @@ export function NodeWindow({ note, accentColor, onClose, onNavigate, onNewNode, 
       }).select().maybeSingle();
       if (error) throw error;
       if (data?.id) {
-        toast.success(`已生成 ${NODE_TYPE_CFG[node_type].label} 节点`);
+        toast.success(`已生成 ${(NODE_TYPE_CFG[node_type] ?? NODE_TYPE_CFG['capture']).label} 节点`);
         onNewNode?.(data.id);
       }
     } catch { toast.error('节点创建失败'); }

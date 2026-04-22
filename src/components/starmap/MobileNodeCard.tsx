@@ -77,7 +77,7 @@ export function MobileNodeCard({ note, accentColor, onClose, onNavigate, onSendT
     setDragY(0);
   }, [dragY, onClose]);
 
-  const typeCfg = NODE_TYPE_CFG[(note.node_type as NodeType) ?? 'capture'];
+  const typeCfg = NODE_TYPE_CFG[(note.node_type as NodeType) ?? 'capture'] ?? NODE_TYPE_CFG['capture'];
 
   const handleSendToPod = (podId: string) => {
     onSendToPod?.(note.id, podId);
