@@ -1,66 +1,48 @@
-# Move Bottom Popups to Top on Mobile — Light, Semi-transparent
+# Fix OOM: Router recreation + minor device check bug
 
 ## Context
 
-On mobile, several toast/overlay components render at the bottom of the screen where they overlap with the Dynamic Island tab bar, bottom sheets, and pod content. The user wants them moved to the **top of the screen**, styled as **lightweight semi-transparent hints** that don't block or get blocked by anything.
+**Root cause of OOM crash**: In `App.tsx` line 14, `createBrowserRouter(routers)` is called **inside** the component function body. Every re-render of `App` creates a brand-new router instance, causing React to unmount/remount the entire route tree. With the Zustand-backed `ToolboxProvider` wrapping `RouterProvider`, store state changes trigger App re-renders → new router → full unmount/remount → more state changes → infinite loop → OOM.
 
-## Components to Update
+**Secondary bug**: In `SettingsCapsule.tsx` line 104, `device === 'phone'` compares a `DeviceInfo` object (not a string) to `'phone'` — always false, so mobile settings sheet never opens.
 
-| Component | Current Position | z-index | Change |
-|-----------|-----------------|---------|--------|
-| `TourOverlay` | top on phone (already moved), bottom on desktop | 60 | Make more translucent on phone, reduce visual weight |
-| `ContextToast` | `bottom: 72px` (all devices) | 55 | Phone: move to top, reduce opacity |
-| `UndoToast` | `bottom: clamp(100px,10vh,140px)` | 1400 | Phone: move to top |
-| `ConnectConfirmOverlay` | `bottom: clamp(130px,12.5vh,170px)` | 1200 | Phone: move to top |
-| `InteractionHints` | bottom-left | 8 | Phone: move to top-left |
+## Fix
 
-## Implementation
+### 1. `src/App.tsx` — Move router creation outside component
 
-### 1. `TourOverlay.tsx`
-Already at top on phone. Make it more translucent:
-- Background: `rgba(6,10,22,0.88)` → `rgba(6,10,22,0.55)` on phone
-- Border: softer, lower alpha
-- Smaller padding and font on phone
-- Lower z-index to 45 (doesn't need to be above sheets on phone)
+Move `const router = createBrowserRouter(routers)` to **module scope** (above the component). This ensures the router is created once and never recreated on re-render.
 
-### 2. `ContextToast.tsx`
-- Import `useDevice`
-- Phone: `top: calc(env(safe-area-inset-top, 0px) + 12px)` instead of `bottom: 72px`
-- Background: `rgba(6,10,22,0.50)` on phone (more translucent)
-- Animate from top (translateY: -12px → 0) instead of bottom
+```tsx
+const queryClient = new QueryClient();
+const router = createBrowserRouter(routers);   // ← module scope
 
-### 3. `UndoToast.tsx`
-- Import `useDevice`
-- Phone: `top: calc(env(safe-area-inset-top, 0px) + 12px)` instead of `bottom: clamp(...)`
-- Background: keep dark enough to read but reduce to `rgba(2,5,16,0.75)` on phone
-- z-index stays high (needs to be above most things)
+const App = () => {
+  return (
+    <LanguageProvider>
+      ...
+        <RouterProvider router={router} />
+      ...
+    </LanguageProvider>
+  );
+};
+```
 
-### 4. `ConnectConfirmOverlay.tsx`
-- Import `useDevice`
-- Phone: `top: calc(env(safe-area-inset-top, 0px) + 12px)` instead of `bottom: clamp(...)`
-- Width: `calc(100vw - 24px)` on phone
-- Background: `rgba(2,5,16,0.80)` on phone (slightly more translucent)
+### 2. `src/components/floating/SettingsCapsule.tsx` — Fix device check
 
-### 5. `InteractionHints.tsx`
-- Phone: `top: calc(env(safe-area-inset-top, 0px) + 56px)` (below tour/toast area), `left: 12px`
-- Remove `bottom` positioning on phone
+Line 104: `device === 'phone'` → `device.isPhone`
+
+(Since `useDevice()` returns `DeviceInfo` object with `{ device, isPhone, isTablet, isDesktop, isTouch }`)
 
 ## Files
 
-| File | Action |
+| File | Change |
 |------|--------|
-| `src/components/tour/TourOverlay.tsx` | Modify — lighter bg on phone |
-| `src/components/hints/ContextToast.tsx` | Modify — top position on phone |
-| `src/components/starmap/UndoToast.tsx` | Modify — top position on phone |
-| `src/components/starmap/ConnectConfirmOverlay.tsx` | Modify — top position on phone |
-| `src/components/starmap/InteractionHints.tsx` | Modify — top-left on phone |
+| `src/App.tsx` | Move `createBrowserRouter` to module scope |
+| `src/components/floating/SettingsCapsule.tsx` | Fix `device === 'phone'` → `device.isPhone` |
 
 ## Verification
 
-1. Phone: All toasts/overlays appear at top of screen, below safe area
-2. Phone: Toasts are semi-transparent, lightweight feel
-3. Phone: No overlap with Dynamic Island tab bar or bottom sheets
-4. Desktop: All positions unchanged (bottom as before)
-5. TourOverlay stays translucent and non-blocking on phone
-6. UndoToast "UNDO" button still tappable at top
-7. ConnectConfirmOverlay still functional (type selection, countdown, input)
+1. App loads without OOM or "Router inside Router" errors
+2. No console errors on navigation between routes
+3. Mobile: tapping gear icon opens MobileSettingsSheet
+4. Desktop: tapping gear icon opens dropdown (no change)
