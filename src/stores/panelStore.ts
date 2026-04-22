@@ -295,7 +295,6 @@ export const usePanelStore = create<PanelState>((set, get) => ({
   setGlobalFontScale: (v) => set((s) => {
     const layoutConfig = { ...s.layoutConfig, globalFontScale: Math.max(0.6, Math.min(1.8, v)) };
     saveLayoutConfig(layoutConfig);
-    document.documentElement.style.setProperty('--global-font-scale', String(layoutConfig.globalFontScale));
     return { layoutConfig };
   }),
 

@@ -11,9 +11,12 @@ export function useAuth() {
     // Set up listener first
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
+        // Defer state updates to avoid "Should not already be working" React scheduler conflict
+        setTimeout(() => {
+          setSession(session);
+          setUser(session?.user ?? null);
+          setLoading(false);
+        }, 0);
       }
     );
 
