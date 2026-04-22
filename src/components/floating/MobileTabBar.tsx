@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useToolbox, type PodId } from '@/contexts/ToolboxContext';
-import { Inbox, Telescope, Sparkles, Library, Rocket, ScanLine } from 'lucide-react';
+import { Inbox, Telescope, Sparkles, Library, Rocket } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 const MONO = "'IBM Plex Mono','Roboto Mono',monospace";
@@ -196,35 +196,6 @@ export function MobileTabBar() {
                 }} />
               )}
             </button>
-
-            {/* Center OCR FAB — after 3rd tab (insight) */}
-            {idx === 2 && (
-              <button
-                onClick={() => {
-                  window.dispatchEvent(new CustomEvent('open-ocr-camera'));
-                  setExpanded(false);
-                }}
-                style={{
-                  width: 52, minWidth: 52, height: 52,
-                  borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #66f0ff, #40d0ff)',
-                  border: '2px solid rgba(3,5,12,0.95)',
-                  boxShadow: '0 0 16px rgba(102,240,255,0.35), 0 4px 12px rgba(0,0,0,0.60)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer',
-                  marginTop: -16,
-                  position: 'relative',
-                  zIndex: 2,
-                  flexShrink: 0,
-                  opacity: 0,
-                  animation: `island-icon-in var(--dur-snap) var(--spring-snap) ${2.5 * 30}ms both`,
-                  transition: 'transform var(--dur-snap) var(--spring-snap)',
-                  WebkitTapHighlightColor: 'transparent',
-                }}
-              >
-                <ScanLine size={22} color="#040508" strokeWidth={2.5} />
-              </button>
-            )}
           </React.Fragment>
         );
       })}

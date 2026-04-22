@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, memo } from 'react';
-import { Settings, User, Languages, LogOut, ChevronDown, Sparkles, Zap, LayoutDashboard, FileArchive, Download, BookOpen, Compass, QrCode, Nfc, Lock, Unlock, Grid3x3, Magnet, ALargeSmall, RotateCcw, BookMarked, Save } from 'lucide-react';
+import { Settings, User, Languages, LogOut, ChevronDown, Sparkles, Zap, LayoutDashboard, FileArchive, Download, BookOpen, Compass, QrCode, Nfc, Lock, Unlock, Grid3x3, Magnet, ALargeSmall, RotateCcw, BookMarked, Save, ScanLine, Anchor } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useLanguage, useT } from '@/contexts/LanguageContext';
 import { useNavigate } from 'react-router-dom';
@@ -403,6 +403,57 @@ export const SettingsCapsule = memo(function SettingsCapsule() {
                   </span>
                   <div style={{ fontFamily: MONO, fontSize: 8, color: 'rgba(140,150,180,0.50)', letterSpacing: '0.04em', marginTop: 1 }}>
                     {nfcSupported ? '轻触标签跳转节点' : '仅限 Android 手机'}
+                  </div>
+                </div>
+              </button>
+
+              {/* OCR Camera */}
+              <button
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('open-ocr-camera'));
+                  setOpen(false);
+                }}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '8px 10px', borderRadius: 6,
+                  background: 'transparent', border: 'none',
+                  cursor: 'pointer', transition: 'background 0.12s', textAlign: 'left',
+                  marginBottom: 1,
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(102,240,255,0.08)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+              >
+                <ScanLine size={12} color="rgba(102,240,255,0.75)" />
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontFamily: INTER, fontSize: 11, color: 'rgba(102,240,255,0.85)', fontWeight: 600 }}>
+                    OCR 拍照识别
+                  </span>
+                  <div style={{ fontFamily: MONO, fontSize: 8, color: 'rgba(140,150,180,0.50)', letterSpacing: '0.04em', marginTop: 1 }}>
+                    Camera OCR Capture
+                  </div>
+                </div>
+              </button>
+
+              {/* Anchor Management */}
+              <button
+                onClick={() => { setOpen(false); navigate('/anchors'); }}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '8px 10px', borderRadius: 6,
+                  background: 'transparent', border: 'none',
+                  cursor: 'pointer', transition: 'background 0.12s', textAlign: 'left',
+                  marginBottom: 1,
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(102,240,255,0.08)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+              >
+                <Anchor size={12} color="rgba(102,240,255,0.75)" />
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontFamily: INTER, fontSize: 11, color: 'rgba(102,240,255,0.85)', fontWeight: 600 }}>
+                    锚点管理
+                  </span>
+                  <div style={{ fontFamily: MONO, fontSize: 8, color: 'rgba(140,150,180,0.50)', letterSpacing: '0.04em', marginTop: 1 }}>
+                    Manage Reality Anchors
                   </div>
                 </div>
               </button>
