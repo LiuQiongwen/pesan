@@ -25,6 +25,9 @@ export const NodeLightBand = memo(function NodeLightBand({ node, onTagClick, tag
   const { lang } = useLanguage();
   const isPhone = typeof window !== 'undefined' && window.innerWidth < 768;
 
+  // Hide entirely on phone — overlaps Dynamic Island tab bar
+  if (isPhone) return null;
+
   const visible = !!node || !!connectMode;
   const color = node?.clusterIdx != null && node.clusterIdx >= 0
     ? PALETTE_COLORS[node.clusterIdx % PALETTE_COLORS.length]
