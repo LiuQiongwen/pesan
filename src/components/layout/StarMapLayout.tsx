@@ -475,8 +475,7 @@ function StarMapContents({ user, notes, loading, openPod, pods, deleteNote, undo
       {/* Layer 10 — Context Toast */}
       <ContextToast toast={currentToast} onDone={popToast} />
 
-      {/* Layer 11 — Tour Overlay */}
-      <TourOverlay />
+      {/* Layer 11 — Tour Overlay (disabled) */}
 
       {/* Layer 12 — Staging Workbench */}
       {stagingOpen && (
