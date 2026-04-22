@@ -6,28 +6,34 @@
 import { useTour } from './TourProvider';
 import { getStepContent } from './TourStepContent';
 import { X, Check } from 'lucide-react';
+import { useDevice } from '@/hooks/useDevice';
 
 const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
 
 export function TourOverlay() {
   const { active, step, stepIndex, totalSteps, skip } = useTour();
+  const device = useDevice();
+  const isPhone = device === 'phone';
 
   if (!active || !step) return null;
 
-  const content = getStepContent(step.id);
+  const content = getStepContent(step.id, isPhone);
   const Icon = content.icon;
 
   return (
     <div
       style={{
         position: 'fixed',
-        bottom: 24,
+        ...(isPhone
+          ? { top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }
+          : { bottom: 24 }),
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 60,
         pointerEvents: 'auto',
         animation: 'tour-hud-in 0.4s cubic-bezier(0.16,1,0.3,1)',
+        maxWidth: isPhone ? 'calc(100vw - 24px)' : undefined,
       }}
     >
       <div

@@ -10,9 +10,10 @@ interface QuickCaptureBarProps {
   userId:       string;
   onFlashNote?: (noteId: string) => void;
   hasNotes?:    boolean;
+  hidden?:      boolean;
 }
 
-export function QuickCaptureBar({ userId, onFlashNote, hasNotes = true }: QuickCaptureBarProps) {
+export function QuickCaptureBar({ userId, onFlashNote, hasNotes = true, hidden = false }: QuickCaptureBarProps) {
   const [value,    setValue]   = useState('');
   const [focused,  setFocused] = useState(false);
   const [saving,   setSaving]  = useState(false);
@@ -99,6 +100,9 @@ export function QuickCaptureBar({ userId, onFlashNote, hasNotes = true }: QuickC
       zIndex:    25,
       width:     'clamp(300px, 34vw, 560px)',
       maxWidth:  'calc(100vw - 32px)',
+      opacity:   hidden ? 0 : 1,
+      pointerEvents: hidden ? 'none' : 'auto',
+      transition: 'opacity 0.25s',
     }}>
       <div style={{
         display:         'flex',

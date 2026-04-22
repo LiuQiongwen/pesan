@@ -12,11 +12,11 @@ export interface StepContent {
   icon: LucideIcon;
 }
 
-export function getStepContent(id: TourStepId): StepContent {
+export function getStepContent(id: TourStepId, mobile = false): StepContent {
   switch (id) {
     case 'create':
       return {
-        task: '在左侧 Capture Pod 输入或粘贴一段文字，点击发送',
+        task: mobile ? '在已打开的捕获舱中输入文字，点击发送' : '在左侧 Capture Pod 输入或粘贴一段文字，点击发送',
         hint: 'AI 会自动提炼、索引并生成你的第一颗知识星',
         icon: PlusCircle,
       };
