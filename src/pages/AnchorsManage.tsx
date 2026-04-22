@@ -46,7 +46,7 @@ export default function AnchorsManage() {
 
   const loadAnchors = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) { navigate('/auth'); return; }
+    if (!session) { setTimeout(() => navigate('/auth'), 0); return; }
 
     const { data } = await supabase
       .from('reality_anchors')
@@ -54,8 +54,10 @@ export default function AnchorsManage() {
       .eq('user_id', session.user.id)
       .order('created_at', { ascending: false });
 
-    setAnchors((data as unknown as Anchor[]) || []);
-    setLoading(false);
+    setTimeout(() => {
+      setAnchors((data as unknown as Anchor[]) || []);
+      setLoading(false);
+    }, 0);
   }, [navigate]);
 
   useEffect(() => { loadAnchors(); }, [loadAnchors]);
