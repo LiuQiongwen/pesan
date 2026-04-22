@@ -69,6 +69,19 @@
     --dur-standard:  0.30s;
     --dur-gentle:    0.50s;
 
+    /* ── Galaxy visual tokens ────────────────────────────────────── */
+    --galaxy-halo-opacity: 0.022;
+    --galaxy-ring-opacity: 0.055;
+    --galaxy-core-opacity: 0.15;
+    --galaxy-particle-opacity: 0.45;
+    --galaxy-particle-size: 0.12;
+    --galaxy-lod-near: 70;
+    --galaxy-lod-mid: 130;
+    --galaxy-lod-far: 200;
+    --galaxy-breathe-speed: 0.3;
+    --galaxy-rotate-speed: 0.001;
+    --galaxy-particle-drift: 0.005;
+
     /* Sidebar tokens (kept for legacy compatibility) */
     --sidebar-background: 220 20% 4%;
     --sidebar-foreground: 220 12% 55%;

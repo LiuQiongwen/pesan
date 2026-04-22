@@ -18,6 +18,7 @@ import { useNavigate } from 'react-router-dom';
 import * as THREE from 'three';
 
 import { type CosmosLayout, type CosmosNote } from './cosmos-layout';
+import { getGalaxyTheme } from './galaxy-theme';
 import { NodeWindow }  from './NodeWindow';
 import { getEdgeTypeConfig } from './connect-types';
 import { useHintState } from '@/hooks/useHintState';
@@ -170,6 +171,8 @@ function ImperativeCore({
   // Halo/ring refs for LOD opacity
   const haloMeshesRef    = useRef<THREE.Mesh[]>([]);
   const ringMeshesRef    = useRef<THREE.Mesh[]>([]);
+  const coreMeshesRef    = useRef<THREE.Mesh[]>([]);
+  const particleSystemsRef = useRef<THREE.Points[]>([]);
   // Galaxy-keyed maps for targeted animation during drag-to-galaxy
   const halosByTagRef    = useRef(new Map<string, THREE.Mesh>());
   const ringsByTagRef    = useRef(new Map<string, THREE.Mesh>());
@@ -288,6 +291,8 @@ function ImperativeCore({
     edgeMetaRef.current.clear();
     haloMeshesRef.current    = [];
     ringMeshesRef.current    = [];
+    coreMeshesRef.current    = [];
+    particleSystemsRef.current = [];
     halosByTagRef.current.clear();
     ringsByTagRef.current.clear();
     entranceRingsRef.current = [];
@@ -332,30 +337,97 @@ function ImperativeCore({
     starPts.name = '__starfield__';
     group.add(starPts);
 
-    // ── Galaxy cluster halos ─────────────────────────────────────────────────
+    // ── Galaxy cluster halos + cores + particles ─────────────────────────────
     layout.clusters.forEach(cluster => {
       if (cluster.tag === '__untagged__' || cluster.noteIds.length < 2) return;
+      const theme = getGalaxyTheme(cluster);
+      const clr = new THREE.Color(cluster.color);
+      const cx = cluster.center[0], cy = cluster.center[1], cz = cluster.center[2];
+
+      // — Halo sphere (shape varies by variant) —
       const haloGeo = new THREE.SphereGeometry(cluster.radius, 20, 20);
       const haloMat = new THREE.MeshBasicMaterial({
-        color: new THREE.Color(cluster.color), transparent: true,
-        opacity: 0.022, side: THREE.BackSide, depthWrite: false,
+        color: clr, transparent: true,
+        opacity: theme.haloOpacity, side: THREE.BackSide, depthWrite: false,
       });
       const halo = new THREE.Mesh(haloGeo, haloMat);
-      halo.position.set(...cluster.center);
+      halo.position.set(cx, cy, cz);
+      halo.scale.set(1, theme.haloScaleY, 1);
       group.add(halo);
       haloMeshesRef.current.push(halo);
       halosByTagRef.current.set(cluster.tag, halo);
 
-      const ringGeo = new THREE.RingGeometry(cluster.radius * 0.85, cluster.radius, 32);
-      const ringMat = new THREE.MeshBasicMaterial({
-        color: new THREE.Color(cluster.color), transparent: true,
-        opacity: 0.055, side: THREE.DoubleSide, depthWrite: false,
-      });
-      const ring = new THREE.Mesh(ringGeo, ringMat);
-      ring.position.set(...cluster.center);
-      group.add(ring);
-      ringMeshesRef.current.push(ring);
-      ringsByTagRef.current.set(cluster.tag, ring);
+      // — Ring(s) (only for ring variant or fallback) —
+      if (theme.hasRing) {
+        for (let ri = 0; ri < theme.ringCount; ri++) {
+          const innerR = cluster.radius * (0.6 + ri * 0.25);
+          const outerR = cluster.radius * (0.75 + ri * 0.25);
+          const ringGeo = new THREE.RingGeometry(innerR, outerR, 32);
+          const ringMat = new THREE.MeshBasicMaterial({
+            color: clr, transparent: true,
+            opacity: 0.04 - ri * 0.01, side: THREE.DoubleSide, depthWrite: false,
+          });
+          const ring = new THREE.Mesh(ringGeo, ringMat);
+          ring.position.set(cx, cy, cz);
+          group.add(ring);
+          ringMeshesRef.current.push(ring);
+          if (ri === 0) ringsByTagRef.current.set(cluster.tag, ring);
+        }
+      } else {
+        // Default subtle ring for non-ring variants
+        const ringGeo = new THREE.RingGeometry(cluster.radius * 0.85, cluster.radius, 32);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: clr, transparent: true,
+          opacity: 0.035, side: THREE.DoubleSide, depthWrite: false,
+        });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.position.set(cx, cy, cz);
+        group.add(ring);
+        ringMeshesRef.current.push(ring);
+        ringsByTagRef.current.set(cluster.tag, ring);
+      }
+
+      // — Core glow (cluster & ring variants) —
+      if (theme.hasCoreGlow) {
+        const coreGeo = new THREE.SphereGeometry(theme.coreGlowRadius, 12, 12);
+        const coreMat = new THREE.MeshBasicMaterial({
+          color: clr, transparent: true,
+          opacity: 0.15, depthWrite: false,
+        });
+        const core = new THREE.Mesh(coreGeo, coreMat);
+        core.position.set(cx, cy, cz);
+        group.add(core);
+        coreMeshesRef.current.push(core);
+        // Store breathe params on userData for animation
+        core.userData = { breatheSpeed: theme.breatheSpeed, breatheAmp: theme.breatheAmplitude, baseIntensity: theme.coreGlowIntensity };
+      }
+
+      // — Particle cloud —
+      if (theme.particleCount > 0) {
+        const count = theme.particleCount;
+        const positions = new Float32Array(count * 3);
+        for (let i = 0; i < count; i++) {
+          // Random distribution within galaxy radius
+          const r = cluster.radius * Math.cbrt(Math.random()) * 0.9;
+          const theta = Math.random() * Math.PI * 2;
+          const phi = Math.acos(2 * Math.random() - 1);
+          positions[i * 3]     = cx + r * Math.sin(phi) * Math.cos(theta);
+          positions[i * 3 + 1] = cy + r * Math.sin(phi) * Math.sin(theta) * theme.haloScaleY;
+          positions[i * 3 + 2] = cz + r * Math.cos(phi);
+        }
+        const particleGeo = new THREE.BufferGeometry();
+        particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const particleMat = new THREE.PointsMaterial({
+          color: clr, size: theme.particleSize,
+          transparent: true, opacity: 0.45,
+          depthWrite: false, blending: THREE.AdditiveBlending,
+          sizeAttenuation: true,
+        });
+        const particles = new THREE.Points(particleGeo, particleMat);
+        particles.userData = { drift: theme.particleDrift, center: [cx, cy, cz] };
+        group.add(particles);
+        particleSystemsRef.current.push(particles);
+      }
     });
 
     // ── Connection edges ─────────────────────────────────────────────────────
@@ -1168,7 +1240,7 @@ function ImperativeCore({
 
     // ── Halo / ring LOD opacity ──────────────────────────────────────────────
     const haloTarget = dist < 70 ? 0.022 : dist < 130 ? 0.022 * (1 - (dist - 70) / 60) : 0;
-    const ringTarget = dist < 70 ? 0.055 : dist < 130 ? 0.055 * (1 - (dist - 70) / 60) : 0;
+    const ringTarget = dist < 70 ? 0.045 : dist < 130 ? 0.045 * (1 - (dist - 70) / 60) : 0;
     haloMeshesRef.current.forEach(h => {
       const m = h.material as THREE.MeshBasicMaterial;
       m.opacity = THREE.MathUtils.lerp(m.opacity, haloTarget, 0.04);
@@ -1176,6 +1248,35 @@ function ImperativeCore({
     ringMeshesRef.current.forEach(r => {
       const m = r.material as THREE.MeshBasicMaterial;
       m.opacity = THREE.MathUtils.lerp(m.opacity, ringTarget, 0.04);
+    });
+
+    // ── Core glow breathe animation ──────────────────────────────────────────
+    const coreTarget = dist < 70 ? 1 : dist < 130 ? 1 - (dist - 70) / 60 : 0;
+    coreMeshesRef.current.forEach(core => {
+      const m = core.material as THREE.MeshBasicMaterial;
+      const ud = core.userData as { breatheSpeed: number; breatheAmp: number; baseIntensity: number };
+      const pulse = 1 + Math.sin(t * ud.breatheSpeed * Math.PI * 2) * ud.breatheAmp;
+      const targetOpacity = 0.15 * pulse * coreTarget;
+      m.opacity = THREE.MathUtils.lerp(m.opacity, targetOpacity, 0.06);
+      core.scale.setScalar(pulse * 0.95 + 0.05);
+    });
+
+    // ── Particle LOD + drift ─────────────────────────────────────────────────
+    const particleTarget = dist < 70 ? 0.45 : dist < 130 ? 0.45 * (1 - (dist - 70) / 60) : 0;
+    particleSystemsRef.current.forEach(pts => {
+      const m = pts.material as THREE.PointsMaterial;
+      m.opacity = THREE.MathUtils.lerp(m.opacity, particleTarget, 0.04);
+      // Gentle drift
+      const drift = (pts.userData as { drift: number }).drift;
+      if (drift > 0 && dist < 130) {
+        const posArr = (pts.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array;
+        for (let i = 0; i < posArr.length; i += 3) {
+          posArr[i]     += Math.sin(t * 0.5 + i) * drift * 0.1;
+          posArr[i + 1] += Math.cos(t * 0.3 + i * 0.7) * drift * 0.1;
+          posArr[i + 2] += Math.sin(t * 0.4 + i * 1.3) * drift * 0.1;
+        }
+        pts.geometry.attributes.position.needsUpdate = true;
+      }
     });
 
     // ── Distance-aware edge opacity ──────────────────────────────────────────

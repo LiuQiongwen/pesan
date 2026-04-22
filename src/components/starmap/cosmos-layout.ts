@@ -10,6 +10,10 @@ export const PALETTE = [
   '#40ccff', // sky blue
   '#ff80ab', // pink
   '#7fff7f', // lime
+  '#ff6b6b', // coral
+  '#ffd93d', // gold
+  '#6bcb77', // sage
+  '#4d96ff', // ocean
 ];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
