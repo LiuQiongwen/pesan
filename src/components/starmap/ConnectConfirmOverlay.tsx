@@ -10,6 +10,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { RELATION_TYPES, type RelationType } from './connect-types';
+import { useDevice } from '@/hooks/useDevice';
 
 const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
@@ -34,6 +35,7 @@ export function ConnectConfirmOverlay({
   const confirmedRef = useRef(false);
   const selectedRef  = useRef<RelationType>(suggestedType);
   const descRef      = useRef('');
+  const { isPhone }  = useDevice();
 
   // Keep refs current so the RAF callback always reads latest value
   useEffect(() => { selectedRef.current = selected; }, [selected]);
@@ -84,18 +86,22 @@ export function ConnectConfirmOverlay({
       aria-label="确认节点连接"
       style={{
         position:         'fixed',
-        bottom:           'clamp(130px, 12.5vh, 170px)',
+        ...(isPhone
+          ? { top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }
+          : { bottom: 'clamp(130px, 12.5vh, 170px)' }),
         left:             '50%',
         transform:        'translateX(-50%)',
         zIndex:           1200,
-        width:            'clamp(310px, 34vw, 490px)',
-        background:       'rgba(2,5,16,0.97)',
-        backdropFilter:   'blur(28px)',
-        WebkitBackdropFilter: 'blur(28px)',
-        border:           `1px solid ${config.color}28`,
+        width:            isPhone ? 'calc(100vw - 24px)' : 'clamp(310px, 34vw, 490px)',
+        background:       isPhone ? 'rgba(2,5,16,0.75)' : 'rgba(2,5,16,0.97)',
+        backdropFilter:   isPhone ? 'blur(28px) saturate(1.4)' : 'blur(28px)',
+        WebkitBackdropFilter: isPhone ? 'blur(28px) saturate(1.4)' : 'blur(28px)',
+        border:           `1px solid ${config.color}${isPhone ? '18' : '28'}`,
         borderRadius:     12,
         overflow:         'hidden',
-        boxShadow:        `0 0 36px ${config.color}14, 0 20px 50px rgba(0,0,0,0.65)`,
+        boxShadow:        isPhone
+          ? `0 4px 24px ${config.color}10, 0 8px 24px rgba(0,0,0,0.4)`
+          : `0 0 36px ${config.color}14, 0 20px 50px rgba(0,0,0,0.65)`,
         animation:        'toast-in var(--dur-standard) var(--spring)',
       }}
     >

@@ -40,14 +40,14 @@ export function TourOverlay() {
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 14,
-          padding: '10px 20px',
-          background: 'rgba(6,10,22,0.88)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          border: '1px solid rgba(102,240,255,0.18)',
-          borderRadius: 12,
-          boxShadow: '0 0 40px rgba(102,240,255,0.06), 0 12px 40px rgba(0,0,0,0.5)',
+          gap: isPhone ? 10 : 14,
+          padding: isPhone ? '7px 14px' : '10px 20px',
+          background: isPhone ? 'rgba(6,10,22,0.50)' : 'rgba(6,10,22,0.88)',
+          backdropFilter: isPhone ? 'blur(24px) saturate(1.4)' : 'blur(20px)',
+          WebkitBackdropFilter: isPhone ? 'blur(24px) saturate(1.4)' : 'blur(20px)',
+          border: isPhone ? '1px solid rgba(102,240,255,0.10)' : '1px solid rgba(102,240,255,0.18)',
+          borderRadius: isPhone ? 10 : 12,
+          boxShadow: isPhone ? '0 4px 20px rgba(0,0,0,0.3)' : '0 0 40px rgba(102,240,255,0.06), 0 12px 40px rgba(0,0,0,0.5)',
         }}
       >
         {/* Step icon */}

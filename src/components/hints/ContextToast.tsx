@@ -5,6 +5,7 @@
  */
 import { useEffect, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
+import { useDevice } from '@/hooks/useDevice';
 
 const MONO  = "'IBM Plex Mono','Roboto Mono',monospace";
 const INTER = "'Inter',system-ui,sans-serif";
@@ -24,6 +25,7 @@ interface Props {
 
 export function ContextToast({ toast, onDone }: Props) {
   const [show, setShow] = useState(false);
+  const { isPhone } = useDevice();
 
   useEffect(() => {
     if (!toast) { setShow(false); return; }
@@ -44,9 +46,11 @@ export function ContextToast({ toast, onDone }: Props) {
   return (
     <div style={{
       position: 'fixed',
-      bottom: 72,
+      ...(isPhone
+        ? { top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }
+        : { bottom: 72 }),
       left: '50%',
-      transform: `translateX(-50%) translateY(${show ? '0' : '12px'})`,
+      transform: `translateX(-50%) translateY(${show ? '0' : (isPhone ? '-12px' : '12px')})`,
       zIndex: 55,
       pointerEvents: 'none',
       opacity: show ? 1 : 0,
@@ -56,13 +60,13 @@ export function ContextToast({ toast, onDone }: Props) {
         display: 'flex',
         alignItems: 'center',
         gap: 10,
-        padding: '8px 16px',
-        background: 'rgba(6,10,22,0.90)',
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
-        border: '1px solid rgba(102,240,255,0.14)',
+        padding: isPhone ? '6px 12px' : '8px 16px',
+        background: isPhone ? 'rgba(6,10,22,0.50)' : 'rgba(6,10,22,0.90)',
+        backdropFilter: isPhone ? 'blur(24px) saturate(1.4)' : 'blur(16px)',
+        WebkitBackdropFilter: isPhone ? 'blur(24px) saturate(1.4)' : 'blur(16px)',
+        border: isPhone ? '1px solid rgba(102,240,255,0.08)' : '1px solid rgba(102,240,255,0.14)',
         borderRadius: 10,
-        boxShadow: '0 0 30px rgba(0,0,0,0.4)',
+        boxShadow: isPhone ? '0 4px 16px rgba(0,0,0,0.25)' : '0 0 30px rgba(0,0,0,0.4)',
         whiteSpace: 'nowrap',
       }}>
         {Icon && (

@@ -105,8 +105,9 @@ export const InteractionHints = memo(function InteractionHints({ noteCount, hove
   return (
     <div style={{
       position: 'fixed',
-      bottom: isPhone ? 'calc(12px + env(safe-area-inset-bottom, 0px))' : 'clamp(12px, 1.5vh, 20px)',
-      left: isPhone ? 12 : 'clamp(14px, 1.5vw, 22px)',
+      ...(isPhone
+        ? { top: 'calc(env(safe-area-inset-top, 0px) + 56px)', left: 12 }
+        : { bottom: 'clamp(12px, 1.5vh, 20px)', left: 'clamp(14px, 1.5vw, 22px)' }),
       zIndex: 8,
       pointerEvents: 'none',
       display: 'flex',
