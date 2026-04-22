@@ -22,9 +22,11 @@ export function useAuth() {
 
     // Then check existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
+      setTimeout(() => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setLoading(false);
+      }, 0);
     });
 
     return () => subscription.unsubscribe();
