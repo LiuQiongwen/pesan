@@ -1,126 +1,83 @@
-# Unified Animation Language — Spring-Physics Motion System
+# iOS PWA + Dynamic Island Bottom Bar
 
 ## Context
 
-The star map product has 70+ inline `@keyframes` and `transition` declarations scattered across components, each with its own easing and duration. Current problems:
+User wants:
+1. **iOS-friendly PWA packaging** — "添加到主屏幕" after which the app runs fullscreen like a native app
+2. **Dynamic Island style bottom bar** — collapsed = a small capsule pill floating at the bottom; tap = spring-expands into the full 5-pod function bar + OCR FAB; tap outside / auto-collapse when a pod sheet opens
 
-1. **Inconsistent easing** — Pod uses `cubic-bezier(0.16,1,0.3,1)`, BottomSheet uses `cubic-bezier(0.22,1,0.36,1)`, overlays use `ease`, hints use `ease-out` — no shared rhythm
-2. **Duplicate keyframes** — `cosmos-window-in`, `pod-in`, `toolbox-in`, `cco-in`, `fade-up`, `slide-up` all do nearly the same "slide-up + fade" with slightly different offsets
-3. **No exit animations** — Components appear with animation but disappear instantly
-4. **Three.js vs DOM mismatch** — Camera uses smoothDamp springs (via `useCosmosCam`) but DOM panels use CSS keyframes, creating a perceptual disconnect
+Current state:
+- `manifest.json` exists with `display: standalone` but is missing Apple-specific meta tags (`apple-mobile-web-app-capable`, `apple-touch-icon`, `apple-mobile-web-app-status-bar-style`)
+- No PWA icon files (`icon-192.png`, `icon-512.png` are referenced but don't exist)
+- `MobileTabBar.tsx` is a full-width static bar that hides when a pod is open — no collapse animation
+- Spring motion tokens (`--spring`, `--dur-standard`, etc.) are already in `index.css`
 
-**Goal**: Establish a 3-tier CSS spring-like animation system (Snap / Standard / Gentle) using a single shared cubic-bezier that mimics a critically damped spring, then apply it to the top-5 highest-impact surfaces.
+## Plan
 
-## Approach: CSS Custom Properties + Shared Keyframes
+### Step 1: PWA meta tags — `index.html`
 
-Rather than installing `react-spring` (heavy, introduces new render model), we define **spring-like cubic-beziers** as CSS custom properties and consolidate all keyframes into `index.css`. This matches the existing architecture (inline styles + CSS keyframes) with zero dependency cost.
-
-**Spring-like cubic-bezier curves:**
+Add Apple-specific meta tags to `<head>`:
+```html
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 ```
---ease-spring:  cubic-bezier(0.22, 1.00, 0.36, 1.00)   /* Standard (overdamped spring feel) */
---ease-snap:    cubic-bezier(0.16, 1.00, 0.30, 1.00)   /* Fast micro-feedback */
---ease-gentle:  cubic-bezier(0.33, 1.00, 0.68, 1.00)   /* Slow settle for large panels */
+
+### Step 2: Generate PWA icon — `public/apple-touch-icon.png`
+
+Use `image_generation` to create a 180x180 app icon with the Pesta brand style (dark cosmic background + green accent).
+
+Also generate `public/icon-192.png` and `public/icon-512.png` so the manifest references work.
+
+### Step 3: Rewrite `MobileTabBar.tsx` → Dynamic Island capsule
+
+**Collapsed state (default):**
+- Small pill capsule (≈120px wide × 36px tall) centered at bottom
+- Shows subtle pulsing dot + "Pesta" text
+- `border-radius: 50vh` for full pill shape
+- Positioned above safe area
+
+**Expanded state (on tap):**
+- Pill morphs to full-width bar via `width` + `border-radius` spring transition
+- 5 pod icons + center OCR FAB appear with staggered fade
+- Auto-collapses when any pod opens (sheet takes over)
+
+**Transitions use existing spring tokens:**
+- Pill → bar: `--dur-standard` + `--spring` (width, border-radius, padding)
+- Icons fade-in: `--dur-snap` + `--spring-snap` (staggered 30ms per icon)
+- Bar → pill: `--dur-standard` + `--spring` (reverse)
+
+**State machine:**
+```
+collapsed ──tap──▶ expanded ──tap-pod──▶ collapsed (pod sheet opens)
+                  ──tap-outside──▶ collapsed
+                  ──4s-idle──▶ collapsed
 ```
 
-**Duration tiers:**
-| Tier | Duration | Use Case |
-|------|----------|----------|
-| **Snap** | 0.15-0.20s | Button press, pill select, micro-feedback |
-| **Standard** | 0.28-0.35s | Panel slide, toast appear, overlay enter |
-| **Gentle** | 0.45-0.55s | Bottom sheet, full-screen transitions, modal enter |
+### Step 4: Wire up auto-collapse in `MobileBottomSheet.tsx`
+
+When sheet opens, MobileTabBar auto-collapses (already hidden via `anyPodOpen` check — keep this behavior, the pill just re-appears when sheet closes).
 
 ---
 
-## File Plan
+## Files to Modify
 
-### 1. MODIFY: `src/index.css` — Consolidate animation tokens
-
-Add CSS custom properties for timing and curves, plus unified keyframes that replace scattered inline `<style>` blocks.
-
-**New tokens in `:root`:**
-```css
---spring:        cubic-bezier(0.22, 1.00, 0.36, 1.00);
---spring-snap:   cubic-bezier(0.16, 1.00, 0.30, 1.00);
---spring-gentle: cubic-bezier(0.33, 1.00, 0.68, 1.00);
---dur-snap:      0.18s;
---dur-standard:  0.30s;
---dur-gentle:    0.50s;
-```
-
-**Consolidated keyframes (replace duplicates):**
-- `spring-in` → replaces `pod-in`, `toolbox-in`, `cosmos-window-in`, `cco-in`
-- `spring-out` → new exit animation
-- `spring-up` → replaces `slide-up`, `mobile-sheet-up`, `fade-up`
-- `spring-down` → replaces `slide-down`, `mobile-sheet-down`
-- `toast-in` / `toast-out` → for bottom-center toasts
-- Keep existing unique animations: `flow-light`, `pulse-glow`, `node-flash`, `shimmer`, `spin-slow`, `hint-pulse-ring`
-
-**Utility classes:**
-```css
-.spring-in      { animation: spring-in    var(--dur-standard) var(--spring) both; }
-.spring-up      { animation: spring-up    var(--dur-gentle)   var(--spring) both; }
-.toast-enter    { animation: toast-in     var(--dur-standard) var(--spring-snap) both; }
-```
-
-### 2. MODIFY: `src/components/floating/FloatingPod.tsx`
-- Replace inline `@keyframes pod-in` and `@keyframes edit-rim-pulse` with global `spring-in` class
-- Change `animation: 'pod-in 0.22s ...'` → `animation: 'spring-in var(--dur-standard) var(--spring)'`
-- Replace `transition: 'max-height 0.24s cubic-bezier(0.4,0,0.2,1)'` → use `--spring` token
-- Replace `transition: 'all 0.14s'` on buttons → `transition: 'all var(--dur-snap) var(--spring-snap)'`
-
-### 3. MODIFY: `src/components/floating/MobileBottomSheet.tsx`
-- Replace `transition: 'transform 0.28s cubic-bezier(0.22,1,0.36,1)'` → `transition: 'transform var(--dur-gentle) var(--spring)'`
-- Replace `animation: 'slide-up 0.28s cubic-bezier(0.22,1,0.36,1)'` → `animation: 'spring-up var(--dur-gentle) var(--spring)'`
-- Replace backdrop `animation: 'fade-in 0.2s ease-out'` → `animation: 'fade-in var(--dur-standard) var(--spring-snap)'`
-
-### 4. MODIFY: `src/components/starmap/ConnectConfirmOverlay.tsx`
-- Remove inline `@keyframes cco-in` block
-- Replace `animation: 'cco-in 0.22s cubic-bezier(0.22,1,0.36,1)'` → `animation: 'spring-in var(--dur-standard) var(--spring)'`
-- Replace `transition: 'all 0.14s'` on type pills → `var(--dur-snap) var(--spring-snap)`
-
-### 5. MODIFY: `src/components/starmap/UndoToast.tsx`
-- Replace `animation: 'cosmos-window-in 0.2s ease'` → `animation: 'toast-in var(--dur-standard) var(--spring-snap)'`
-
-### 6. MODIFY: `src/components/hints/ContextToast.tsx`
-- Replace `transition: 'opacity 0.35s ease, transform 0.35s ease'` → `transition: 'opacity var(--dur-standard) var(--spring), transform var(--dur-standard) var(--spring)'`
-
-### 7. MODIFY: `src/components/starmap/KnowledgeStarMap.tsx`
-- Remove inline `@keyframes cosmos-pulse` and `@keyframes cosmos-window-in` (moved to index.css)
-
-### 8. MODIFY: `src/components/starmap/NodeWindow.tsx`
-- Remove inline `@keyframes cosmos-window-in` (already in index.css)
-- Use `spring-in` animation
-
----
-
-## What NOT to Animate
-
-- **Three.js scene** — already uses `useCosmosCam` smoothDamp for camera; node position/color tweens in `useFrame` stay as-is (GPU-side, not DOM)
-- **Scroll content** — pod body scroll should remain native, no spring on scroll
-- **Typing/input** — zero animation on text input fields
-- **Radix overlays** (dialog, sheet from shadcn) — keep their built-in animations; only align duration tokens
-
-## Three.js vs DOM Division of Labor
-
-| Layer | Animation Engine | Easing Model |
-|-------|-----------------|-------------|
-| Camera transitions | `useCosmosCam` smoothDamp | Critically damped spring |
-| Node/edge mesh animation | `useFrame` lerp | GPU-side per-frame interpolation |
-| DOM panels (FloatingPod, BottomSheet) | CSS `@keyframes` + custom properties | `--spring` cubic-bezier |
-| DOM micro-feedback (toast, pill, button) | CSS `transition` | `--spring-snap` cubic-bezier |
-| DOM overlays (confirm, galaxy join) | CSS `@keyframes` | `--spring` cubic-bezier |
-
-The spring cubic-bezier `(0.22, 1.00, 0.36, 1.00)` is designed to *feel* similar to the smoothDamp spring used in the camera, creating perceptual unity without coupling the implementations.
-
----
+| File | Action |
+|------|--------|
+| `index.html` | Add 3 Apple meta tags |
+| `public/manifest.json` | Verify icons, no change needed |
+| `src/components/floating/MobileTabBar.tsx` | Full rewrite → Dynamic Island capsule |
+| `public/apple-touch-icon.png` | Generate via image_generation |
+| `public/icon-192.png` | Generate via image_generation |
+| `public/icon-512.png` | Generate via image_generation |
 
 ## Verification
 
-1. **FloatingPod**: Open a pod → smooth scale+fade entry with spring deceleration, not linear
-2. **MobileBottomSheet**: Open on phone → slides up with spring-gentle timing, drag-dismiss still works
-3. **ConnectConfirmOverlay**: Drag-connect two nodes → overlay springs in from bottom with consistent easing
-4. **UndoToast**: Delete a node → toast appears with snap-spring from below
-5. **ContextToast**: Trigger a hint → toast fades in with spring curve, fades out naturally
-6. **Button hover**: All pod window control buttons → snap-tier transition (0.18s)
-7. **No regression**: Camera spring (Shift+P perf overlay), Three.js node animations unchanged
-8. **Lint**: Zero new lint errors
+1. Mobile Chrome/Safari: bar appears as centered pill capsule
+2. Tap pill → spring-expands to full 5-icon bar with OCR FAB
+3. Tap any pod → sheet opens, bar collapses back to pill (hidden behind sheet)
+4. Close sheet → pill reappears
+5. Tap outside expanded bar → collapses
+6. 4s idle with expanded bar → auto-collapses
+7. iOS Safari: "Add to Home Screen" → app launches fullscreen with status bar styled dark
+8. Desktop: unchanged (CommandDock renders, not MobileTabBar)
