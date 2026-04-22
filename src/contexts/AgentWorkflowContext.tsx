@@ -2,7 +2,7 @@
  * AgentWorkflowContext — backward-compatible shim wrapping useAsyncStore (Zustand).
  * New code should import useAsyncStore directly.
  */
-import { createContext, useContext, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useCallback, useMemo, type ReactNode } from 'react';
 import { useAsyncStore, type WorkflowRelay } from '@/stores/asyncStore';
 import type { PodId } from '@/stores/panelStore';
 
@@ -28,24 +28,38 @@ export function AgentWorkflowProvider({
   children: ReactNode;
   onOpenPod: (id: PodId) => void;
 }) {
-  const store = useAsyncStore();
+  // Subscribe to individual state slices to avoid infinite re-render loop
+  const activeStep = useAsyncStore(s => s.activeStep);
+  const relay = useAsyncStore(s => s.relay);
+  const completedSteps = useAsyncStore(s => s.completedSteps);
+
+  // Actions are stable references — grab from getState once
+  const storeActions = useMemo(() => ({
+    setActiveStep: useAsyncStore.getState().setActiveStep,
+    consumeRelay: useAsyncStore.getState().consumeRelay,
+    markStepComplete: useAsyncStore.getState().markStepComplete,
+    clearWorkflow: useAsyncStore.getState().clearWorkflow,
+    _sendRelay: useAsyncStore.getState().sendRelay,
+  }), []);
 
   const sendRelay = useCallback((content: string, from: PodId, to: PodId) => {
-    store.sendRelay(content, from, to);
+    storeActions._sendRelay(content, from, to);
     onOpenPod(to);
-  }, [onOpenPod, store]);
+  }, [onOpenPod, storeActions]);
+
+  const value = useMemo<AgentWorkflowState>(() => ({
+    activeStep,
+    relay,
+    completedSteps,
+    setActiveStep: storeActions.setActiveStep,
+    sendRelay,
+    consumeRelay: storeActions.consumeRelay,
+    markStepComplete: storeActions.markStepComplete,
+    clearWorkflow: storeActions.clearWorkflow,
+  }), [activeStep, relay, completedSteps, storeActions, sendRelay]);
 
   return (
-    <AgentWorkflowContext.Provider value={{
-      activeStep: store.activeStep,
-      relay: store.relay,
-      completedSteps: store.completedSteps,
-      setActiveStep: store.setActiveStep,
-      sendRelay,
-      consumeRelay: store.consumeRelay,
-      markStepComplete: store.markStepComplete,
-      clearWorkflow: store.clearWorkflow,
-    }}>
+    <AgentWorkflowContext.Provider value={value}>
       {children}
     </AgentWorkflowContext.Provider>
   );

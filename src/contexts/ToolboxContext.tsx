@@ -3,7 +3,7 @@
  * Consumers can still call useToolbox() — internally it reads from the store.
  * New code should import usePanelStore directly for selector-level subscriptions.
  */
-import { createContext, useContext, useRef, useEffect } from 'react';
+import { createContext, useContext, useRef, useEffect, useMemo } from 'react';
 import { usePanelStore, type PodId, type PodState, type PodViewMode, type LayoutConfig, type LayoutPreset } from '@/stores/panelStore';
 
 export type { PodId, PodState, PodViewMode, LayoutConfig, LayoutPreset };
@@ -53,59 +53,68 @@ interface ToolboxContextValue {
 const ToolboxContext = createContext<ToolboxContextValue | null>(null);
 
 export function ToolboxProvider({ children }: { children: React.ReactNode }) {
-  const store = usePanelStore();
+  // Subscribe to state slices individually to avoid infinite re-render loops
+  const pods = usePanelStore(s => s.pods);
+  const lastOpened = usePanelStore(s => s.lastOpened);
+  const topZ = usePanelStore(s => s.topZ);
+  const layoutConfig = usePanelStore(s => s.layoutConfig);
+  const presets = usePanelStore(s => s.presets);
+
+  // Actions are stable references from Zustand — grab once
+  const actions = useMemo(() => ({
+    openPod:          usePanelStore.getState().openPod,
+    closePod:         usePanelStore.getState().closePod,
+    togglePod:        usePanelStore.getState().togglePod,
+    minimizePod:      usePanelStore.getState().minimizePod,
+    bringToFront:     usePanelStore.getState().bringToFront,
+    setPos:           usePanelStore.getState().setPos,
+    setSize:          usePanelStore.getState().setSize,
+    setPinned:        usePanelStore.getState().setPinned,
+    setFontScale:     usePanelStore.getState().setFontScale,
+    setSizeMode:      usePanelStore.getState().setSizeMode,
+    podViewMode:      usePanelStore.getState().podViewMode,
+    setLocked:        usePanelStore.getState().setLocked,
+    setGridSize:      usePanelStore.getState().setGridSize,
+    setSnapToEdge:    usePanelStore.getState().setSnapToEdge,
+    setGlobalFontScale: usePanelStore.getState().setGlobalFontScale,
+    savePreset:       usePanelStore.getState().savePreset,
+    loadPreset:       usePanelStore.getState().loadPreset,
+    deletePreset:     usePanelStore.getState().deletePreset,
+    resetToDefault:   usePanelStore.getState().resetToDefault,
+  }), []);
+
   const reportedSizesRef = useRef<Partial<Record<PodId, { w: number; h: number }>>>({});
 
-  const reportSize = (id: PodId, w: number, h: number) => {
+  const reportSize = useMemo(() => (id: PodId, w: number, h: number) => {
     reportedSizesRef.current[id] = { w, h };
-  };
+  }, []);
 
-  // Apply global font scale CSS var on mount and change
+  // Apply global font scale CSS var on change
   useEffect(() => {
     document.documentElement.style.setProperty(
-      '--global-font-scale', String(store.layoutConfig.globalFontScale)
+      '--global-font-scale', String(layoutConfig.globalFontScale)
     );
-  }, [store.layoutConfig.globalFontScale]);
+  }, [layoutConfig.globalFontScale]);
 
-  const value: ToolboxContextValue = {
-    pods: store.pods,
-    primaryPod: store.lastOpened,
+  const value: ToolboxContextValue = useMemo(() => ({
+    pods,
+    primaryPod: lastOpened,
     secondaryPod: null,
-    topZ: store.topZ,
+    topZ,
     reportedSizesRef,
-    layoutConfig: store.layoutConfig,
-    presets: store.presets,
+    layoutConfig,
+    presets,
 
-    openPod: store.openPod,
-    closePod: store.closePod,
-    togglePod: store.togglePod,
-    minimizePod: store.minimizePod,
-    bringToFront: store.bringToFront,
-    setPos: store.setPos,
-    setSize: store.setSize,
-    setPinned: store.setPinned,
-    setFontScale: store.setFontScale,
-    setSizeMode: store.setSizeMode,
+    ...actions,
     reportSize,
-    podViewMode: store.podViewMode,
-
-    setLocked: store.setLocked,
-    setGridSize: store.setGridSize,
-    setSnapToEdge: store.setSnapToEdge,
-    setGlobalFontScale: store.setGlobalFontScale,
-
-    savePreset: store.savePreset,
-    loadPreset: store.loadPreset,
-    deletePreset: store.deletePreset,
-    resetToDefault: store.resetToDefault,
 
     // Legacy aliases
-    toolboxes: store.pods,
-    openToolbox: store.openPod,
-    closeToolbox: store.closePod,
-    toggleToolbox: store.togglePod,
-    minimizeToolbox: store.minimizePod,
-  };
+    toolboxes: pods,
+    openToolbox: actions.openPod,
+    closeToolbox: actions.closePod,
+    toggleToolbox: actions.togglePod,
+    minimizeToolbox: actions.minimizePod,
+  }), [pods, lastOpened, topZ, layoutConfig, presets, actions, reportSize]);
 
   return <ToolboxContext.Provider value={value}>{children}</ToolboxContext.Provider>;
 }
