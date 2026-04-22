@@ -4,7 +4,7 @@
  */
 import { useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, ExternalLink, Send, Link2, Trash2, Tag, Clock } from 'lucide-react';
+import { X, ExternalLink, Send, Link2, Trash2, Tag, Clock, QrCode } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import type { NodeType } from '@/types';
@@ -46,9 +46,10 @@ interface Props {
   onSendToPod?: (noteId: string, podId: string) => void;
   onConnect?: (noteId: string) => void;
   onDelete?: (noteId: string) => void;
+  onCreateAnchor?: (noteId: string) => void;
 }
 
-export function MobileNodeCard({ note, accentColor, onClose, onNavigate, onSendToPod, onConnect, onDelete }: Props) {
+export function MobileNodeCard({ note, accentColor, onClose, onNavigate, onSendToPod, onConnect, onDelete, onCreateAnchor }: Props) {
   const hints = useHintState();
   const [showPods, setShowPods] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -258,7 +259,7 @@ export function MobileNodeCard({ note, accentColor, onClose, onNavigate, onSendT
         {/* Action buttons */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
+          gridTemplateColumns: 'repeat(5, 1fr)',
           gap: 8,
           padding: '0 16px',
           paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 0px))',
@@ -316,6 +317,24 @@ export function MobileNodeCard({ note, accentColor, onClose, onNavigate, onSendT
           >
             <Link2 size={18} />
             <span>连接</span>
+          </button>
+
+          {/* QR Anchor */}
+          <button
+            onClick={() => { onCreateAnchor?.(note.id); onClose(); }}
+            style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+              padding: '12px 4px',
+              fontFamily: INTER, fontSize: 11, fontWeight: 500,
+              color: '#66f0ff',
+              background: 'rgba(102,240,255,0.06)',
+              border: '1px solid rgba(102,240,255,0.18)',
+              borderRadius: 12,
+              cursor: 'pointer',
+            }}
+          >
+            <QrCode size={18} />
+            <span>锚点</span>
           </button>
 
           {/* Delete */}

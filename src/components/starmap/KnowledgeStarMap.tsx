@@ -811,6 +811,7 @@ export default function KnowledgeStarMap({
               setMobileCardNoteId(null);
             }}
             onDelete={onDeleteNote ? ((id) => { handleDeleteRequest(id); setMobileCardNoteId(null); }) : undefined}
+            onCreateAnchor={(id) => { setAnchorNoteId(id); setMobileCardNoteId(null); }}
           />
         );
       })()}
