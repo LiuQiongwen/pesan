@@ -9,9 +9,9 @@ import { ToolboxProvider } from "@/contexts/ToolboxContext";
 import { routers } from "./router";
 
 const queryClient = new QueryClient();
+const router = createBrowserRouter(routers);
 
 const App = () => {
-  const router = createBrowserRouter(routers);
   return (
     <LanguageProvider>
       <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} forcedTheme="dark">
