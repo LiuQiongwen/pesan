@@ -134,6 +134,12 @@ export function NodeContextMenu({ noteId, x, y, note, onClose, onOpenNote, onDis
                 <MobileMenuItem label="Delete Node" sub="Soft-delete with undo" color="#ff4466" onClick={act(() => onDelete(noteId))} />
               </>
             )}
+            {onCreateAnchor && (
+              <>
+                <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '4px 20px' }} />
+                <MobileMenuItem label="QR 锚点" sub="Generate reality anchor QR code" color="#66f0ff" onClick={act(() => onCreateAnchor(noteId))} />
+              </>
+            )}
             <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '4px 20px' }} />
             <div style={{ padding: '6px 20px 4px', fontFamily: MONO, fontSize: 10, color: 'rgba(102,240,255,0.50)', letterSpacing: '0.10em' }}>
               SEND TO POD

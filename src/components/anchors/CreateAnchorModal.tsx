@@ -3,7 +3,7 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, QrCode, Download, Copy, Check, Nfc, Smartphone } from 'lucide-react';
+import { X, QrCode, Download, Copy, Check, Nfc, Smartphone, ScanLine, Printer, ArrowRight } from 'lucide-react';
 import QRCode from 'qrcode';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -139,6 +139,45 @@ export function CreateAnchorModal({
 
         {!qrDataUrl ? (
           <>
+            {/* Step Guide */}
+            <div style={{
+              display: 'flex', gap: 6, marginBottom: 18, padding: '10px 12px',
+              background: 'rgba(102,240,255,0.04)',
+              border: '1px solid rgba(102,240,255,0.10)',
+              borderRadius: 10,
+            }}>
+              {[
+                { icon: QrCode, label: '创建', desc: '生成二维码' },
+                { icon: Printer, label: '部署', desc: '打印/NFC' },
+                { icon: ScanLine, label: '使用', desc: '扫码直达' },
+              ].map((step, i) => (
+                <div key={step.label} style={{
+                  flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                  position: 'relative',
+                }}>
+                  <div style={{
+                    width: 28, height: 28, borderRadius: 8,
+                    background: 'rgba(102,240,255,0.10)',
+                    border: '1px solid rgba(102,240,255,0.20)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <step.icon size={13} color="#66f0ff" />
+                  </div>
+                  <span style={{ fontFamily: INTER, fontSize: 10, fontWeight: 700, color: 'rgba(102,240,255,0.80)' }}>
+                    {step.label}
+                  </span>
+                  <span style={{ fontFamily: MONO, fontSize: 8, color: 'rgba(160,180,220,0.45)', letterSpacing: '0.03em' }}>
+                    {step.desc}
+                  </span>
+                  {i < 2 && (
+                    <ArrowRight size={10} color="rgba(102,240,255,0.25)" style={{
+                      position: 'absolute', right: -8, top: 8,
+                    }} />
+                  )}
+                </div>
+              ))}
+            </div>
+
             {/* Label input */}
             <label style={{ fontFamily: MONO, fontSize: 10, color: 'rgba(160,180,220,0.60)', letterSpacing: '0.08em' }}>
               LABEL
@@ -215,12 +254,40 @@ export function CreateAnchorModal({
               </div>
             </div>
 
-            <p style={{
-              fontFamily: INTER, fontSize: 13, color: 'rgba(200,210,235,0.55)',
-              textAlign: 'center', margin: '8px 0 20px',
+            <div style={{
+              margin: '8px 0 16px', padding: '10px 14px',
+              background: 'rgba(102,240,255,0.04)',
+              border: '1px solid rgba(102,240,255,0.10)',
+              borderRadius: 10,
             }}>
-              打印此二维码并贴到现实物体上
-            </p>
+              <p style={{
+                fontFamily: INTER, fontSize: 12, fontWeight: 600,
+                color: 'rgba(102,240,255,0.75)', margin: '0 0 8px',
+              }}>
+                如何使用这个锚点？
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {[
+                  { step: '1', text: '下载二维码图片，打印后贴到书本/物品/墙壁上' },
+                  { step: '2', text: '用手机摄像头扫码，或在设置中使用 QR 扫码器' },
+                  { step: '3', text: '扫码后自动跳转到对应的知识节点' },
+                ].map(item => (
+                  <div key={item.step} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                    <div style={{
+                      width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                      background: 'rgba(102,240,255,0.12)',
+                      fontFamily: MONO, fontSize: 9, fontWeight: 700,
+                      color: '#66f0ff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>{item.step}</div>
+                    <span style={{
+                      fontFamily: INTER, fontSize: 11, lineHeight: 1.4,
+                      color: 'rgba(200,210,235,0.65)',
+                    }}>{item.text}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
 
             {/* Action buttons */}
             <div style={{ display: 'flex', gap: 10 }}>

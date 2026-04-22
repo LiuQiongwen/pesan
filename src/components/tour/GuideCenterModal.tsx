@@ -9,6 +9,7 @@ import {
   ArrowRightToLine, Link2, Layers3, Crosshair, Navigation,
   Keyboard, LayoutGrid, Download, FileArchive,
   Smartphone, Hand, Send, ChevronsUp,
+  QrCode, ScanLine, Nfc, Printer,
 } from 'lucide-react';
 import { useTour } from './TourProvider';
 import { useHintState, HINT_KEYS } from '@/hooks/useHintState';
@@ -135,6 +136,31 @@ const SECTIONS: Section[] = [
         icon: ChevronsUp, color: '#ffa040',
         title: '上拉展开舱页',
         desc: '舱页底部上拉可展开更多空间，下滑可关闭',
+      },
+    ],
+  },
+  {
+    label: '现实锚点', tag: 'REALITY ANCHOR',
+    items: [
+      {
+        icon: QrCode, color: '#66f0ff',
+        title: '创建 QR 锚点',
+        desc: '右键节点 → QR 锚点，输入标签后生成专属二维码链接',
+      },
+      {
+        icon: ScanLine, color: '#66f0ff',
+        title: '扫描锚点',
+        desc: '设置 → QR 锚点扫码，打开摄像头对准二维码即可跳转',
+      },
+      {
+        icon: Nfc, color: '#b496ff',
+        title: 'NFC 轻触跳转',
+        desc: '创建锚点后可将链接写入 NFC 标签，手机靠近即跳转节点',
+      },
+      {
+        icon: Printer, color: '#ffa040',
+        title: '打印 & 部署',
+        desc: '下载二维码图片，打印贴到书本/物品/墙壁上，扫码直达知识节点',
       },
     ],
   },
