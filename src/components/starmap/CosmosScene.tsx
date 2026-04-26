@@ -1266,16 +1266,11 @@ function ImperativeCore({
     particleSystemsRef.current.forEach(pts => {
       const m = pts.material as THREE.PointsMaterial;
       m.opacity = THREE.MathUtils.lerp(m.opacity, particleTarget, 0.04);
-      // Gentle drift
+      // GPU-native rotation instead of per-vertex CPU mutation
       const drift = (pts.userData as { drift: number }).drift;
       if (drift > 0 && dist < 130) {
-        const posArr = (pts.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array;
-        for (let i = 0; i < posArr.length; i += 3) {
-          posArr[i]     += Math.sin(t * 0.5 + i) * drift * 0.1;
-          posArr[i + 1] += Math.cos(t * 0.3 + i * 0.7) * drift * 0.1;
-          posArr[i + 2] += Math.sin(t * 0.4 + i * 1.3) * drift * 0.1;
-        }
-        pts.geometry.attributes.position.needsUpdate = true;
+        pts.rotation.y += drift * 0.02;
+        pts.rotation.x += drift * 0.005;
       }
     });
 
